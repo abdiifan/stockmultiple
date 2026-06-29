@@ -1963,200 +1963,6 @@ function renderQC() {
     () => downloadCSV(qcRows,   qcCols, "qc_inspection.csv"),
     () => downloadExcel(qcRows, qcCols, "qc_inspection.xlsx"));
 
-  // ── DAYS IN QUALITY PANEL ─────────────────────────────────────────────────
-  _renderQCDaysPanel(qcRows);
-}
-
-/**
- * Builds the "Days in Quality — HO01" side panel.
- * Shows HO01 QC items. Days in QC calculation requires received goods data (not available).
- */
-function _renderQCDaysPanel(qcRows) {
-  const wrap = document.getElementById("qc-days-wrap");
-  if (!wrap) return;
-
-  // ── Step 0: restrict to HO01 plant ONLY ─────────────────────────────────
-  // qcRows come from aggregateByMaterial() which collapses all plants into one
-  // row per material. We use rawDf to get the true HO01-only QC rows so the
-  // days calculation is accurate and not mixed with other branches.
-  const ho01QCRaw = (rawDf || []).filter(r => {
-    const plant = String(r["Plant"] || "").trim().toUpperCase();
-    const qcQty = Number(r["Stock in Quality Inspection"]) || 0;
-    return plant === "HO01" && qcQty > 0;
-  });
-
-  // If there are no HO01 QC items, say so and exit.
-  if (!ho01QCRaw.length) {
-    wrap.innerHTML = `<div class="alert-info" style="font-size:0.78rem">
-      ℹ️ No Quality Inspection stock found for <strong>HO01</strong>.
-      This panel only shows HO01 items — other plants are excluded.
-    </div>`;
-    const dlRow = document.getElementById("qc-days-dl-row");
-    if (dlRow) dlRow.innerHTML = "";
-    return;
-  }
-
-  // ── Step 1: posting-date lookup (received goods upload removed) ─────────
-  const postingMap = new Map(); // always empty — received goods feature removed
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const MS_PER_DAY = 86400000;
-
-  // ── Step 2: annotate each HO01 QC row with days-in-QC ──────────────────
-  // Use raw HO01 rows directly — each row has its own Batch field so the
-  // posting-date lookup is accurate per batch, not per aggregated material.
-  const daysRows = ho01QCRaw.map(r => {
-    const mat   = String(r["Material"] || r._mappedMaterial || "").trim().toUpperCase();
-    const batch = String(r["Batch"]    || "").trim().toUpperCase();
-
-    let postingDate = null;
-
-    // Direct match on material + batch
-    if (batch) {
-      const key = `${mat}||${batch}`;
-      postingDate = postingMap.get(key) || null;
-    }
-
-    // If no direct batch hit, try every source batch in _sourceBatches (mapped rows)
-    if (!postingDate && Array.isArray(r._sourceBatches)) {
-      for (const sb of r._sourceBatches) {
-        const sbKey = `${mat}||${String(sb || "").trim().toUpperCase()}`;
-        const d = postingMap.get(sbKey);
-        if (d) { postingDate = d; break; }
-      }
-    }
-
-    // Also try original material code if the row was standardized
-    if (!postingDate && r._origMaterial) {
-      const origMat = String(r._origMaterial).trim().toUpperCase();
-      const key2 = `${origMat}||${batch}`;
-      postingDate = postingMap.get(key2) || null;
-    }
-
-    let daysInQC = null;
-    if (postingDate instanceof Date && !isNaN(postingDate)) {
-      daysInQC = Math.floor((today.getTime() - postingDate.getTime()) / MS_PER_DAY);
-      if (daysInQC < 0) daysInQC = null; // posting date in the future → data error
-    }
-
-    return {
-      ...r,
-      _postingDate: postingDate,
-      _daysInQC:    daysInQC,
-    };
-  });
-
-  // Sort: rows with a known days count first (oldest = most days at top),
-  // then rows with no match (posting date unknown) at the bottom.
-  daysRows.sort((a, b) => {
-    if (a._daysInQC !== null && b._daysInQC !== null) return b._daysInQC - a._daysInQC;
-    if (a._daysInQC !== null) return -1;
-    if (b._daysInQC !== null) return  1;
-    return 0;
-  });
-
-  // ── Step 3: render ───────────────────────────────────────────────────────
-  if (!daysRows.length) {
-    wrap.innerHTML = `<div class="alert-info" style="font-size:0.78rem">No QC items to display.</div>`;
-    const dlRow = document.getElementById("qc-days-dl-row");
-    if (dlRow) dlRow.innerHTML = "";
-    return;
-  }
-
-  const hasAnyMatch = daysRows.some(r => r._daysInQC !== null);
-  if (!hasAnyMatch) {
-    wrap.innerHTML = `<div class="alert-info" style="font-size:0.78rem">
-      ℹ️ Days in Quality Inspection calculation requires a Received Goods data source (feature not available in this version).
-    </div>`;
-    const dlRow = document.getElementById("qc-days-dl-row");
-    if (dlRow) dlRow.innerHTML = "";
-    return;
-  }
-
-  // Badge colour helper: green ≤14d, amber 15–30d, red >30d
-  function daysBadge(days) {
-    if (days === null) return `<span style="color:var(--dim);font-size:0.8rem">—</span>`;
-    const color = days <= 14 ? "var(--green)" : days <= 30 ? "var(--amber)" : "var(--red)";
-    return `<span style="
-      display:inline-block;
-      background:${color}22;
-      color:${color};
-      border:1px solid ${color}66;
-      border-radius:4px;
-      padding:1px 7px;
-      font-size:0.78rem;
-      font-weight:600;
-      font-family:'IBM Plex Mono',monospace;
-      min-width:40px;
-      text-align:center;
-    ">${days}d</span>`;
-  }
-
-  let html = `
-    <div style="font-size:0.68rem;color:var(--muted);margin-bottom:0.5rem;display:flex;gap:0.8rem;flex-wrap:wrap">
-      <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--green);margin-right:3px"></span>≤14 days</span>
-      <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--amber);margin-right:3px"></span>15–30 days</span>
-      <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--red);margin-right:3px"></span>&gt;30 days</span>
-    </div>
-    <div class="tbl-wrap" style="max-height:520px;overflow-y:auto">
-    <table style="font-size:0.76rem;width:100%">
-      <thead>
-        <tr>
-          <th style="text-align:left;padding:5px 8px;white-space:nowrap">Material</th>
-          <th style="text-align:left;padding:5px 8px;white-space:nowrap">Batch</th>
-          <th style="text-align:left;padding:5px 8px;white-space:nowrap">Posting Date</th>
-          <th style="text-align:center;padding:5px 8px;white-space:nowrap">Days in QC</th>
-        </tr>
-      </thead>
-      <tbody>`;
-
-  daysRows.forEach(r => {
-    const mat   = escHtml(String(r["Material"] || r._mappedMaterial || "").trim());
-    const batch = escHtml(String(r["Batch"]    || "").trim() || "—");
-    const pd    = r._postingDate ? fmtLocalDate(r._postingDate) : "—";
-    const badge = daysBadge(r._daysInQC);
-    html += `<tr>
-      <td style="padding:5px 8px;font-family:'IBM Plex Mono',monospace;font-size:0.73rem;color:var(--purple)">${mat}</td>
-      <td style="padding:5px 8px;font-size:0.73rem;color:var(--muted)">${batch}</td>
-      <td style="padding:5px 8px;font-size:0.73rem;color:var(--muted);white-space:nowrap">${pd}</td>
-      <td style="padding:5px 8px;text-align:center">${badge}</td>
-    </tr>`;
-  });
-
-  html += `</tbody></table></div>`;
-
-  // Summary line
-  const matched  = daysRows.filter(r => r._daysInQC !== null).length;
-  const total    = daysRows.length;
-  const avgDays  = matched
-    ? Math.round(daysRows.filter(r => r._daysInQC !== null).reduce((s,r) => s + r._daysInQC, 0) / matched)
-    : null;
-
-  html += `<div style="margin-top:0.5rem;font-size:0.68rem;color:var(--muted);display:flex;gap:1rem;flex-wrap:wrap">
-    <span>Matched: <strong style="color:var(--text)">${matched}/${total}</strong></span>
-    ${avgDays !== null ? `<span>Avg days: <strong style="color:var(--amber)">${avgDays}d</strong></span>` : ""}
-  </div>`;
-
-  wrap.innerHTML = html;
-
-  // ── Export wiring ────────────────────────────────────────────────────────
-  const exportRows = daysRows.map(r => ({
-    Material:     String(r["Material"] || r._mappedMaterial || "").trim(),
-    Batch:        String(r["Batch"] || "").trim(),
-    PostingDate:  r._postingDate ? fmtLocalDate(r._postingDate) : "",
-    DaysInQC:     r._daysInQC !== null ? r._daysInQC : "",
-  }));
-  const exportCols = [
-    {key:"Material",    label:"Material"},
-    {key:"Batch",       label:"Batch"},
-    {key:"PostingDate", label:"Posting Date"},
-    {key:"DaysInQC",    label:"Days in QC"},
-  ];
-  injectDlButtons("qc-days-dl-row",
-    () => downloadCSV(exportRows,   exportCols, "days_in_quality_inspection.csv"),
-    () => downloadExcel(exportRows, exportCols, "days_in_quality_inspection.xlsx"),
-  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2241,8 +2047,83 @@ function renderBranch() {
   const df = aggregateByMappedMaterial(baseDf);
 
   const tabsHtml = `
-    <div id="branch-tab-material"></div>`;
+    <div class="branch-tab-bar" style="display:flex;gap:0.5rem;margin-bottom:0;border-bottom:2px solid var(--border2);overflow-x:auto;-webkit-overflow-scrolling:touch">
+      <button class="branch-tab-btn active" data-tab="value"    style="padding:0.5rem 1.1rem;border:none;border-bottom:2px solid var(--blue);background:transparent;color:var(--blue);font-weight:700;font-size:0.82rem;cursor:pointer;margin-bottom:-2px;font-family:inherit;white-space:nowrap;flex-shrink:0">🏢 Branch Overview</button>
+      <button class="branch-tab-btn"        data-tab="material" style="padding:0.5rem 1.1rem;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);font-weight:500;font-size:0.82rem;cursor:pointer;margin-bottom:-2px;font-family:inherit;white-space:nowrap;flex-shrink:0">📦 Material Comparison</button>
+      <button class="branch-tab-btn"        data-tab="mos"      style="padding:0.5rem 1.1rem;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);font-weight:500;font-size:0.82rem;cursor:pointer;margin-bottom:-2px;font-family:inherit;white-space:nowrap;flex-shrink:0">📐 MOS by Plant</button>
+    </div>
+    <div id="branch-tab-value"    class="branch-tab-panel" style="display:block;padding-top:1rem">
+      <div id="branch-dl-row" style="display:flex;gap:0.6rem;justify-content:flex-end;margin-bottom:0.5rem">
+        <button class="dl-btn" id="btn-dl-branch-csv">⬇ CSV</button>
+        <button class="dl-btn" id="btn-dl-branch-xlsx">⬇ Excel</button>
+      </div>
+    </div>
+    <div id="branch-tab-material" class="branch-tab-panel" style="display:none;padding-top:1rem"></div>
+    <div id="branch-tab-mos"      class="branch-tab-panel" style="display:none;padding-top:1rem">
+      <div id="mos-no-amc" class="alert-info" style="margin-bottom:1rem">
+        Upload <b>AMC.xlsx</b> to enable MOS analysis.
+        <label class="upload-btn" style="display:inline-flex;margin-left:0.75rem;padding:4px 12px;font-size:0.8rem;cursor:pointer" for="mosAmcFileInput">
+          📐 Upload AMC.xlsx
+          <input type="file" id="mosAmcFileInput" accept=".xlsx,.xls" style="display:none" />
+        </label>
+        <div id="mosAmcFileStatus" style="display:inline;margin-left:0.5rem;font-size:0.78rem"></div>
+      </div>
+      <div id="mos-content" style="display:none">
+        <div class="alert-info" style="margin-bottom:1rem;font-size:0.8rem">
+          <b>ℹ️ HO01 (Hub) MOS rule:</b> MOS = stock-on-hand ÷ AMC. For HO01, AMC = sum of all branch plant AMCs (total network demand).
+        </div>
+        <div class="filter-bar" style="gap:0.6rem;flex-wrap:wrap;align-items:center">
+          <input id="mos-search" type="text" placeholder="Search material…" style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:0.82rem;min-width:220px"/>
+          <select id="mos-plant-filter" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:0.82rem">
+            <option value="">All Plants</option>
+          </select>
+          <select id="mos-type" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:0.82rem">
+            <option value="">All Types</option>
+            <option value="ZME">ZME (Medicines)</option>
+            <option value="ZMS">ZMS (Medical Supplies)</option>
+          </select>
+          <label style="font-size:0.78rem;color:var(--muted);display:flex;align-items:center;gap:0.3rem">
+            <input type="checkbox" id="mos-critical-only" /> Critical only (&lt; 1 month)
+          </label>
+          <span class="filter-bar-divider"></span>
+          <span class="person-filter-chip" id="pf-chip-mos">
+            <select id="global-person-filter-mos" class="person-filter-select" title="Filter by person assigned"><option value="">👤 All Persons</option></select>
+            <button type="button" class="person-filter-clear" id="pf-clear-mos" title="Clear person filter">✕</button>
+          </span>
+          <button class="apply-btn small" id="mos-apply">Apply</button>
+          <button class="apply-btn secondary small" id="mos-clear">Clear</button>
+        </div>
+        <div class="kpi-row" id="mos-kpis" style="margin:1rem 0"></div>
+        <div id="mos-dl-row" style="display:flex;gap:0.6rem"></div>
+        <div class="section-header" style="margin-top:1rem">📊 MOS by Plant — Overview</div>
+        <div class="chart-box full"><div id="chart-mos-plant" style="min-height:320px"></div></div>
+        <div class="section-header" style="margin-top:1.5rem">📋 MOS Detail Table</div>
+        <div id="mos-table"></div>
+      </div>
+    </div>`;
   document.getElementById("branch-tabs-wrap").innerHTML = tabsHtml;
+
+  // ── Branch tab switcher ───────────────────────────────────────────────────
+  document.querySelectorAll(".branch-tab-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".branch-tab-btn").forEach(b => {
+        const active = b === btn;
+        b.classList.toggle("active", active);
+        b.style.color       = active ? "var(--blue)" : "var(--muted)";
+        b.style.fontWeight  = active ? "700" : "500";
+        b.style.borderBottom= active ? "2px solid var(--blue)" : "2px solid transparent";
+      });
+      document.querySelectorAll(".branch-tab-panel").forEach(p => {
+        p.style.display = p.id === `branch-tab-${btn.dataset.tab}` ? "block" : "none";
+      });
+      // Lazy-render MOS tab when first opened
+      if (btn.dataset.tab === "mos" && typeof renderMosPlant === "function" && typeof mosMerged !== "undefined" && mosMerged.length) {
+        try { renderMosPlant(); } catch(e) { console.error(e); }
+      }
+      // Lazy-render material tab
+      if (btn.dataset.tab === "material") renderMaterialTab();
+    });
+  });
 
   // FIX-R7: replaced native <select multiple> with buildMultiSelect for UX consistency.
   const branchWrapId = "ms-branch-select";
@@ -2363,6 +2244,16 @@ function renderBranch() {
               <option value="QCQty">Stock in Quality Inspection Quantity</option>
             </select>
           </div>
+          <div id="mat-transit-months-wrap" style="display:none">
+            <div class="nav-label" style="font-size:0.65rem;margin-bottom:3px">🚚 Transit — how many months?</div>
+            <input id="mat-transit-months" type="number" min="0.5" max="36" step="0.5" value="1"
+              style="width:80px;background:var(--surface2);border:1.5px solid var(--blue);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;font-family:inherit" />
+          </div>
+          <div id="mat-qc-months-wrap" style="display:none">
+            <div class="nav-label" style="font-size:0.65rem;margin-bottom:3px">🔬 QC — how many months?</div>
+            <input id="mat-qc-months" type="number" min="0.5" max="36" step="0.5" value="1"
+              style="width:80px;background:var(--surface2);border:1.5px solid var(--blue);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;font-family:inherit" />
+          </div>
           <div>
             <div class="nav-label" style="font-size:0.65rem;margin-bottom:3px">Material Type</div>
             <select id="mat-mgfilter" style="background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px">
@@ -2397,8 +2288,23 @@ function renderBranch() {
         document.getElementById("mat-metric").value    = "TotalValue";
         document.getElementById("mat-mgfilter").value  = "";
         document.getElementById("mat-sort").value      = "total_desc";
+        const tmi = document.getElementById("mat-transit-months"); if (tmi) tmi.value = "1";
+        const qmi = document.getElementById("mat-qc-months");      if (qmi) qmi.value = "1";
+        updateMetricMonthsUI();
         refreshMaterialView();
       });
+      // Show/hide transit & QC months inputs based on selected metric
+      function updateMetricMonthsUI() {
+        const metric = document.getElementById("mat-metric").value;
+        const isTransitQty = metric === "TransitQty" || metric === "Transit";
+        const isQcQty      = metric === "QCQty"      || metric === "QC";
+        const tw = document.getElementById("mat-transit-months-wrap");
+        const qw = document.getElementById("mat-qc-months-wrap");
+        if (tw) tw.style.display = isTransitQty ? "" : "none";
+        if (qw) qw.style.display = isQcQty      ? "" : "none";
+      }
+      document.getElementById("mat-metric").addEventListener("change", () => { updateMetricMonthsUI(); refreshMaterialView(); });
+      updateMetricMonthsUI();
       // Build the material multi-select after HTML is in DOM
       buildMultiSelect("mat-ms-wrap", "mat-ms-dd", allMatOptions, "All Materials");
       // Material Group multi-select — lets users narrow the comparison to one or
@@ -2457,6 +2363,62 @@ function renderBranch() {
       const isQty     = metric.includes("Qty");
       const fmtFn     = isQty ? fmtQty : fmtETB;
 
+      // MOS-related: detect which stock type this metric corresponds to
+      const isTransitMetric    = metric === "TransitQty" || metric === "Transit";
+      const isQcMetric         = metric === "QCQty"      || metric === "QC";
+      const isUnrestrictedMetric = metric === "UnrestrictedQty" || metric === "Unrestricted"
+                                 || metric === "TotalQty" || metric === "TotalValue";
+      // Transit/QC months inputs — how many months of transit/QC stock represents
+      const transitMonthsEl = document.getElementById("mat-transit-months");
+      const qcMonthsEl      = document.getElementById("mat-qc-months");
+      const transitMonths   = transitMonthsEl ? (parseFloat(transitMonthsEl.value) || 1) : 1;
+      const qcMonths        = qcMonthsEl      ? (parseFloat(qcMonthsEl.value)      || 1) : 1;
+
+      // Check if AMC data is available for MOS computation
+      const hasAmc = typeof mosMerged !== "undefined" && mosMerged.length > 0;
+      // Build a fast lookup: materialCode (canonical) → plantCode → AMC value
+      const amcByMatPlant = {};
+      if (hasAmc && typeof mosPlants !== "undefined") {
+        for (const row of mosMerged) {
+          amcByMatPlant[row.code] = row.amcs || {};
+        }
+      }
+
+      // Helper: compute MOS for a given qty and amc; returns null if no amc, Infinity if amc=0 with qty>0
+      function calcMos(qty, amc) {
+        if (amc === null || amc === undefined) return null;
+        if (amc === 0) return qty > 0 ? Infinity : null;
+        return qty / amc;
+      }
+
+      // Helper: render a compact SOH + MOS cell
+      // stockLabel: e.g. "SOH", "Transit", "QC"
+      // qty: the quantity value
+      // mos: computed MOS (null | Infinity | number)
+      function renderSohMosCell(qty, mos, stockLabel, extraMonths) {
+        const qtyStr = fmtQty(qty);
+        let mosStr, mosColor;
+        if (mos === null) {
+          mosStr = '<span style="color:var(--muted);font-size:0.72em">No AMC</span>';
+          mosColor = "";
+        } else if (mos === Infinity) {
+          mosStr = '<span style="color:var(--amber);font-weight:700;font-size:0.82em">∞ mo</span>';
+          mosColor = "";
+        } else {
+          const v = mos.toFixed(1);
+          if (mos < 1) {
+            mosColor = "color:var(--red);font-weight:700";
+            mosStr = `<span style="${mosColor};font-size:0.82em">${v} mo</span>`;
+          } else {
+            mosColor = "color:var(--green)";
+            mosStr = `<span style="${mosColor};font-size:0.82em">${v} mo</span>`;
+          }
+        }
+        const monthNote = extraMonths != null ? `<span style="font-size:0.68em;color:var(--muted)"> ×${extraMonths}mo</span>` : "";
+        return `<span style="font-size:0.85em">${qtyStr}</span>`
+             + `<br><span style="font-size:0.68em;color:var(--muted)">${stockLabel} </span>${mosStr}${monthNote}`;
+      }
+
       let materials = Object.entries(matPlantMap)
         .filter(([mat, info]) => {
           if (mgFilter && info.valType !== mgFilter) return false;
@@ -2476,7 +2438,7 @@ function renderBranch() {
             grandTotal   += plantData[pn];
             if (plantData[pn] > 0) branchCount++;
           });
-          return {mat, desc:info.desc, group:info.group, valType:info.valType, plantData, grandTotal, branchCount};
+          return {mat, desc:info.desc, group:info.group, valType:info.valType, plantData, grandTotal, branchCount, _info: info};
         });
 
       if (sortMode === "total_desc") materials.sort((a,b) => b.grandTotal - a.grandTotal);
@@ -2495,16 +2457,21 @@ function renderBranch() {
       }
       chartWrap.innerHTML = "";
 
+      // Determine MOS stock-type label for cell display
+      const mosStockLabel = isTransitMetric ? "Transit" : isQcMetric ? "QC" : "SOH";
+      const mosExtraMonths = isTransitMetric ? transitMonths : isQcMetric ? qcMonths : null;
+
       const colDefs = [
         {key:"mat",  label:"Material Code", fmt:(val,r)=>renderMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap"},
         {key:"desc", label:"Material Description", fmt:(val,r)=>renderMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap"},
         {key:"group",label:"Material Group"},
-        ...allPlantNames.map(pn => ({key:`__p__${pn}`, label:pn, fmt:fmtFn, rawKey:`__r__${pn}`, cellClass:isQty?"col-qty":"col-val"})),
+        ...allPlantNames.map(pn => ({key:`__p__${pn}`, label:pn, rawKey:`__r__${pn}`, cellClass:isQty?"col-qty":"col-val", _isPlant:true, _pn:pn})),
         {key:"grandTotal",  label:"Grand Total", fmt:fmtFn, rawKey:"grandTotal", cellClass:isQty?"col-qty":"col-val"},
         {key:"branchCount", label:"# Branches"},
       ];
+
       const tableRows = materials.slice(0, 200).map(m => {
-        const row = {mat:m.mat, desc:m.desc, group:m.group, grandTotal:m.grandTotal, branchCount:m.branchCount};
+        const row = {mat:m.mat, desc:m.desc, group:m.group, grandTotal:m.grandTotal, branchCount:m.branchCount, _mat:m};
         allPlantNames.forEach(pn => { row[`__p__${pn}`] = m.plantData[pn] || 0; row[`__r__${pn}`] = m.plantData[pn] || 0; });
         row["__r__grandTotal"] = m.grandTotal;
         return row;
@@ -2516,8 +2483,60 @@ function renderBranch() {
       ).join("")}</tr></thead>`;
       const tbody = tableRows.map(r => {
         const cells = colDefs.map(c => {
+          // ── Plant columns: show qty + MOS ──────────────────────────────────
+          if (c._isPlant) {
+            const pn  = c._pn;
+            const qty = r[`__r__${pn}`] || 0;
+            const isCentral = pn === centralName;
+            const cellStyle = isCentral ? 'style="color:#58a6ff;background:#0d2035"' : (qty === 0 ? 'style="color:#484f58"' : "");
+
+            // Compute MOS if AMC available and metric is a quantity type
+            let cellHtml;
+            if (hasAmc && isQty) {
+              // Find canonical material code — try direct match first, then scan mosMerged
+              const matCode = r._mat ? r._mat.mat : "";
+              const amcs = amcByMatPlant[matCode];
+              // Determine the plant code (not display name) — find from baseDf mapping
+              // Plant names in matPlantMap are Plant Names; we need Plant codes for AMC lookup
+              // Use mosPlants (plant codes) and sohMap approach from mos.js
+              // AMC plant key: use plant name as key if it matches, else try exact plant code
+              // AMC data keyed by plant CODE (from AMC.xlsx columns)
+              let plantAmc = null;
+              if (amcs) {
+                // Try the plant display name (some setups use name, some code)
+                if (amcs[pn] !== undefined) {
+                  plantAmc = amcs[pn];
+                } else {
+                  // Try to find the plant code for this plant name
+                  const plantRow = baseDf.find(bRow => bRow["Plant Name"] === pn);
+                  if (plantRow) {
+                    const pCode = String(plantRow["Plant"] || "").trim().toUpperCase();
+                    if (amcs[pCode] !== undefined) plantAmc = amcs[pCode];
+                  }
+                }
+              }
+
+              // Determine the qty key for the "unrestricted" denominator basis
+              // Transit MOS = TransitQty ÷ AMC (× months factor if user asks "how many months")
+              // QC MOS      = QCQty ÷ AMC (× months factor)
+              // SOH MOS     = UnrestrictedQty ÷ AMC
+              let effectiveQty = qty; // already the right metric qty
+              // For MOS we always divide by AMC to get months; if user wants "N months of transit",
+              // we divide qtyForMOS by (AMC) to see how many months the transit stock covers.
+              const mos = calcMos(effectiveQty, plantAmc);
+              cellHtml = renderSohMosCell(qty, mos, mosStockLabel, null);
+            } else if (hasAmc && !isQty) {
+              // Value metric — show value + brief MOS using unrestricted qty if available
+              cellHtml = `<span>${fmtFn(qty)}</span>`;
+            } else {
+              cellHtml = qty === 0 ? '<span style="color:#484f58">—</span>' : (isQty ? fmtQty(qty) : fmtFn(qty));
+            }
+            return `<td class="${c.cellClass||""}" ${cellStyle}>${cellHtml}</td>`;
+          }
+
+          // ── Non-plant columns ──────────────────────────────────────────────
           const v       = r[c.key];
-          const raw     = c.raw ? v : null;           // raw HTML — don't escape
+          const raw     = c.raw ? v : null;
           const display = raw != null ? (raw ?? "")
                         : c.fmt ? c.fmt(v)
                         : (v == null ? "" : escHtml(String(v)));
@@ -2528,8 +2547,21 @@ function renderBranch() {
         }).join("");
         return `<tr>${cells}</tr>`;
       }).join("");
+      // Build legend / context note
+      let mosLegend = "";
+      if (hasAmc && isQty) {
+        const mosTypeNote = isTransitMetric
+          ? `Transit MOS = Transit Qty ÷ AMC (pipeline coverage). Set <b>"Transit — how many months?"</b> above to highlight if transit covers your target lead time.`
+          : isQcMetric
+          ? `QC MOS = QC Qty ÷ AMC (months of stock held in quality inspection).`
+          : `SOH MOS = Unrestricted Qty ÷ AMC`;
+        mosLegend = `<div style="font-size:0.72rem;color:var(--muted);margin-bottom:6px;padding:5px 10px;background:var(--surface);border-radius:6px;border-left:3px solid var(--blue)">
+          📐 <b>MOS shown per branch</b> (AMC loaded). <span style="color:var(--red)">Red &lt;1mo</span> · <span style="color:var(--green)">Green ≥1mo</span> · <span style="color:var(--amber)">∞ = stock with no AMC plan</span><br>
+          <span style="opacity:0.8">${mosTypeNote}</span></div>`;
+      }
       document.getElementById("mat-table-wrap").innerHTML = `
         <div style="color:var(--muted);font-size:12px;margin-bottom:6px">Showing ${tableRows.length} of ${materials.length} materials · Blue = Central (${escHtml(centralName)})</div>
+        ${mosLegend}
         <div class="tbl-wrap"><table>${thead}<tbody>${tbody}</tbody></table></div>
         ${materials.length > 200 ? `<div class="alert-info">Showing first 200 of ${materials.length}. Refine search.</div>` : ""}`;
 
@@ -2551,7 +2583,8 @@ function renderBranch() {
     }
   }
 
-  renderMaterialTab();
+  // Render the default tab (Branch Overview) immediately
+  updateBranchCharts();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
