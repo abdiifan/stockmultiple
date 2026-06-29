@@ -194,7 +194,14 @@ function computeRowMOS(row, sohMap) {
     }
 
     const amc = row.amcs[p];
-    if (amc === null || amc === undefined) return { plant: p, soh, amc: null, mos: null, isHub };
+    // amc === null  → plant has no AMC commitment in the plan.
+    //   But SOH may still be present (legacy stock, hub-served facility,
+    //   ad-hoc delivery). Return mos:Infinity when SOH > 0 so these rows
+    //   surface in the table as "SOH Only – No AMC" instead of vanishing.
+    //   When SOH is also zero, there is genuinely nothing to show.
+    if (amc === null || amc === undefined) {
+      return { plant: p, soh, amc: null, mos: soh > 0 ? Infinity : null, isHub };
+    }
     const mos = amc > 0 ? soh / amc : (soh > 0 ? Infinity : null);
     return { plant: p, soh, amc, mos, isHub };
   });
@@ -221,32 +228,72 @@ function computeNationalMOS(row, sohMap) {
   const totalBranchAmc = branchPlants.reduce((s, p) => s + (row.amcs[p] || 0), 0);
   const anyBranchCommitted = branchPlants.some(p => row.amcs[p] !== null);
 
+  // Include ALL plants' SOH in the numerator — stock that exists in the
+  // network is real supply regardless of whether that plant has an AMC
+  // commitment. A hub-served facility with SOH but no AMC is still holding
+  // real product that contributes to the network's supply cushion.
   const totalSoh = mosPlants.reduce((s, p) => s + mosSohFor(sohMap, row, p), 0);
   const hasHo01  = mosPlants.includes(HUB_PLANT);
 
-  if (!anyBranchCommitted) return { totalSoh, totalAmc: null, mos: null, hasHo01 };
+  if (!anyBranchCommitted) {
+    // No branch commitments → can't compute a meaningful national MOS denominator.
+    // But if there IS stock, return Infinity so it surfaces rather than disappearing.
+    return { totalSoh, totalAmc: null, mos: totalSoh > 0 ? Infinity : null, hasHo01 };
+  }
   const mos = totalBranchAmc > 0 ? totalSoh / totalBranchAmc : (totalSoh > 0 ? Infinity : null);
   return { totalSoh, totalAmc: totalBranchAmc, mos, hasHo01 };
 }
 
 // ── FORMATTING HELPERS ────────────────────────────────────────────────────────
-function mosNABadge() {
-  return '<span class="amc-na-badge" title="Not committed — item not required at this plant">Not Committed</span>';
+//
+// AMC null  = plant is NOT committed to carry this item in the AMC plan.
+//             However, SOH may still be present (e.g. legacy stock, ad-hoc
+//             delivery, or the facility is served by the hub plant, not by a
+//             branch-level commitment). This is NOT the same as "no stock" —
+//             it means there is no planned consumption basis.
+//
+// When amc === null but soh > 0:
+//   → MOS is Infinity (stock exists, no planned drawdown rate).
+//   → Risk label: "SOH Only – No AMC" — shown in amber.
+//   → The item SHOULD appear in the table so supply planners are aware of it.
+//
+// When amc === null and soh === 0:
+//   → Plant has no commitment and no stock. Genuinely irrelevant — hidden.
+//
+function mosNABadge(soh) {
+  // soh provided → distinguish "stock present, no plan" from "truly not active"
+  if (soh !== undefined && soh > 0) {
+    return `<span class="amc-soh-only-badge" title="Stock on hand (${fmtQty(soh)} units) but no AMC commitment recorded. ` +
+           `MOS is effectively infinite — this facility may be served by the hub or received an ad-hoc delivery. ` +
+           `Verify whether a consumption plan exists.">SOH Only – No AMC</span>`;
+  }
+  return '<span class="amc-na-badge" title="No AMC commitment and no stock at this plant — not active">Not Committed</span>';
 }
 
-function fmtMosVal(mos) {
-  if (mos === null || mos === undefined) return mosNABadge();
-  if (mos === Infinity) return '<span style="color:var(--orange)">∞</span>';
+function fmtMosVal(mos, soh) {
+  if (mos === null || mos === undefined) return mosNABadge(soh);
+  if (mos === Infinity) {
+    // Infinite MOS = stock present, zero or no committed consumption.
+    // Show ∞ in amber — not critical (won't run out) but not clean either.
+    return '<span style="color:var(--amber);font-weight:700" title="Stock exists but no consumption commitment recorded — MOS is infinite">∞ mo</span>';
+  }
   return `<b>${Number(mos).toFixed(1)}</b> mo`;
 }
 
-// Only rule requested: flag critical (< 1 month). Everything else is neutral.
+// Critical = less than 1 month of stock. Infinity and null are NOT critical.
 function isMosCritical(mos) {
   return mos !== null && mos !== undefined && mos !== Infinity && mos < 1;
 }
 
-function mosCellStyle(mos) {
-  return isMosCritical(mos) ? "color:var(--red);font-weight:700" : "color:var(--text)";
+// Infinite MOS with SOH present = amber "ghost stock" warning
+function isMosGhost(mos, soh) {
+  return mos === Infinity && soh > 0;
+}
+
+function mosCellStyle(mos, soh) {
+  if (isMosCritical(mos))   return "color:var(--red);font-weight:700";
+  if (isMosGhost(mos, soh)) return "color:var(--amber)";
+  return "color:var(--text)";
 }
 
 function getMosFilteredRows(typeFilter, searchQ) {
@@ -304,9 +351,12 @@ async function renderMosPlant() {
     _national: computeNationalMOS(r, sohMap),
   }));
 
-  // Plant-specific filter: only keep rows where that plant has a commitment
+  // Plant-specific filter: show committed plants AND ghost-stock plants (amc null, soh > 0)
   if (plantVal) {
-    scored = scored.filter(r => r._plantMos.find(m => m.plant === plantVal)?.amc !== null);
+    scored = scored.filter(r => {
+      const pm = r._plantMos.find(m => m.plant === plantVal);
+      return pm && (pm.amc !== null || pm.soh > 0);
+    });
   }
 
   // Critical-only filter: at least one plant (or the selected plant) under 1mo
@@ -320,8 +370,9 @@ async function renderMosPlant() {
   // ── KPIs ────────────────────────────────────────────────────────────────────
   const allEntries = scored.flatMap(r => plantVal ? r._plantMos.filter(m => m.plant === plantVal) : r._plantMos);
   const committedEntries = allEntries.filter(e => e.amc !== null);
+  const ghostEntries     = allEntries.filter(e => e.amc === null && e.soh > 0);  // SOH with no AMC plan
   const criticalCount = committedEntries.filter(e => isMosCritical(e.mos)).length;
-  const hubEntries = scored.map(r => r._plantMos.find(m => m.isHub)).filter(e => e && e.amc !== null);
+  const hubEntries = scored.map(r => r._plantMos.find(m => m.isHub)).filter(e => e && (e.amc !== null || e.soh > 0));
   const hubCriticalCount = hubEntries.filter(e => isMosCritical(e.mos)).length;
   const nationalEntries = scored.map(r => r._national).filter(n => n.mos !== null);
   const nationalCriticalCount = nationalEntries.filter(n => isMosCritical(n.mos)).length;
@@ -331,7 +382,7 @@ async function renderMosPlant() {
     mosKpiCard("National MOS Critical (<1mo)", nationalCriticalCount.toLocaleString(), `of ${nationalEntries.length.toLocaleString()} items with national MOS`, "red"),
     mosKpiCard("Plant-Item Pairs Critical (<1mo)", criticalCount.toLocaleString(), `of ${committedEntries.length.toLocaleString()} committed pairs`, "orange"),
     mosKpiCard(`${HUB_PLANT} Critical (<1mo)`, hubCriticalCount.toLocaleString(), "vs. total branch demand", "purple"),
-    mosKpiCard("SOH Data Loaded", hasSoh ? "Yes" : "No", hasSoh ? "From inventory file" : "Upload inventory Excel for SOH", hasSoh ? "green" : "amber"),
+    mosKpiCard("SOH Only – No AMC", ghostEntries.length.toLocaleString(), "Facilities with stock but no consumption plan — verify", "amber"),
   ]);
 
   if (!hasSoh) {
@@ -390,20 +441,24 @@ async function renderMosPlant() {
     { key: "type", label: "Type" },
     { key: "_national", label: "National MOS",
       fmt: (v) => {
-        if (!v || v.mos === null) return mosNABadge();
+        if (!v) return mosNABadge(0);
+        if (v.mos === null) return mosNABadge(v.totalSoh);
         const sohStr = `<span style="font-size:0.72em;color:var(--muted)"> · SOH ${fmtQty(v.totalSoh)}${v.hasHo01 ? ' (incl. ' + HUB_PLANT + ')' : ''}</span>`;
-        const amcStr = `<span style="font-size:0.72em;color:var(--muted)"> · AMC ${fmtQty(v.totalAmc)} (branches)</span>`;
-        return `<span style="${mosCellStyle(v.mos)}">${fmtMosVal(v.mos)}</span>${sohStr}${amcStr}`;
+        const amcStr = v.totalAmc !== null
+          ? `<span style="font-size:0.72em;color:var(--muted)"> · AMC ${fmtQty(v.totalAmc)} (branches)</span>`
+          : `<span style="font-size:0.72em;color:var(--amber)"> · No branch AMC on file</span>`;
+        return `<span style="${mosCellStyle(v.mos, v.totalSoh)}">${fmtMosVal(v.mos, v.totalSoh)}</span>${sohStr}${amcStr}`;
       },
       raw: true, cellClass: "col-mat-desc-wrap" },
     ...displayPlants.map(p => ({
       key: `_m_${p}`, label: p === HUB_PLANT ? `${p} (Hub)` : p,
       fmt: (v) => {
-        if (!v || v.amc === null) return mosNABadge();
+        if (!v) return mosNABadge(0);
+        if (v.amc === null) return mosNABadge(v.soh);
         const sohStr = `<span style="font-size:0.72em;color:var(--muted)"> · SOH ${fmtQty(v.soh)}</span>`;
         const amcLabel = v.isHub ? "Σ branch AMC" : "AMC";
         const amcStr = `<span style="font-size:0.72em;color:var(--muted)"> · ${amcLabel} ${fmtQty(v.amc)}</span>`;
-        return `<span style="${mosCellStyle(v.mos)}">${fmtMosVal(v.mos)}</span>${sohStr}${amcStr}`;
+        return `<span style="${mosCellStyle(v.mos, v.soh)}">${fmtMosVal(v.mos, v.soh)}</span>${sohStr}${amcStr}`;
       },
       raw: true,
     })),
