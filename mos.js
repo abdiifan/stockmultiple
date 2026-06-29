@@ -29,9 +29,10 @@
 const HUB_PLANT = "HO01"; // the distribution hub — never has its own consumption
 
 // ── MOS STATE ────────────────────────────────────────────────────────────────
-let mosAmcRaw    = [];          // parsed rows from AMC.xlsx: { code, desc, type, amcs:{plant:val} }
+let mosAmcRaw    = [];          // parsed rows from AMC.xlsx: { code, desc, type, person, amcs:{plant:val} }
 let mosPlants    = [];          // ordered plant code list detected from AMC.xlsx
 let mosMerged    = [];          // deduplicated AMC rows (mapping-aware), one per canonical material
+let mosPersons   = [];          // sorted unique PERSON values from AMC.xlsx
 
 // ── AMC FILE LOADER ───────────────────────────────────────────────────────────
 function loadMosAmcFile(file) {
@@ -55,13 +56,18 @@ function loadMosAmcFile(file) {
 
       mosPlants  = detectedPlants;
       mosAmcRaw  = rows.map(r => ({
-        code: String(r["Material Code"] || "").trim(),
-        desc: String(r["Description"]   || "").trim(),
-        type: String(r["Material Type Code"] || "").trim().toUpperCase(),
+        code:   String(r["Material Code"] || "").trim(),
+        desc:   String(r["Description"]   || "").trim(),
+        type:   String(r["Material Type Code"] || "").trim().toUpperCase(),
+        person: String(r["PERSON"] || "").trim(),
         amcs: Object.fromEntries(
           detectedPlants.map(p => [p, (r[p] == null || r[p] === "" || typeof r[p] === "string") ? null : Number(r[p])])
         ),
       }));
+
+      // Expose sorted unique person list for the global person filter dropdown
+      mosPersons = [...new Set(mosAmcRaw.map(r => r.person).filter(Boolean))].sort();
+      if (typeof populatePersonFilter === "function") populatePersonFilter(mosPersons);
 
       mosMerged = buildMosMerged();
 
@@ -113,6 +119,7 @@ function buildMosMerged() {
         origCodes: new Set([row.code]),
         desc: canonDesc,
         type: row.type,
+        person: row.person || "",
         amcs: Object.fromEntries(mosPlants.map(p => [p, null])),
         isMerged: false,
       });
@@ -245,6 +252,10 @@ function mosCellStyle(mos) {
 function getMosFilteredRows(typeFilter, searchQ) {
   if (!mosMerged.length) return [];
   let rows = mosMerged;
+  // Global person filter — applied before any per-page filters
+  if (typeof personFilter !== "undefined" && personFilter.size > 0) {
+    rows = rows.filter(r => r.person && personFilter.has(r.person));
+  }
   if (typeFilter) rows = rows.filter(r => r.type === typeFilter);
   if (searchQ) {
     const q = searchQ.toLowerCase();
