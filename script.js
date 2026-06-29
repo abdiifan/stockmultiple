@@ -3175,14 +3175,60 @@ function renderConcentration() {
     const pctQty       = info.totalQty > 0 ? (topQty / info.totalQty) * 100 : 0;
     const pctVal       = info.totalVal > 0 ? (topVal / info.totalVal) * 100 : 0;
     const origCodes    = [...info.origCodes].sort().join(", ");
-    return { mat, desc: info.desc, plantCount, topPlantName, topQty, topVal, pctQty, pctVal, totalQty: info.totalQty, totalVal: info.totalVal, origCodes };
+    return { mat, desc: info.desc, plantCount, topPlantName, topQty, topVal, pctQty, pctVal, totalQty: info.totalQty, totalVal: info.totalVal, origCodes, _plants: info.plants };
   }).filter(r => r.totalQty > 0); // only materials with unrestricted stock
 
+  // ── 3b. MOS-based exclusion for "Sole Branch" ────────────────────────────
+  // A material sitting >80% in one plant only counts as a genuine sole-branch
+  // supply-chain RISK if that stock is actually going to sit there a while.
+  // If ANY plant holding the material has MOS < 1 month (it's moving fast —
+  // about to be consumed within weeks), it isn't a meaningful concentration
+  // risk in the same sense, so we exclude it from the Sole Branch bucket.
+  // Requires AMC.xlsx (mos.js) to be loaded; if it isn't, no exclusion is
+  // applied and behaviour is unchanged from before.
+  const hasMosData = typeof mosMerged !== "undefined" && mosMerged.length > 0
+                   && typeof computeRowMOS === "function" && typeof buildMosSohMap === "function";
+
+  let anyPlantMosBelow1mo = () => false; // no-op when AMC data isn't loaded
+
+  if (hasMosData) {
+    // Plant Name → Plant code lookup (matPlantMap is keyed by friendly name;
+    // AMC/MOS data is keyed by plant code, e.g. "AA01").
+    const nameToCode = {};
+    if (typeof rawDf !== "undefined") {
+      for (const r of rawDf) {
+        const name = r["Plant Name"];
+        const code = String(r["Plant"] || "").trim().toUpperCase();
+        if (name && code && !nameToCode[name]) nameToCode[name] = code;
+      }
+    }
+
+    const sohMap   = buildMosSohMap();
+    const mosByMat = new Map(mosMerged.map(r => [r.code, r])); // canonical code → AMC row
+
+    anyPlantMosBelow1mo = (mat, plantNames) => {
+      const amcRow = mosByMat.get(mat);
+      if (!amcRow) return false; // material not present in AMC file — nothing to check
+      const plantMos = computeRowMOS(amcRow, sohMap); // [{plant, soh, amc, mos, isHub}]
+      return plantNames.some(pname => {
+        const code = nameToCode[pname];
+        if (!code) return false;
+        const entry = plantMos.find(p => p.plant === code);
+        return !!entry && entry.mos !== null && entry.mos !== Infinity && entry.mos < 1;
+      });
+    };
+  }
+
+  matConcentration.forEach(r => {
+    r._mosExcluded = hasMosData ? anyPlantMosBelow1mo(r.mat, Object.keys(r._plants)) : false;
+  });
+
   // Band classification
-  const sole   = matConcentration.filter(r => r.pctQty >= 80);  // >80% in one plant
+  const sole   = matConcentration.filter(r => r.pctQty >= 80 && !r._mosExcluded);  // >80% in one plant, excluding fast-moving (MOS<1mo) items
   const few    = matConcentration.filter(r => r.pctQty < 80 && r.plantCount >= 2 && r.plantCount <= 4);
   const spread = matConcentration.filter(r => r.pctQty < 80 && r.plantCount >= 5 && r.plantCount <= 8);
   const wide   = matConcentration.filter(r => r.pctQty < 80 && r.plantCount > 8);
+  const soleExcludedCount = matConcentration.filter(r => r.pctQty >= 80 && r._mosExcluded).length;
 
   // ── KPIs ──
   const topPlantPct = plantValArr.length > 0 ? plantValArr[0].pct : 0;
@@ -3193,7 +3239,7 @@ function renderConcentration() {
     : new Set(df.map(r => r["Material"])).size;
   setKpis("conc-kpis", [
     ["Total Unique Plants",      new Set(df.map(r => r["Plant Name"])).size.toLocaleString(),        "With unrestricted stock",       "blue"],
-    ["Sole-Branch Materials",    sole.length.toLocaleString(),   `${totalMats > 0 ? ((sole.length/totalMats)*100).toFixed(0) : 0}% of materials`,  "red"],
+    ["Sole-Branch Materials",    sole.length.toLocaleString(),   `${totalMats > 0 ? ((sole.length/totalMats)*100).toFixed(0) : 0}% of materials${soleExcludedCount ? ` · ${soleExcludedCount} excluded (MOS&lt;1mo)` : ""}`,  "red"],
     ["Few-Branch Materials",     few.length.toLocaleString(),    "Held in 2–4 plants",               "amber"],
     ["Top Plant Share",          topPlantPct.toFixed(1) + "%",   plantValArr[0]?.name || "—",        "purple"],
     ["Unique Materials Tracked", uniqueMatCount.toLocaleString(), useMapped ? "Standardized (merged)" : "Unrestricted stock only", "green"],
@@ -3237,7 +3283,7 @@ function renderConcentration() {
     </div>
     <div style="margin-top:0.85rem;font-size:0.7rem;color:var(--dim);line-height:1.5">
       Classification based on <b>% of total unrestricted quantity</b> held by the top plant per material.
-      <br>Sole Branch threshold: ≥80% in one plant.
+      <br>Sole Branch threshold: ≥80% in one plant. Items with MOS &lt; 1 month at any holding plant are excluded (fast-moving, not a real concentration risk).
     </div>`;
 
   // ── Highly Concentrated Table (all sole-branch materials, sorted by total value) ──
