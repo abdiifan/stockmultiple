@@ -769,9 +769,91 @@ function downloadExcel(data, cols, filename) {
   }));
   const wsData = [header, ...rows];
   const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  // ── Professional styling ─────────────────────────────────────────────────
+  const numCols = cols.length;
+  const numRows = rows.length;
+
+  // Header row styling — dark navy background, white bold text, Inter/Calibri font
+  for (let c = 0; c < numCols; c++) {
+    const addr = XLSX.utils.encode_cell({ r: 0, c });
+    if (!ws[addr]) continue;
+    ws[addr].s = {
+      font:      { name: "Calibri", sz: 11, bold: true, color: { rgb: "FFFFFF" } },
+      fill:      { patternType: "solid", fgColor: { rgb: "1A3A5C" } },
+      alignment: { horizontal: "center", vertical: "center", wrapText: true },
+      border: {
+        bottom: { style: "medium", color: { rgb: "3A8FD4" } },
+        right:  { style: "thin",   color: { rgb: "2E5F8A" } },
+      },
+    };
+  }
+
+  // Detect column types for smart number formatting
+  const isNumericCol = cols.map((c, ci) => {
+    const lbl = (c.label || "").toLowerCase();
+    return lbl.includes("qty") || lbl.includes("value") || lbl.includes("etb") ||
+           lbl.includes("stock") || lbl.includes("mos") || lbl.includes("days") ||
+           lbl.includes("shelf") || lbl.includes("%");
+  });
+
+  // Data rows styling — alternating bands, Calibri 10pt
+  for (let r = 0; r < numRows; r++) {
+    const isEven = r % 2 === 0;
+    const rowBg  = isEven ? "F4F8FC" : "FFFFFF";
+    for (let c = 0; c < numCols; c++) {
+      const addr = XLSX.utils.encode_cell({ r: r + 1, c });
+      if (!ws[addr]) continue;
+      const isNum = isNumericCol[c] || typeof ws[addr].v === "number";
+      ws[addr].s = {
+        font:      { name: "Calibri", sz: 10, color: { rgb: "1A2E3D" } },
+        fill:      { patternType: "solid", fgColor: { rgb: rowBg } },
+        alignment: { horizontal: isNum ? "right" : "left", vertical: "center" },
+        border: {
+          bottom: { style: "thin", color: { rgb: "D0DDE8" } },
+          right:  { style: "thin", color: { rgb: "D0DDE8" } },
+        },
+      };
+      // Number format for numeric cells
+      if (typeof ws[addr].v === "number") {
+        const lbl = (cols[c].label || "").toLowerCase();
+        if (lbl.includes("%")) {
+          ws[addr].z = "0.0%";
+        } else if (lbl.includes("etb") || lbl.includes("value") || lbl.includes("val")) {
+          ws[addr].z = '#,##0';
+        } else if (lbl.includes("qty") || lbl.includes("stock")) {
+          ws[addr].z = '#,##0';
+        } else if (lbl.includes("mos") || lbl.includes("shelf") || lbl.includes("days")) {
+          ws[addr].z = '0.0';
+        } else {
+          ws[addr].z = '#,##0.##';
+        }
+      }
+    }
+  }
+
+  // Auto column widths: measure header + data content
+  const colWidths = cols.map((c, ci) => {
+    let max = String(c.label || "").length + 2;
+    rows.forEach(row => {
+      const v = String(row[ci] ?? "");
+      if (v.length + 1 > max) max = v.length + 1;
+    });
+    return { wch: Math.min(Math.max(max, 10), 50) };
+  });
+  ws["!cols"] = colWidths;
+
+  // Freeze header row
+  ws["!freeze"] = { xSplit: 0, ySplit: 1, topLeftCell: "A2", activePane: "bottomLeft" };
+
+  // Sheet range
+  ws["!ref"] = XLSX.utils.encode_range({ r: 0, c: 0 }, { r: numRows, c: numCols - 1 });
+
+  // Workbook metadata
   const wb = XLSX.utils.book_new();
+  wb.Props = { Title: filename.replace(/\.xlsx$/i, ""), Author: "EPSS PharmaTrack v2" };
   XLSX.utils.book_append_sheet(wb, ws, "Data");
-  XLSX.writeFile(wb, filename);
+  XLSX.writeFile(wb, filename, { bookSST: false, cellStyles: true });
 }
 
 // ── CSV DOWNLOAD ───────────────────────────────────────────────────────────
