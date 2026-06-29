@@ -619,39 +619,38 @@
 <script src="script.js" defer></script>
 <script src="amc.js" defer></script>
 <script>
-// ── TRANSIT TAB SWITCHING ─────────────────────────────────────
+// ── TAB SWITCHING (Transit + QC) ─────────────────────────────
 document.addEventListener("DOMContentLoaded", function() {
+  // Generic tab switcher — handles both .transit-tab-btn and .qc-tab-btn
   document.addEventListener("click", function(e) {
-    const btn = e.target.closest(".transit-tab-btn");
-    if (!btn) return;
-    const tab = btn.dataset.tab;
-    document.querySelectorAll(".transit-tab-btn").forEach(b => {
-      const active = b.dataset.tab === tab;
-      b.style.color       = active ? "var(--blue)" : "var(--muted)";
-      b.style.fontWeight  = active ? "700" : "500";
-      b.style.borderBottom= active ? "2px solid var(--blue)" : "2px solid transparent";
-    });
-    document.querySelectorAll(".transit-tab-panel").forEach(p => {
-      p.style.display = p.id === "transit-tab-" + tab ? "block" : "none";
-    });
-  });
-});
+    const transitBtn = e.target.closest(".transit-tab-btn");
+    if (transitBtn) {
+      const tab = transitBtn.dataset.tab;
+      document.querySelectorAll(".transit-tab-btn").forEach(b => {
+        const active = b.dataset.tab === tab;
+        b.style.color       = active ? "var(--blue)" : "var(--muted)";
+        b.style.fontWeight  = active ? "700" : "500";
+        b.style.borderBottom= active ? "2px solid var(--blue)" : "2px solid transparent";
+      });
+      document.querySelectorAll(".transit-tab-panel").forEach(p => {
+        p.style.display = p.id === "transit-tab-" + tab ? "block" : "none";
+      });
+      return;
+    }
 
-// ── QC TAB SWITCHING ──────────────────────────────────────────
-document.addEventListener("DOMContentLoaded", function() {
-  document.addEventListener("click", function(e) {
-    const btn = e.target.closest(".qc-tab-btn");
-    if (!btn) return;
-    const tab = btn.dataset.tab;
-    document.querySelectorAll(".qc-tab-btn").forEach(b => {
-      const active = b.dataset.tab === tab;
-      b.style.color       = active ? "var(--blue)" : "var(--muted)";
-      b.style.fontWeight  = active ? "700" : "500";
-      b.style.borderBottom= active ? "2px solid var(--blue)" : "2px solid transparent";
-    });
-    document.querySelectorAll(".qc-tab-panel").forEach(p => {
-      p.style.display = p.id === "qc-tab-" + tab ? "block" : "none";
-    });
+    const qcBtn = e.target.closest(".qc-tab-btn");
+    if (qcBtn) {
+      const tab = qcBtn.dataset.tab;
+      document.querySelectorAll(".qc-tab-btn").forEach(b => {
+        const active = b.dataset.tab === tab;
+        b.style.color       = active ? "var(--blue)" : "var(--muted)";
+        b.style.fontWeight  = active ? "700" : "500";
+        b.style.borderBottom= active ? "2px solid var(--blue)" : "2px solid transparent";
+      });
+      document.querySelectorAll(".qc-tab-panel").forEach(p => {
+        p.style.display = p.id === "qc-tab-" + tab ? "block" : "none";
+      });
+    }
   });
 });
 </script>
