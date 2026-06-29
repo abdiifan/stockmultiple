@@ -193,6 +193,35 @@ function computeRowMOS(row, sohMap) {
   });
 }
 
+/**
+ * National MOS — one network-wide number per item:
+ *
+ *     National MOS = (SOH at every plant, INCLUDING HO01)
+ *                   ÷ (AMC at every BRANCH plant, EXCLUDING HO01)
+ *
+ * HO01 holds stock but doesn't consume it, so its warehouse stock is counted
+ * as part of the network's total supply cushion (numerator), while its own
+ * AMC column (which doesn't represent real demand) is excluded from the
+ * denominator — only the branches' actual consumption represents real demand.
+ *
+ * Returns { totalSoh, totalAmc, mos, hasHo01 } where mos is:
+ *   - null if no branch is committed to this item at all (no real demand to measure against)
+ *   - Infinity if there's stock but zero branch demand
+ *   - a number otherwise
+ */
+function computeNationalMOS(row, sohMap) {
+  const branchPlants = mosPlants.filter(p => p !== HUB_PLANT);
+  const totalBranchAmc = branchPlants.reduce((s, p) => s + (row.amcs[p] || 0), 0);
+  const anyBranchCommitted = branchPlants.some(p => row.amcs[p] !== null);
+
+  const totalSoh = mosPlants.reduce((s, p) => s + mosSohFor(sohMap, row, p), 0);
+  const hasHo01  = mosPlants.includes(HUB_PLANT);
+
+  if (!anyBranchCommitted) return { totalSoh, totalAmc: null, mos: null, hasHo01 };
+  const mos = totalBranchAmc > 0 ? totalSoh / totalBranchAmc : (totalSoh > 0 ? Infinity : null);
+  return { totalSoh, totalAmc: totalBranchAmc, mos, hasHo01 };
+}
+
 // ── FORMATTING HELPERS ────────────────────────────────────────────────────────
 function mosNABadge() {
   return '<span class="amc-na-badge" title="Not committed — item not required at this plant">Not Committed</span>';
@@ -257,10 +286,11 @@ async function renderMosPlant() {
 
   let rows = getMosFilteredRows(typeVal, searchQ);
 
-  // Compute per-plant MOS for every row
+  // Compute per-plant MOS for every row, plus one network-wide National MOS
   let scored = rows.map(r => ({
     ...r,
     _plantMos: computeRowMOS(r, sohMap),
+    _national: computeNationalMOS(r, sohMap),
   }));
 
   // Plant-specific filter: only keep rows where that plant has a commitment
@@ -282,11 +312,14 @@ async function renderMosPlant() {
   const criticalCount = committedEntries.filter(e => isMosCritical(e.mos)).length;
   const hubEntries = scored.map(r => r._plantMos.find(m => m.isHub)).filter(e => e && e.amc !== null);
   const hubCriticalCount = hubEntries.filter(e => isMosCritical(e.mos)).length;
+  const nationalEntries = scored.map(r => r._national).filter(n => n.mos !== null);
+  const nationalCriticalCount = nationalEntries.filter(n => isMosCritical(n.mos)).length;
 
   mosKpiRow([
     mosKpiCard("Items Screened", scored.length.toLocaleString(), typeVal || "All types", "blue"),
-    mosKpiCard("Plant-Item Pairs Critical (<1mo)", criticalCount.toLocaleString(), `of ${committedEntries.length.toLocaleString()} committed pairs`, "red"),
-    mosKpiCard(`${HUB_PLANT} Critical (<1mo)`, hubCriticalCount.toLocaleString(), "vs. total branch demand", "orange"),
+    mosKpiCard("National MOS Critical (<1mo)", nationalCriticalCount.toLocaleString(), `of ${nationalEntries.length.toLocaleString()} items with national MOS`, "red"),
+    mosKpiCard("Plant-Item Pairs Critical (<1mo)", criticalCount.toLocaleString(), `of ${committedEntries.length.toLocaleString()} committed pairs`, "orange"),
+    mosKpiCard(`${HUB_PLANT} Critical (<1mo)`, hubCriticalCount.toLocaleString(), "vs. total branch demand", "purple"),
     mosKpiCard("SOH Data Loaded", hasSoh ? "Yes" : "No", hasSoh ? "From inventory file" : "Upload inventory Excel for SOH", hasSoh ? "green" : "amber"),
   ]);
 
@@ -344,6 +377,14 @@ async function renderMosPlant() {
       raw: true, cellClass: "col-mat-code-wrap" },
     { key: "desc", label: "Description", cellClass: "col-mat-desc-wrap" },
     { key: "type", label: "Type" },
+    { key: "_national", label: "National MOS",
+      fmt: (v) => {
+        if (!v || v.mos === null) return mosNABadge();
+        const sohStr = `<span style="font-size:0.72em;color:var(--muted)"> · SOH ${fmtQty(v.totalSoh)}${v.hasHo01 ? ' (incl. ' + HUB_PLANT + ')' : ''}</span>`;
+        const amcStr = `<span style="font-size:0.72em;color:var(--muted)"> · AMC ${fmtQty(v.totalAmc)} (branches)</span>`;
+        return `<span style="${mosCellStyle(v.mos)}">${fmtMosVal(v.mos)}</span>${sohStr}${amcStr}`;
+      },
+      raw: true, cellClass: "col-mat-desc-wrap" },
     ...displayPlants.map(p => ({
       key: `_m_${p}`, label: p === HUB_PLANT ? `${p} (Hub)` : p,
       fmt: (v) => {
@@ -366,7 +407,8 @@ async function renderMosPlant() {
     tableRows, cols,
     (row) => {
       const relevant = plantVal ? [row[`_m_${plantVal}`]] : displayPlants.map(p => row[`_m_${p}`]);
-      return relevant.some(v => v && isMosCritical(v.mos)) ? "row-critical" : "";
+      const nationalCritical = row._national && isMosCritical(row._national.mos);
+      return (relevant.some(v => v && isMosCritical(v.mos)) || nationalCritical) ? "row-critical" : "";
     }
   );
 
@@ -374,12 +416,16 @@ async function renderMosPlant() {
   const exportRows = scored.flatMap(r =>
     r._plantMos.filter(m => !plantVal || m.plant === plantVal).map(m => ({
       code: r.code, desc: r.desc, type: r.type,
+      nationalMos: r._national.mos, nationalSoh: r._national.totalSoh, nationalAmc: r._national.totalAmc,
       plant: m.plant, isHub: m.isHub ? "Yes (vs. total branch demand)" : "No",
       soh: m.soh, amc: m.amc, mos: m.mos,
     }))
   );
   const exportCols = [
     { key: "code", label: "Material Code" }, { key: "desc", label: "Description" }, { key: "type", label: "Type" },
+    { key: "nationalMos", label: "National MOS (months)", fmt: v => v === null ? "N/A" : v === Infinity ? "Infinite" : Number(v).toFixed(2) },
+    { key: "nationalSoh", label: "National SOH (all plants incl. " + HUB_PLANT + ")", fmt: v => Number(v || 0).toFixed(2) },
+    { key: "nationalAmc", label: "National AMC (branches only)", fmt: v => v === null ? "N/A" : Number(v).toFixed(2) },
     { key: "plant", label: "Plant" }, { key: "isHub", label: "Hub Plant?" },
     { key: "soh", label: "Stock on Hand", fmt: v => Number(v || 0).toFixed(2) },
     { key: "amc", label: "AMC Used", fmt: v => v === null ? "Not Committed" : Number(v).toFixed(2) },
