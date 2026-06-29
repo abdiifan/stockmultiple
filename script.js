@@ -2052,11 +2052,21 @@ function renderBranch() {
       <button class="branch-tab-btn"        data-tab="material" style="padding:0.5rem 1.1rem;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);font-weight:500;font-size:0.82rem;cursor:pointer;margin-bottom:-2px;font-family:inherit;white-space:nowrap;flex-shrink:0">📦 Material Comparison</button>
       <button class="branch-tab-btn"        data-tab="mos"      style="padding:0.5rem 1.1rem;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);font-weight:500;font-size:0.82rem;cursor:pointer;margin-bottom:-2px;font-family:inherit;white-space:nowrap;flex-shrink:0">📐 MOS by Plant</button>
     </div>
-    <div id="branch-tab-value"    class="branch-tab-panel" style="display:block;padding-top:1rem"></div>
+    <div id="branch-tab-value"    class="branch-tab-panel" style="display:block;padding-top:1rem">
+      <div id="branch-dl-row" style="display:flex;gap:0.6rem;justify-content:flex-end;margin-bottom:0.5rem">
+        <button class="dl-btn" id="btn-dl-branch-csv">⬇ CSV</button>
+        <button class="dl-btn" id="btn-dl-branch-xlsx">⬇ Excel</button>
+      </div>
+    </div>
     <div id="branch-tab-material" class="branch-tab-panel" style="display:none;padding-top:1rem"></div>
     <div id="branch-tab-mos"      class="branch-tab-panel" style="display:none;padding-top:1rem">
       <div id="mos-no-amc" class="alert-info" style="margin-bottom:1rem">
-        Upload <b>AMC.xlsx</b> via the <b>📐 AMC Data</b> section in the sidebar to enable MOS analysis.
+        Upload <b>AMC.xlsx</b> to enable MOS analysis.
+        <label class="upload-btn" style="display:inline-flex;margin-left:0.75rem;padding:4px 12px;font-size:0.8rem;cursor:pointer" for="mosAmcFileInput">
+          📐 Upload AMC.xlsx
+          <input type="file" id="mosAmcFileInput" accept=".xlsx,.xls" style="display:none" />
+        </label>
+        <div id="mosAmcFileStatus" style="display:inline;margin-left:0.5rem;font-size:0.78rem"></div>
       </div>
       <div id="mos-content" style="display:none">
         <div class="alert-info" style="margin-bottom:1rem;font-size:0.8rem">
@@ -2093,17 +2103,6 @@ function renderBranch() {
     </div>`;
   document.getElementById("branch-tabs-wrap").innerHTML = tabsHtml;
 
-
-  // Restore mos panel visibility if AMC already loaded before Branch tab opened
-  const _noAmc  = document.getElementById("mos-no-amc");
-  const _mosCnt = document.getElementById("mos-content");
-  if (typeof mosMerged !== "undefined" && mosMerged.length > 0) {
-    if (_noAmc)  _noAmc.style.display  = "none";
-    if (_mosCnt) _mosCnt.style.display = "block";
-  } else {
-    if (_noAmc)  _noAmc.style.display  = "block";
-    if (_mosCnt) _mosCnt.style.display = "none";
-  }
   // ── Branch tab switcher ───────────────────────────────────────────────────
   document.querySelectorAll(".branch-tab-btn").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -2179,10 +2178,6 @@ function renderBranch() {
       {key:"Items",           label:"# Unique Materials"},
     ];
     wrap.innerHTML = `
-      <div style="display:flex;gap:0.6rem;justify-content:flex-end;margin-bottom:0.5rem">
-        <button class="dl-btn" id="btn-dl-branch-csv">⬇ CSV</button>
-        <button class="dl-btn" id="btn-dl-branch-xlsx">⬇ Excel</button>
-      </div>
       <div id="branch-chart-wrap" style="margin-bottom:1.2rem"></div>
       <div id="branch-table-wrap-inner" style="margin-bottom:1rem">${buildTable(compareDf, bCols, r => r.PlantName === centralName ? "row-blue" : "")}</div>`;
     document.getElementById("btn-dl-branch-csv").onclick  = () => downloadCSV(compareDf,   bCols, "branch_comparison.csv");
@@ -2249,16 +2244,6 @@ function renderBranch() {
               <option value="QCQty">Stock in Quality Inspection Quantity</option>
             </select>
           </div>
-          <div id="mat-transit-months-wrap" style="display:none">
-            <div class="nav-label" style="font-size:0.65rem;margin-bottom:3px">🚚 Transit — how many months?</div>
-            <input id="mat-transit-months" type="number" min="0.5" max="36" step="0.5" value="1"
-              style="width:80px;background:var(--surface2);border:1.5px solid var(--blue);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;font-family:inherit" />
-          </div>
-          <div id="mat-qc-months-wrap" style="display:none">
-            <div class="nav-label" style="font-size:0.65rem;margin-bottom:3px">🔬 QC — how many months?</div>
-            <input id="mat-qc-months" type="number" min="0.5" max="36" step="0.5" value="1"
-              style="width:80px;background:var(--surface2);border:1.5px solid var(--blue);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;font-family:inherit" />
-          </div>
           <div>
             <div class="nav-label" style="font-size:0.65rem;margin-bottom:3px">Material Type</div>
             <select id="mat-mgfilter" style="background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px">
@@ -2293,23 +2278,8 @@ function renderBranch() {
         document.getElementById("mat-metric").value    = "TotalValue";
         document.getElementById("mat-mgfilter").value  = "";
         document.getElementById("mat-sort").value      = "total_desc";
-        const tmi = document.getElementById("mat-transit-months"); if (tmi) tmi.value = "1";
-        const qmi = document.getElementById("mat-qc-months");      if (qmi) qmi.value = "1";
-        updateMetricMonthsUI();
         refreshMaterialView();
       });
-      // Show/hide transit & QC months inputs based on selected metric
-      function updateMetricMonthsUI() {
-        const metric = document.getElementById("mat-metric").value;
-        const isTransitQty = metric === "TransitQty" || metric === "Transit";
-        const isQcQty      = metric === "QCQty"      || metric === "QC";
-        const tw = document.getElementById("mat-transit-months-wrap");
-        const qw = document.getElementById("mat-qc-months-wrap");
-        if (tw) tw.style.display = isTransitQty ? "" : "none";
-        if (qw) qw.style.display = isQcQty      ? "" : "none";
-      }
-      document.getElementById("mat-metric").addEventListener("change", () => { updateMetricMonthsUI(); refreshMaterialView(); });
-      updateMetricMonthsUI();
       // Build the material multi-select after HTML is in DOM
       buildMultiSelect("mat-ms-wrap", "mat-ms-dd", allMatOptions, "All Materials");
       // Material Group multi-select — lets users narrow the comparison to one or
@@ -2368,62 +2338,6 @@ function renderBranch() {
       const isQty     = metric.includes("Qty");
       const fmtFn     = isQty ? fmtQty : fmtETB;
 
-      // MOS-related: detect which stock type this metric corresponds to
-      const isTransitMetric    = metric === "TransitQty" || metric === "Transit";
-      const isQcMetric         = metric === "QCQty"      || metric === "QC";
-      const isUnrestrictedMetric = metric === "UnrestrictedQty" || metric === "Unrestricted"
-                                 || metric === "TotalQty" || metric === "TotalValue";
-      // Transit/QC months inputs — how many months of transit/QC stock represents
-      const transitMonthsEl = document.getElementById("mat-transit-months");
-      const qcMonthsEl      = document.getElementById("mat-qc-months");
-      const transitMonths   = transitMonthsEl ? (parseFloat(transitMonthsEl.value) || 1) : 1;
-      const qcMonths        = qcMonthsEl      ? (parseFloat(qcMonthsEl.value)      || 1) : 1;
-
-      // Check if AMC data is available for MOS computation
-      const hasAmc = typeof mosMerged !== "undefined" && mosMerged.length > 0;
-      // Build a fast lookup: materialCode (canonical) → plantCode → AMC value
-      const amcByMatPlant = {};
-      if (hasAmc && typeof mosPlants !== "undefined") {
-        for (const row of mosMerged) {
-          amcByMatPlant[row.code] = row.amcs || {};
-        }
-      }
-
-      // Helper: compute MOS for a given qty and amc; returns null if no amc, Infinity if amc=0 with qty>0
-      function calcMos(qty, amc) {
-        if (amc === null || amc === undefined) return null;
-        if (amc === 0) return qty > 0 ? Infinity : null;
-        return qty / amc;
-      }
-
-      // Helper: render a compact SOH + MOS cell
-      // stockLabel: e.g. "SOH", "Transit", "QC"
-      // qty: the quantity value
-      // mos: computed MOS (null | Infinity | number)
-      function renderSohMosCell(qty, mos, stockLabel, extraMonths) {
-        const qtyStr = fmtQty(qty);
-        let mosStr, mosColor;
-        if (mos === null) {
-          mosStr = '<span style="color:var(--muted);font-size:0.72em">No AMC</span>';
-          mosColor = "";
-        } else if (mos === Infinity) {
-          mosStr = '<span style="color:var(--amber);font-weight:700;font-size:0.82em">∞ mo</span>';
-          mosColor = "";
-        } else {
-          const v = mos.toFixed(1);
-          if (mos < 1) {
-            mosColor = "color:var(--red);font-weight:700";
-            mosStr = `<span style="${mosColor};font-size:0.82em">${v} mo</span>`;
-          } else {
-            mosColor = "color:var(--green)";
-            mosStr = `<span style="${mosColor};font-size:0.82em">${v} mo</span>`;
-          }
-        }
-        const monthNote = extraMonths != null ? `<span style="font-size:0.68em;color:var(--muted)"> ×${extraMonths}mo</span>` : "";
-        return `<span style="font-size:0.85em">${qtyStr}</span>`
-             + `<br><span style="font-size:0.68em;color:var(--muted)">${stockLabel} </span>${mosStr}${monthNote}`;
-      }
-
       let materials = Object.entries(matPlantMap)
         .filter(([mat, info]) => {
           if (mgFilter && info.valType !== mgFilter) return false;
@@ -2443,7 +2357,7 @@ function renderBranch() {
             grandTotal   += plantData[pn];
             if (plantData[pn] > 0) branchCount++;
           });
-          return {mat, desc:info.desc, group:info.group, valType:info.valType, plantData, grandTotal, branchCount, _info: info};
+          return {mat, desc:info.desc, group:info.group, valType:info.valType, plantData, grandTotal, branchCount};
         });
 
       if (sortMode === "total_desc") materials.sort((a,b) => b.grandTotal - a.grandTotal);
@@ -2462,21 +2376,16 @@ function renderBranch() {
       }
       chartWrap.innerHTML = "";
 
-      // Determine MOS stock-type label for cell display
-      const mosStockLabel = isTransitMetric ? "Transit" : isQcMetric ? "QC" : "SOH";
-      const mosExtraMonths = isTransitMetric ? transitMonths : isQcMetric ? qcMonths : null;
-
       const colDefs = [
         {key:"mat",  label:"Material Code", fmt:(val,r)=>renderMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap"},
         {key:"desc", label:"Material Description", fmt:(val,r)=>renderMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap"},
         {key:"group",label:"Material Group"},
-        ...allPlantNames.map(pn => ({key:`__p__${pn}`, label:pn, rawKey:`__r__${pn}`, cellClass:isQty?"col-qty":"col-val", _isPlant:true, _pn:pn})),
+        ...allPlantNames.map(pn => ({key:`__p__${pn}`, label:pn, fmt:fmtFn, rawKey:`__r__${pn}`, cellClass:isQty?"col-qty":"col-val"})),
         {key:"grandTotal",  label:"Grand Total", fmt:fmtFn, rawKey:"grandTotal", cellClass:isQty?"col-qty":"col-val"},
         {key:"branchCount", label:"# Branches"},
       ];
-
       const tableRows = materials.slice(0, 200).map(m => {
-        const row = {mat:m.mat, desc:m.desc, group:m.group, grandTotal:m.grandTotal, branchCount:m.branchCount, _mat:m};
+        const row = {mat:m.mat, desc:m.desc, group:m.group, grandTotal:m.grandTotal, branchCount:m.branchCount};
         allPlantNames.forEach(pn => { row[`__p__${pn}`] = m.plantData[pn] || 0; row[`__r__${pn}`] = m.plantData[pn] || 0; });
         row["__r__grandTotal"] = m.grandTotal;
         return row;
@@ -2488,60 +2397,8 @@ function renderBranch() {
       ).join("")}</tr></thead>`;
       const tbody = tableRows.map(r => {
         const cells = colDefs.map(c => {
-          // ── Plant columns: show qty + MOS ──────────────────────────────────
-          if (c._isPlant) {
-            const pn  = c._pn;
-            const qty = r[`__r__${pn}`] || 0;
-            const isCentral = pn === centralName;
-            const cellStyle = isCentral ? 'style="color:#58a6ff;background:#0d2035"' : (qty === 0 ? 'style="color:#484f58"' : "");
-
-            // Compute MOS if AMC available and metric is a quantity type
-            let cellHtml;
-            if (hasAmc && isQty) {
-              // Find canonical material code — try direct match first, then scan mosMerged
-              const matCode = r._mat ? r._mat.mat : "";
-              const amcs = amcByMatPlant[matCode];
-              // Determine the plant code (not display name) — find from baseDf mapping
-              // Plant names in matPlantMap are Plant Names; we need Plant codes for AMC lookup
-              // Use mosPlants (plant codes) and sohMap approach from mos.js
-              // AMC plant key: use plant name as key if it matches, else try exact plant code
-              // AMC data keyed by plant CODE (from AMC.xlsx columns)
-              let plantAmc = null;
-              if (amcs) {
-                // Try the plant display name (some setups use name, some code)
-                if (amcs[pn] !== undefined) {
-                  plantAmc = amcs[pn];
-                } else {
-                  // Try to find the plant code for this plant name
-                  const plantRow = baseDf.find(bRow => bRow["Plant Name"] === pn);
-                  if (plantRow) {
-                    const pCode = String(plantRow["Plant"] || "").trim().toUpperCase();
-                    if (amcs[pCode] !== undefined) plantAmc = amcs[pCode];
-                  }
-                }
-              }
-
-              // Determine the qty key for the "unrestricted" denominator basis
-              // Transit MOS = TransitQty ÷ AMC (× months factor if user asks "how many months")
-              // QC MOS      = QCQty ÷ AMC (× months factor)
-              // SOH MOS     = UnrestrictedQty ÷ AMC
-              let effectiveQty = qty; // already the right metric qty
-              // For MOS we always divide by AMC to get months; if user wants "N months of transit",
-              // we divide qtyForMOS by (AMC) to see how many months the transit stock covers.
-              const mos = calcMos(effectiveQty, plantAmc);
-              cellHtml = renderSohMosCell(qty, mos, mosStockLabel, null);
-            } else if (hasAmc && !isQty) {
-              // Value metric — show value + brief MOS using unrestricted qty if available
-              cellHtml = `<span>${fmtFn(qty)}</span>`;
-            } else {
-              cellHtml = qty === 0 ? '<span style="color:#484f58">—</span>' : (isQty ? fmtQty(qty) : fmtFn(qty));
-            }
-            return `<td class="${c.cellClass||""}" ${cellStyle}>${cellHtml}</td>`;
-          }
-
-          // ── Non-plant columns ──────────────────────────────────────────────
           const v       = r[c.key];
-          const raw     = c.raw ? v : null;
+          const raw     = c.raw ? v : null;           // raw HTML — don't escape
           const display = raw != null ? (raw ?? "")
                         : c.fmt ? c.fmt(v)
                         : (v == null ? "" : escHtml(String(v)));
@@ -2552,21 +2409,8 @@ function renderBranch() {
         }).join("");
         return `<tr>${cells}</tr>`;
       }).join("");
-      // Build legend / context note
-      let mosLegend = "";
-      if (hasAmc && isQty) {
-        const mosTypeNote = isTransitMetric
-          ? `Transit MOS = Transit Qty ÷ AMC (pipeline coverage). Set <b>"Transit — how many months?"</b> above to highlight if transit covers your target lead time.`
-          : isQcMetric
-          ? `QC MOS = QC Qty ÷ AMC (months of stock held in quality inspection).`
-          : `SOH MOS = Unrestricted Qty ÷ AMC`;
-        mosLegend = `<div style="font-size:0.72rem;color:var(--muted);margin-bottom:6px;padding:5px 10px;background:var(--surface);border-radius:6px;border-left:3px solid var(--blue)">
-          📐 <b>MOS shown per branch</b> (AMC loaded). <span style="color:var(--red)">Red &lt;1mo</span> · <span style="color:var(--green)">Green ≥1mo</span> · <span style="color:var(--amber)">∞ = stock with no AMC plan</span><br>
-          <span style="opacity:0.8">${mosTypeNote}</span></div>`;
-      }
       document.getElementById("mat-table-wrap").innerHTML = `
         <div style="color:var(--muted);font-size:12px;margin-bottom:6px">Showing ${tableRows.length} of ${materials.length} materials · Blue = Central (${escHtml(centralName)})</div>
-        ${mosLegend}
         <div class="tbl-wrap"><table>${thead}<tbody>${tbody}</tbody></table></div>
         ${materials.length > 200 ? `<div class="alert-info">Showing first 200 of ${materials.length}. Refine search.</div>` : ""}`;
 
