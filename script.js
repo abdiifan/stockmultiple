@@ -2052,12 +2052,7 @@ function renderBranch() {
       <button class="branch-tab-btn"        data-tab="material" style="padding:0.5rem 1.1rem;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);font-weight:500;font-size:0.82rem;cursor:pointer;margin-bottom:-2px;font-family:inherit;white-space:nowrap;flex-shrink:0">📦 Material Comparison</button>
       <button class="branch-tab-btn"        data-tab="mos"      style="padding:0.5rem 1.1rem;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);font-weight:500;font-size:0.82rem;cursor:pointer;margin-bottom:-2px;font-family:inherit;white-space:nowrap;flex-shrink:0">📐 MOS by Plant</button>
     </div>
-    <div id="branch-tab-value"    class="branch-tab-panel" style="display:block;padding-top:1rem">
-      <div id="branch-dl-row" style="display:flex;gap:0.6rem;justify-content:flex-end;margin-bottom:0.5rem">
-        <button class="dl-btn" id="btn-dl-branch-csv">⬇ CSV</button>
-        <button class="dl-btn" id="btn-dl-branch-xlsx">⬇ Excel</button>
-      </div>
-    </div>
+    <div id="branch-tab-value"    class="branch-tab-panel" style="display:block;padding-top:1rem"></div>
     <div id="branch-tab-material" class="branch-tab-panel" style="display:none;padding-top:1rem"></div>
     <div id="branch-tab-mos"      class="branch-tab-panel" style="display:none;padding-top:1rem">
       <div id="mos-no-amc" class="alert-info" style="margin-bottom:1rem">
@@ -2173,6 +2168,10 @@ function renderBranch() {
       {key:"Items",           label:"# Unique Materials"},
     ];
     wrap.innerHTML = `
+      <div style="display:flex;gap:0.6rem;justify-content:flex-end;margin-bottom:0.5rem">
+        <button class="dl-btn" id="btn-dl-branch-csv">⬇ CSV</button>
+        <button class="dl-btn" id="btn-dl-branch-xlsx">⬇ Excel</button>
+      </div>
       <div id="branch-chart-wrap" style="margin-bottom:1.2rem"></div>
       <div id="branch-table-wrap-inner" style="margin-bottom:1rem">${buildTable(compareDf, bCols, r => r.PlantName === centralName ? "row-blue" : "")}</div>`;
     document.getElementById("btn-dl-branch-csv").onclick  = () => downloadCSV(compareDf,   bCols, "branch_comparison.csv");
