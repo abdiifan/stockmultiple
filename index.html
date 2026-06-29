@@ -50,9 +50,6 @@
     <button class="nav-btn" data-page="branch">
       <span class="nav-icon">🏢</span> Branch Comparison
     </button>
-    <button class="nav-btn" data-page="flow">
-      <span class="nav-icon">📦</span> Zero Unrestricted
-    </button>
 
     <button class="nav-btn" data-page="concentration">
       <span class="nav-icon">🎯</span> Stock Concentration
@@ -123,7 +120,6 @@
       <div class="feature-chip">⏰ Expiry Watchlist</div>
       <div class="feature-chip">🔬 QC Inspection</div>
       <div class="feature-chip">🏢 Branch Compare</div>
-      <div class="feature-chip">📦 Inventory Flow</div>
     </div>
   </div>
 
@@ -333,38 +329,6 @@
     </div>
     <div id="branch-tabs-wrap" style="margin-top:1.2rem"></div>
   </section>
-
-  <!-- ── FLOW / ZERO UNRESTRICTED ── -->
-  <section id="page-flow" class="page" style="display:none">
-    <div class="page-header-row">
-      <div>
-        <div class="page-title">📦 Zero Unrestricted Stock</div>
-        <div class="page-subtitle">Track inbound/outbound movements, stock levels, reorder alerts, and inter-location transfers</div>
-      </div>
-    </div>
-    <div class="filter-bar">
-      <div class="ms-wrap" id="ms-flow-plant"><button class="ms-btn" type="button">All Plants <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-flow-plant-dd"></div></div>
-      <div class="ms-wrap" id="ms-flow-mg"><button class="ms-btn" type="button">All Material Groups <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-flow-mg-dd"></div></div>
-      <div class="ms-wrap" id="ms-flow-vt"><button class="ms-btn" type="button">All Material Types <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-flow-vt-dd"></div></div>
-      <div class="ms-wrap" id="ms-flow-mat"><button class="ms-btn" type="button">All Materials <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-flow-mat-dd"></div></div>
-      <button type="button" class="apply-btn small" id="flow-filter-apply">Apply</button>
-      <button type="button" class="apply-btn secondary small" id="flow-filter-clear">Clear</button>
-    </div>
-    <div class="kpi-row" id="flow-kpis"></div>
-    <div id="flow-mapping-banner"></div>
-    <div class="section-header">🔴 Reorder Alerts — Zero or Critically Low Unrestricted Stock</div>
-    <div class="alert-warning" style="margin-bottom:0.8rem;font-size:0.78rem">Items with zero unrestricted stock but existing in transit or QC — immediate follow-up required.</div>
-    <div id="reorder-dl-row" style="display:flex;gap:0.6rem;justify-content:flex-end;margin-bottom:0.5rem"></div>
-    <div id="reorder-table-wrap"></div>
-    <div class="section-header" style="margin-top:1.5rem">📊 Stock Breakdown by Plant — Available vs In Transit vs In QC (Units)</div>
-    <div class="chart-box full"><div id="chart-stock-levels"></div></div>
-    <div class="section-header" style="margin-top:1.5rem">🔄 Inter-Location Transfers (Transit in Progress)</div>
-    <div id="transfer-dl-row" style="display:flex;gap:0.6rem;justify-content:flex-end;margin-bottom:0.5rem"></div>
-    <div id="transfer-table-wrap"></div>
-    <div class="section-header" style="margin-top:1.5rem">📥 Inbound (Transit) vs Available Stock by Plant</div>
-    <div class="chart-box full"><div id="chart-inbound-outbound"></div></div>
-  </section>
-
 
 
   <!-- ── STOCK CONCENTRATION ── -->
