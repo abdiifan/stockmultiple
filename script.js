@@ -129,7 +129,6 @@ const pageFilters = {
   expiry:    { plants: [], mgs: [], valTypes: [], materials: [] },
   qc:        { plants: [], mgs: [], valTypes: [], materials: [] },
   branch:    { mgs: [],             valTypes: [], materials: [] },
-  flow:      { plants: [], mgs: [], valTypes: [], materials: [] },
   concentration: { mgs: [], valTypes: [] },
 };
 
@@ -491,7 +490,6 @@ function populateAllFilters() {
     { wrapId:"ms-transit-plant", ddId:"ms-transit-plant-dd", page:"transit",   key:"plants" },
     { wrapId:"ms-expiry-plant",  ddId:"ms-expiry-plant-dd",  page:"expiry",    key:"plants" },
     { wrapId:"ms-qc-plant",      ddId:"ms-qc-plant-dd",      page:"qc",        key:"plants" },
-    { wrapId:"ms-flow-plant",    ddId:"ms-flow-plant-dd",    page:"flow",      key:"plants" },
   ];
   plantConfigs.forEach(cfg => {
     const wrap = document.getElementById(cfg.wrapId);
@@ -506,7 +504,6 @@ function populateAllFilters() {
     { wrapId:"ms-expiry-mg",  ddId:"ms-expiry-mg-dd",  page:"expiry",    key:"mgs" },
     { wrapId:"ms-qc-mg",      ddId:"ms-qc-mg-dd",      page:"qc",        key:"mgs" },
 
-    { wrapId:"ms-flow-mg",    ddId:"ms-flow-mg-dd",    page:"flow",      key:"mgs" },
   ];
   mgConfigs.forEach(cfg => {
     const wrap = document.getElementById(cfg.wrapId);
@@ -532,7 +529,6 @@ function populateAllFilters() {
     { wrapId:"ms-expiry-vt",  ddId:"ms-expiry-vt-dd",  page:"expiry"    },
     { wrapId:"ms-qc-vt",      ddId:"ms-qc-vt-dd",      page:"qc"        },
 
-    { wrapId:"ms-flow-vt",    ddId:"ms-flow-vt-dd",    page:"flow"      },
   ];
   vtConfigs.forEach(cfg => {
     const wrap = document.getElementById(cfg.wrapId);
@@ -561,7 +557,6 @@ function populateAllFilters() {
     { wrapId:"ms-expiry-mat",  ddId:"ms-expiry-mat-dd",  page:"expiry",    key:"materials" },
     { wrapId:"ms-qc-mat",      ddId:"ms-qc-mat-dd",      page:"qc",        key:"materials" },
 
-    { wrapId:"ms-flow-mat",    ddId:"ms-flow-mat-dd",    page:"flow",      key:"materials" },
   ];
   matConfigs.forEach(cfg => {
     const wrap = document.getElementById(cfg.wrapId);
@@ -725,9 +720,7 @@ function renderDashboard() {
 
   renderPhantomAlert("dash-phantom-alert", df);
 
-  // FIX-TRANSIT-NODOC: exclude transit items lacking both Purchasing Document
-  // AND Supplying Plant — these are physically unconfirmed (phantom) and must
-  // not inflate Dashboard totals.
+  // Exclude unverified transit amounts (hardcoded list) from Dashboard totals.
   const transitVal = df.reduce((s,r) => s + getVerifiedTransitVal(r), 0);
   const transitQty = df.reduce((s,r) => s + getVerifiedTransitQty(r), 0);
   const qcVal      = df.reduce((s,r) => s + getMappedVal(r,"Value of Stock in Quality Inspection"), 0);
@@ -1023,7 +1016,7 @@ function loadMappingFile(file) {
         if (rawDf.length) {
           const reRender = {
             dashboard: renderDashboard, transit: renderTransit,
-            expiry: renderExpiry, qc: renderQC, branch: renderBranch, flow: renderFlow,
+            expiry: renderExpiry, qc: renderQC, branch: renderBranch,
           };
           if (reRender[currentPage]) reRender[currentPage]();
         }
@@ -1195,14 +1188,8 @@ function getMappedVal(row, field) {
  * getVerifiedTransitVal(row, field)
  *   Return transit qty/value MINUS any phantom (unverified) portion.
  *   A transit row is "phantom" when it has Stock in Transit > 0 but no
- *   matching entry with BOTH Purchasing Document AND Supplying Plant in
- *   the transit detail file.  These items are physically unconfirmed and
- *   must be excluded from every aggregate shown to the user.
- *
- *   FIX-TRANSIT-NODOC: applied to Dashboard, Home, and Flow KPIs so that
- *   transit items without a Purchasing Document AND Supplying Plant are
- *   excluded from ALL displayed totals, not just the Branch Comparison and
- *   Transit pages where the fix was previously applied.
+ *   Unverified amounts (from hardcoded list) are subtracted from every
+ *   aggregate shown to the user across all pages.
  */
 function getVerifiedTransitQty(row) {
   const raw     = getMappedQty(row, "Stock in Transit");
@@ -1291,11 +1278,9 @@ function aggregateByMappedMaterial(df) {
 // END MATERIAL STANDARDIZATION MAPPING
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ─── Lookup helper: Purchasing Document / Supplying Plant ───────────────────
-// Returns placeholders — PO details not available with hardcoded unverified list.
+// ─── Lookup helper: Transit info ─────────────────────────────────────────────
+// PO details not tracked — returns placeholders.
 function getTransitInfo(material, plantCode) {
-  // With hardcoded unverified list, we no longer have PO/supplying plant details.
-  // Return dash placeholders so existing callers don't break.
   return { purDoc: "—", supPlant: "—" };
 }
 
@@ -1394,7 +1379,7 @@ function renderPhantomAlert(containerId, df) {
       <div class="phantom-alert-body">
         <strong>Unverified Transit Stock Excluded</strong>
         <span>${count.toLocaleString()} item${count!==1?"s":""} (${fmtQty(qty)} units · ${fmtETB(val)}) have <em>Stock in Transit</em> but
-        lack a <em>Purchasing Document</em> and <em>Supplying Plant</em> in the transit detail file.
+        are in the unverified transit list and excluded from all totals.
         These items are <strong>excluded from all totals</strong> — verify first.</span>
         <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;margin-top:0.35rem">
           ${actionHtml}
@@ -1445,10 +1430,10 @@ function renderPhantomTable(df) {
       background:rgba(210,153,34,0.06);margin-bottom:1.5rem">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.8rem">
         <div>
-          <div class="section-header" style="margin:0;color:#d29922">⚠️ Unverified Transit Items — No Purchasing Document &amp; Supplying Plant</div>
+          <div class="section-header" style="margin:0;color:#d29922">⚠️ Unverified Transit Items</div>
           <div style="font-size:0.76rem;color:var(--muted);margin-top:3px">
             These items appear in the SAP <em>Stock in Transit</em> column but have <strong>no matching entry</strong> in the
-            transit detail file with both a Purchasing Document and Supplying Plant.
+            the unverified transit list — excluded from all totals.
             They are <strong>excluded from all inventory totals</strong> until verified.
           </div>
         </div>
@@ -1509,7 +1494,7 @@ function renderTransit() {
   const phantomRows  = allTransitDf.filter(r => r._phantomTransitQty > 0);
   const phantomCount = new Set(phantomRows.map(r => r._mappedMaterial || r["Material"])).size;
   const phantomKpiExtra = phantomCount > 0
-    ? [[`Unverified Transit Items`, String(phantomCount), "No PO & Supplying Plant — see bottom of page ↓", "amber"]]
+    ? [[`Unverified Transit Items`, String(phantomCount), "Excluded from all totals — see bottom of page ↓", "amber"]]
     : [];
 
   setKpis("transit-kpis", [
@@ -1524,27 +1509,17 @@ function renderTransit() {
     {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap"},
     {key:"Material Group Name",       label:"Material Group"},
     {key:"Plant Name",                label:"Plant"},
-    {key:"_purDoc",                   label:"Purchasing Document"},
-    {key:"_supPlant",                 label:"Supplying Plant"},
     {key:"Stock in Transit",          label:"Transit Qty",       fmt:fmtQty, rawKey:"Stock in Transit",          cellClass:"col-qty"},
     {key:"Value of Stock in Transit", label:"Transit Value (ETB)",fmt:fmtETB, rawKey:"Value of Stock in Transit", cellClass:"col-val"},
     {key:"_status",                   label:"Status", raw:true},
   ];
-  const transitRows = sortBy([...df], "Value of Stock in Transit").map(r => {
-    const info = getTransitInfo(r["Material"], r["Plant"]);
-    // BUG-FIX-3: removed dead isPhantom branch — df already filters out phantom rows
-    // (!(r._phantomTransitQty > 0) above), so the badge-phantom branch could never
-    // execute here. Status is now purely value-based.
-    return {
-      ...r,
-      _purDoc:   info.purDoc,
-      _supPlant: info.supPlant,
-      _status: r["Value of Stock in Transit"] > 100000 ? "<span class='badge badge-red'>Critical</span>"
-        : r["Value of Stock in Transit"] > 50000  ? "<span class='badge badge-amber'>High</span>"
-        : r["Value of Stock in Transit"] > 10000  ? "<span class='badge badge-amber'>Medium</span>"
-        : "<span class='badge badge-green'>Low</span>",
-    };
-  });
+  const transitRows = sortBy([...df], "Value of Stock in Transit").map(r => ({
+    ...r,
+    _status: r["Value of Stock in Transit"] > 100000 ? "<span class='badge badge-red'>Critical</span>"
+      : r["Value of Stock in Transit"] > 50000  ? "<span class='badge badge-amber'>High</span>"
+      : r["Value of Stock in Transit"] > 10000  ? "<span class='badge badge-amber'>Medium</span>"
+      : "<span class='badge badge-green'>Low</span>",
+  }));
 
   // Cache rows for search filtering
   _transitRowsCache = transitRows;
@@ -1757,7 +1732,7 @@ function renderExpiryDetailTable(baseDf, today) {
 
 // NOTE: QC and Flow material lookup are now handled via the Material
 // filter-bar control (ms-qc-mat / ms-flow-mat) feeding applyPageFilter() —
-// renderQC() and renderFlow() below already reflect the current selection.
+// renderQC() below already reflects the current selection.
 
 
 function renderQC() {
@@ -2401,136 +2376,6 @@ function renderBranch() {
 // ═══════════════════════════════════════════════════════════════════════════
 // INVENTORY FLOW
 // ═══════════════════════════════════════════════════════════════════════════
-function renderFlow() {
-  const df = applyPageFilter("flow");
-
-  // FIX-TRANSIT-NODOC: exclude transit items lacking both Purchasing Document
-  // AND Supplying Plant from Flow page KPIs and totals.
-  const transitVal = df.reduce((s,r) => s + getVerifiedTransitVal(r), 0);
-  const transitQty = df.reduce((s,r) => s + getVerifiedTransitQty(r), 0);
-  const qcVal      = df.reduce((s,r) => s + getMappedVal(r,"Value of Stock in Quality Inspection"), 0);
-  const availVal   = df.reduce((s,r) => s + getMappedVal(r,"Value of Unrestricted Stock"), 0);
-  const totalVal   = availVal + transitVal + qcVal;
-  const totalQty   = df.reduce((s,r) => s + getMappedQty(r,"Unrestricted Stock"), 0) + transitQty + df.reduce((s,r) => s + getMappedQty(r,"Stock in Quality Inspection"), 0);
-  const availQty   = df.reduce((s,r) => s + getMappedQty(r,"Unrestricted Stock"), 0);
-
-  // FIX-PHANTOM-FLOW: for reorder alerts, only count non-phantom transit as "incoming"
-  // Also exclude rows that have transit qty but no purchasing doc AND no supplying plant
-  const reorderItems = df.filter(r => getMappedQty(r,"Unrestricted Stock") === 0 && (
-    (getMappedQty(r,"Stock in Transit") > 0 && !(r._phantomTransitQty > 0) && _hasVerifiedTransit(r)) ||
-    getMappedQty(r,"Stock in Quality Inspection") > 0
-  ));
-
-  setKpis("flow-kpis", [
-    ["Total Inventory",      fmtETB(totalVal),   `${fmtQty(totalQty)} units`,               "blue"],
-    ["Available Stock",      fmtETB(availVal),   `${fmtQty(availQty)} units unrestricted`,   "green"],
-    ["In Transit (Inbound)", fmtETB(transitVal), `${fmtQty(transitQty)} units`, "amber"],
-    ["In QC",                fmtETB(qcVal),      `${fmtQty(df.reduce((s,r) => s+getMappedQty(r,"Stock in Quality Inspection"),0))} units`, "red"],
-    ["Reorder Alerts",       String(reorderItems.length), "Zero unrestricted stock", "red"],
-  ]);
-
-  const reorderCols = [
-    {key:"Material", label:"Material Code", fmt:(val,r)=>renderMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap"},
-    {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap"},
-    {key:"Material Group Name",       label:"Material Group"},
-    {key:"Plant Name",                label:"Plant"},
-    {key:"Unrestricted Stock",        label:"Avail Qty",          fmt:(v,r)=>fmtQty(getMappedQty(r,"Unrestricted Stock")),          rawKey:"Unrestricted Stock",        cellClass:"col-qty"},
-    {key:"Stock in Transit",          label:"In Transit",          fmt:(v,r)=>fmtQty(getVerifiedTransitQty(r)),                       rawKey:"Stock in Transit",          cellClass:"col-qty"},
-    {key:"Stock in Quality Inspection",label:"In QC",             fmt:(v,r)=>fmtQty(getMappedQty(r,"Stock in Quality Inspection")), rawKey:"Stock in Quality Inspection",cellClass:"col-qty"},
-    {key:"Value of Stock in Transit", label:"Transit Value (ETB)", fmt:(v,r)=>fmtETB(getVerifiedTransitVal(r)),                       rawKey:"Value of Stock in Transit",  cellClass:"col-val"},
-    {key:"_purDoc",                   label:"Purchasing Document"},
-    {key:"_supPlant",                 label:"Supplying Plant"},
-    {key:"_alert",                    label:"Alert", raw:true},
-  ];
-  const reorderRows = reorderItems.map(r => {
-    const info = getTransitInfo(r["Material"], r["Plant"]);
-    return {
-      ...r,
-      _purDoc:   info.purDoc,
-      _supPlant: info.supPlant,
-      _alert: getVerifiedTransitQty(r) > 0 && getMappedQty(r,"Stock in Quality Inspection") > 0
-        ? "<span class='badge badge-red'>Transit+QC</span>"
-        : getVerifiedTransitQty(r) > 0
-        ? "<span class='badge badge-amber'>Awaiting Transit</span>"
-        : "<span class='badge badge-amber'>Awaiting QC Release</span>",
-    };
-  });
-  document.getElementById("reorder-table-wrap").innerHTML = reorderRows.length
-    ? buildTable(reorderRows, reorderCols, () => "row-amber")
-    : `<div class="alert-info">✓ No reorder alerts — all materials have available unrestricted stock.</div>`;
-
-  // Reorder export buttons
-  injectDlButtons("reorder-dl-row",
-    () => downloadCSV(reorderRows,   reorderCols, "reorder_alerts.csv"),
-    () => downloadExcel(reorderRows, reorderCols, "reorder_alerts.xlsx"));
-
-  // Stock levels chart — use converted quantities
-  const plantStockMap = {};
-  df.forEach(r => {
-    const k = r["Plant Name"] || "(Blank)";
-    if (!plantStockMap[k]) plantStockMap[k] = { "Plant Name": k, avail:0, transit:0, qc:0 };
-    plantStockMap[k].avail   += getMappedQty(r,"Unrestricted Stock");
-    plantStockMap[k].transit += getVerifiedTransitQty(r);
-    plantStockMap[k].qc      += getMappedQty(r,"Stock in Quality Inspection");
-  });
-  const plantAgg = sortBy(Object.values(plantStockMap), "avail");
-  Plotly.newPlot("chart-stock-levels", [
-    {type:"bar", name:"Available",  x:plantAgg.map(r=>r["Plant Name"]), y:plantAgg.map(r=>r.avail),  marker:{color:"#3fb950"}},
-    {type:"bar", name:"In Transit", x:plantAgg.map(r=>r["Plant Name"]), y:plantAgg.map(r=>r.transit), marker:{color:"#d29922"}},
-    {type:"bar", name:"In QC",      x:plantAgg.map(r=>r["Plant Name"]), y:plantAgg.map(r=>r.qc),     marker:{color:"#f85149"}},
-  ], pl({height:300,barmode:"stack",margin:{l:20,r:20,t:20,b:80}}), PLOTLY_CONFIG);
-
-  // Inter-location transfers
-  const transferCols = [
-    {key:"Material", label:"Material Code", fmt:(val,r)=>renderMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap"},
-    {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap"},
-    {key:"Plant Name",                label:"Receiving Plant"},
-    {key:"_purDoc",                   label:"Purchasing Document"},
-    {key:"_supPlant",                 label:"Supplying Plant"},
-    {key:"Stock in Transit",          label:"Transit Qty",          fmt:(v,r)=>fmtQty(getMappedQty(r,"Stock in Transit")),           rawKey:"Stock in Transit",          cellClass:"col-qty"},
-    {key:"Value of Stock in Transit", label:"Transit Value (ETB)",  fmt:(v,r)=>fmtETB(getMappedVal(r,"Value of Stock in Transit")),  rawKey:"Value of Stock in Transit",  cellClass:"col-val"},
-  ];
-  // FIX-PHANTOM-FLOW: exclude phantom transit (no PO/supplying plant) from transfer table
-  const transferRows = sortBy(df.filter(r => r["Stock in Transit"] > 0 && !(r._phantomTransitQty > 0) && _hasVerifiedTransit(r)), "Value of Stock in Transit").map(r => {
-    const info = getTransitInfo(r["Material"], r["Plant"]);
-    return { ...r, _purDoc: info.purDoc, _supPlant: info.supPlant };
-  });
-  document.getElementById("transfer-table-wrap").innerHTML = transferRows.length
-    ? buildTable(transferRows, transferCols)
-    : `<div class="alert-info">No inter-location transfers currently in progress.</div>`;
-
-  // Transfer export buttons
-  injectDlButtons("transfer-dl-row",
-    () => downloadCSV(transferRows,   transferCols, "inter_location_transfers.csv"),
-    () => downloadExcel(transferRows, transferCols, "inter_location_transfers.xlsx"));
-
-  // Inbound vs available chart — exclude unverified transit rows
-  const inboundAgg = sortBy(
-    groupBy(df.filter(r => r["Stock in Transit"] > 0 && _hasVerifiedTransit(r)), "Plant Name", [["avail","Unrestricted Stock"],["inbound","Stock in Transit"]]),
-    "inbound"
-  );
-  if (inboundAgg.length) {
-    Plotly.newPlot("chart-inbound-outbound", [
-      {type:"bar", name:"Available Stock", x:inboundAgg.map(r=>r["Plant Name"]), y:inboundAgg.map(r=>r.avail),   marker:{color:"#3fb950"}},
-      {type:"bar", name:"Inbound Transit", x:inboundAgg.map(r=>r["Plant Name"]), y:inboundAgg.map(r=>r.inbound), marker:{color:"#d29922"}},
-    ], pl({height:280,barmode:"group",margin:{l:20,r:20,t:20,b:80}}), PLOTLY_CONFIG);
-  } else {
-    document.getElementById("chart-inbound-outbound").innerHTML = `<div class="alert-info">No transit data to chart.</div>`;
-  }
-
-  const flowDlCols = [
-    {key:"Material", label:"Material Code", fmt:(val,r)=>renderMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap"},
-    {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap"},
-    {key:"Plant Name",                        label:"Plant"},
-    {key:"Material Group Name",               label:"Material Group"},
-    {key:"Unrestricted Stock",                label:"Available Qty",      rawKey:"Unrestricted Stock"},
-    {key:"Stock in Transit",                  label:"Transit Qty",        rawKey:"Stock in Transit"},
-    {key:"Stock in Quality Inspection",       label:"QC Qty",             rawKey:"Stock in Quality Inspection"},
-    {key:"Value of Unrestricted Stock",       label:"Available Value (ETB)",rawKey:"Value of Unrestricted Stock"},
-    {key:"Value of Stock in Transit",         label:"Transit Value (ETB)",rawKey:"Value of Stock in Transit"},
-  ];
-
-}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2908,7 +2753,6 @@ const PAGE_RENDERERS = {
   expiry:        renderExpiry,
   qc:            renderQC,
   branch:        renderBranch,
-  flow:          renderFlow,
   concentration: renderConcentration,
 };
 
@@ -2989,8 +2833,6 @@ document.addEventListener("DOMContentLoaded", () => {
     "qc-filter-apply":      { page:"qc",        plantWrap:"ms-qc-plant",      mgWrap:"ms-qc-mg",      vtWrap:"ms-qc-vt",      matWrap:"ms-qc-mat",      action:"apply" },
     "qc-filter-clear":      { page:"qc",        plantWrap:"ms-qc-plant",      mgWrap:"ms-qc-mg",      vtWrap:"ms-qc-vt",      matWrap:"ms-qc-mat",      action:"clear" },
 
-    "flow-filter-apply":    { page:"flow",          plantWrap:"ms-flow-plant",    mgWrap:"ms-flow-mg",    vtWrap:"ms-flow-vt",    matWrap:"ms-flow-mat",    action:"apply" },
-    "flow-filter-clear":    { page:"flow",          plantWrap:"ms-flow-plant",    mgWrap:"ms-flow-mg",    vtWrap:"ms-flow-vt",    matWrap:"ms-flow-mat",    action:"clear" },
     "conc-filter-apply":    { page:"concentration", plantWrap:null,               mgWrap:"ms-conc-mg",    vtWrap:"ms-conc-vt",    matWrap:null,             action:"apply" },
     "conc-filter-clear":    { page:"concentration", plantWrap:null,               mgWrap:"ms-conc-mg",    vtWrap:"ms-conc-vt",    matWrap:null,             action:"clear" },
   };
@@ -3155,16 +2997,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const transitCols = [
       { key: "_st_material", label: "Material Code", fmt:(val,r)=>renderMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap" },
       { key: "_st_desc",     label: "Material Description", fmt:(val,r)=>renderMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap" },
-      { key: "_st_purDoc",   label: "Purch. Doc." },
-      { key: "_st_supPlant", label: "Supplying Plant" },
       { key: "_st_qty",      label: "Qty", cls: "col-qty" },
       { key: "_st_uom",      label: "UoM" },
     ];
     const transitExportCols = [
       { key: "_st_material", label: "Material Code" },
       { key: "_st_desc",     label: "Material Description" },
-      { key: "_st_purDoc",   label: "Purch. Doc." },
-      { key: "_st_supPlant", label: "Supplying Plant" },
       { key: "_st_qty",      label: "Qty" },
       { key: "_st_uom",      label: "UoM" },
     ];
