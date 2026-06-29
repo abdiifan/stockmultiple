@@ -137,15 +137,81 @@ const pageFilters = {
 // bar-click can hand off the selected plant-count group to Branch Comparison.
 let _lastSpreadDrilldown = null;   // { plantCount, matCodes[] } | null
 
+// ── GLOBAL PERSON FILTER ────────────────────────────────────────────────────
+// A Set of selected PERSON values from the AMC file.
+// When non-empty, only materials whose AMC row has a matching PERSON are shown
+// on every page — dashboard, transit, expiry, QC, branch, concentration,
+// MOS by Plant, and Overstock & Expiry Risk.
+let personFilter = new Set();   // empty = show all persons
+
+// Returns the Set of material codes that belong to the currently-selected persons.
+// Built on demand from mosAmcRaw so it always reflects the latest AMC data.
+// Returns null when no person filter is active (show everything).
+function getPersonFilteredCodes() {
+  if (personFilter.size === 0) return null;
+  if (typeof mosAmcRaw === "undefined" || !mosAmcRaw.length) return null;
+  const codes = new Set();
+  mosAmcRaw.forEach(r => {
+    if (r.person && personFilter.has(r.person)) codes.add(r.code);
+  });
+  return codes;
+}
+
+// ── PERSON FILTER DROPDOWN POPULATION ──────────────────────────────────────
+// All per-page person dropdowns share the same ids pattern: global-person-filter-{page}.
+// Called by mos.js after the AMC file is parsed.
+const _PF_PAGES = ["dash","transit","expiry","qc","conc","mos","exprisk"];
+
+function populatePersonFilter(persons) {
+  _PF_PAGES.forEach(page => {
+    const sel = document.getElementById("global-person-filter-" + page);
+    if (!sel) return;
+    const prev = sel.value;
+    sel.innerHTML = '<option value="">\u{1F464} All Persons</option>';
+    persons.forEach(p => {
+      const opt = document.createElement("option");
+      opt.value = p;
+      opt.textContent = p;
+      if (personFilter.has(p)) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    // Restore previous selection if still valid
+    if (prev && persons.includes(prev)) sel.value = prev;
+    _syncChipState(page, sel);
+  });
+}
+
+function _syncChipState(page, sel) {
+  if (!sel) sel = document.getElementById("global-person-filter-" + page);
+  if (!sel) return;
+  const chip  = document.getElementById("pf-chip-" + page);
+  const clear = document.getElementById("pf-clear-" + page);
+  const active = personFilter.size > 0;
+  sel.classList.toggle("pf-active", active);
+  if (chip)  chip.classList.toggle("pf-chip-active", active);
+  if (clear) clear.style.display = active ? "inline-flex" : "none";
+}
+
+function _syncAllChips() {
+  _PF_PAGES.forEach(page => _syncChipState(page));
+}
+
 // ── MATERIAL STANDARDIZATION MAPPING STATE ─────────────────────────────────
 // mappingTable: Map<sourceCode → { targetCode, targetDesc, factor }>
 let mappingTable   = new Map();   // populated when mapping file is uploaded
 let mappedDf       = [];          // rawDf rows after applyMaterialMapping()
 let mappingStats   = null;        // { mapped, total, valuePct } — shown in sidebar
 
-// Returns the base dataset with material standardization applied (if mapping loaded).
+// Returns the base dataset with material standardization applied (if mapping loaded),
+// then narrowed to materials belonging to the currently-selected persons (if any).
 function getReconciledBase() {
-  return mappingTable.size > 0 ? mappedDf : rawDf;
+  const base = mappingTable.size > 0 ? mappedDf : rawDf;
+  const codes = getPersonFilteredCodes();
+  if (!codes) return base;
+  return base.filter(r => {
+    const mat = String(r["Material"] || "").trim().toUpperCase();
+    return codes.has(mat);
+  });
 }
 
 // FIX BUG-3: reset all page filters when a new file is loaded so stale plant/MG
@@ -475,6 +541,37 @@ function buildMultiSelect(wrapId, ddId, items, placeholder) {
 document.addEventListener("click", () => {
   document.querySelectorAll(".ms-wrap.open").forEach(w => w.classList.remove("open"));
 });
+
+// ── GLOBAL PERSON FILTER WIRING ─────────────────────────────────────────────
+// One delegated listener on document.body handles all per-page dropdowns and
+// clear buttons — no need to re-wire when pages show/hide.
+(function wirePersonFilter() {
+  function applyAndRender(newPerson) {
+    personFilter.clear();
+    if (newPerson) personFilter.add(newPerson);
+
+    // Mirror selection to every other page's dropdown
+    _PF_PAGES.forEach(page => {
+      const sel = document.getElementById("global-person-filter-" + page);
+      if (sel) sel.value = newPerson || "";
+      _syncChipState(page, sel);
+    });
+
+    if (typeof renderPage === "function") renderPage(currentPage);
+  }
+
+  document.body.addEventListener("change", e => {
+    const sel = e.target.closest("select[id^='global-person-filter-']");
+    if (!sel) return;
+    applyAndRender(sel.value);
+  });
+
+  document.body.addEventListener("click", e => {
+    const btn = e.target.closest("button[id^='pf-clear-']");
+    if (!btn) return;
+    applyAndRender("");
+  });
+})();
 
 // ── POPULATE FILTER DROPDOWNS ──────────────────────────────────────────────
 function populateAllFilters() {
