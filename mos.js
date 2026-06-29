@@ -79,10 +79,8 @@ function loadMosAmcFile(file) {
         (hasHub ? "" : `<div class="status-name" style="color:var(--orange)">⚠️ "${HUB_PLANT}" column not found — hub MOS rule won't apply</div>`);
       if (btnEl) btnEl.textContent = "✓ " + file.name;
 
-      const noAmcEl  = document.getElementById("mos-no-amc");
-      const contentEl = document.getElementById("mos-content");
-      if (noAmcEl)  noAmcEl.style.display  = "none";
-      if (contentEl) contentEl.style.display = "block";
+      document.getElementById("mos-no-amc").style.display  = "none";
+      document.getElementById("mos-content").style.display = "block";
 
       if (currentPage === "mos-plant") renderMosPlant();
 
