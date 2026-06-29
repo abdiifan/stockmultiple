@@ -45,9 +45,11 @@ const DAYS_PER_MO  = 30.44; // average month length, consistent with rest of app
 // materialCode → plantCode → { expiry: Date|null, unitVal: number }
 function buildExpiryMap() {
   const map = new Map();
-  if (typeof rawDf === "undefined" || !rawDf.length) return map;
+  // Use getReconciledBase() so the person filter (and mapping) applies here too
+  const base = (typeof getReconciledBase === "function") ? getReconciledBase() : (typeof rawDf !== "undefined" ? rawDf : []);
+  if (!base.length) return map;
 
-  for (const row of rawDf) {
+  for (const row of base) {
     const mat = String(row._mappedMaterial || row["Material"] || "").trim();
     const plt = String(row["Plant"] || "").trim().toUpperCase();
     const qty = Number(row["Unrestricted Stock"] || 0);
@@ -93,12 +95,10 @@ function buildRiskSnapshot(typeFilter, searchQ, plantFilter) {
   const today     = new Date();
   today.setHours(0, 0, 0, 0);
 
-  let rows = mosMerged;
-  if (typeFilter) rows = rows.filter(r => r.type === typeFilter);
-  if (searchQ) {
-    const q = searchQ.toLowerCase();
-    rows = rows.filter(r => r.code.toLowerCase().includes(q) || r.desc.toLowerCase().includes(q));
-  }
+  // getMosFilteredRows already applies the global personFilter before type/search
+  let rows = (typeof getMosFilteredRows === "function")
+    ? getMosFilteredRows(typeFilter || "", searchQ || "")
+    : mosMerged.filter(r => (!typeFilter || r.type === typeFilter));
 
   const out = [];
   for (const r of rows) {
