@@ -646,50 +646,38 @@
 <script src="mos.js" defer></script>
 <script src="expiry-risk.js" defer></script>
 <script>
-// ── TAB SWITCHING (Transit + QC + Overstock & Expiry Risk) ──
-document.addEventListener("DOMContentLoaded", function() {
-  // Generic tab switcher — handles both .transit-tab-btn and .qc-tab-btn
-  document.addEventListener("click", function(e) {
-    const transitBtn = e.target.closest(".transit-tab-btn");
-    if (transitBtn) {
-      const tab = transitBtn.dataset.tab;
-      document.querySelectorAll(".transit-tab-btn").forEach(b => {
-        const active = b.dataset.tab === tab;
-        b.style.color       = active ? "var(--blue)" : "var(--muted)";
-        b.style.fontWeight  = active ? "700" : "500";
-        b.style.borderBottom= active ? "2px solid var(--blue)" : "2px solid transparent";
-      });
-      document.querySelectorAll(".transit-tab-panel").forEach(p => {
-        p.style.display = p.id === "transit-tab-" + tab ? "block" : "none";
-      });
-      return;
-    }
+// ── GENERIC TAB SWITCHER (Transit / QC / Overstock & Expiry Risk) ────────────
+// Single handler replaces three separate copy-pasted blocks.
+// Convention: tab buttons carry class "{prefix}-tab-btn" and data-tab="{id}".
+//             tab panels carry class "{prefix}-tab-panel" and id="{prefix}-tab-{id}".
+document.addEventListener("DOMContentLoaded", function () {
+  const TAB_PREFIXES = ["transit", "qc", "exprisk"];
 
-    const qcBtn = e.target.closest(".qc-tab-btn");
-    if (qcBtn) {
-      const tab = qcBtn.dataset.tab;
-      document.querySelectorAll(".qc-tab-btn").forEach(b => {
-        const active = b.dataset.tab === tab;
-        b.style.color       = active ? "var(--blue)" : "var(--muted)";
-        b.style.fontWeight  = active ? "700" : "500";
-        b.style.borderBottom= active ? "2px solid var(--blue)" : "2px solid transparent";
-      });
-      document.querySelectorAll(".qc-tab-panel").forEach(p => {
-        p.style.display = p.id === "qc-tab-" + tab ? "block" : "none";
-      });
-      return;
-    }
+  document.addEventListener("click", function (e) {
+    for (const prefix of TAB_PREFIXES) {
+      const btn = e.target.closest(`.${prefix}-tab-btn`);
+      if (!btn) continue;
 
-    const expriskBtn = e.target.closest(".exprisk-tab-btn");
-    if (expriskBtn) {
-      const tab = expriskBtn.dataset.tab;
-      document.querySelectorAll(".exprisk-tab-btn").forEach(b => {
+      const tab = btn.dataset.tab;
+
+      // Update button states
+      document.querySelectorAll(`.${prefix}-tab-btn`).forEach(b => {
         const active = b.dataset.tab === tab;
         b.classList.toggle("active", active);
+        // Keep inline-style fallback for transit/qc which use style not class
+        if (prefix !== "exprisk") {
+          b.style.color       = active ? "var(--blue)" : "var(--muted)";
+          b.style.fontWeight  = active ? "700" : "500";
+          b.style.borderBottom= active ? "2px solid var(--blue)" : "2px solid transparent";
+        }
       });
-      document.querySelectorAll(".exprisk-tab-panel").forEach(p => {
-        p.style.display = p.id === "exprisk-tab-" + tab ? "block" : "none";
+
+      // Show correct panel
+      document.querySelectorAll(`.${prefix}-tab-panel`).forEach(p => {
+        p.style.display = p.id === `${prefix}-tab-${tab}` ? "block" : "none";
       });
+
+      return; // matched — stop checking other prefixes
     }
   });
 });
