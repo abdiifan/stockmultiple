@@ -151,8 +151,13 @@ function buildAmcMerged() {
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 function amcFmtVal(v) {
-  if (v === null || v === undefined) return '<span style="color:var(--muted);font-size:0.8em">N/A</span>';
+  if (v === null || v === undefined) return amcNABadge();
   return fmtQty(v);
+}
+
+// Badge shown whenever a plant cell is N/A — "not committed, not needed here"
+function amcNABadge() {
+  return '<span class="amc-na-badge" title="Not committed — item not required at this plant">Not Committed</span>';
 }
 
 function amcStockedCount(row) {
@@ -240,7 +245,7 @@ async function renderAmcDistribution() {
   amcKpiRow("amc-dist-kpis", [
     amcKpiCard("Total Items", totalItems.toLocaleString(), `${typeVal || "All Types"}`, "blue"),
     amcKpiCard("Stocked in All Plants", stockedInAll.toLocaleString(), `${amcPlants.length} plants`, "green"),
-    amcKpiCard("N/A in All Plants", naAll.toLocaleString(), "No coverage anywhere", "red"),
+    amcKpiCard("Not Committed Everywhere", naAll.toLocaleString(), "No plant commitment for this item", "amber"),
     amcKpiCard("Total AMC Value", fmtQty(totalAMCVal), "Across all plants", "purple"),
   ]);
 
@@ -305,7 +310,7 @@ async function renderAmcDistribution() {
     { key:"_total", label:"Total AMC (Qty)", fmt:fmtQty },
     ...amcPlants.map(p => ({
       key:`_p_${p}`, label:p,
-      fmt:(v) => v===null ? '<span style="color:var(--muted);font-size:0.8em">N/A</span>' : fmtQty(v),
+      fmt:(v) => v===null ? amcNABadge() : fmtQty(v),
       raw:true,
     })),
   ];
@@ -327,7 +332,7 @@ async function renderAmcDistribution() {
     { key:"type", label:"Type" }, { key:"_stocked", label:"Plants Stocked" },
     { key:"_total", label:"Total AMC (Qty)" },
     ...amcPlants.map(p => ({ key:`_p_${p}`, label:p,
-      fmt:(v)=>v===null?"N/A":String(Number(v).toFixed(2)) })),
+      fmt:(v)=>v===null?"Not Committed":String(Number(v).toFixed(2)) })),
   ];
   const dlRow = document.getElementById("amc-dist-dl-row");
   if (dlRow) {
@@ -373,7 +378,7 @@ async function renderAmcCoverage() {
   amcKpiRow("amc-cov-kpis", [
     amcKpiCard("Total Items",          totalItems.toLocaleString(), typeVal||"All types", "blue"),
     amcKpiCard("Overall Coverage",     `${covPct}%`,               `${totalCells-naCount} of ${totalCells} cells`, "green"),
-    amcKpiCard("N/A Gaps",             naCount.toLocaleString(),   "Missing coverage", "red"),
+    amcKpiCard("Not Committed (N/A)",  naCount.toLocaleString(),   "Item not needed at plant", "amber"),
     amcKpiCard("Stocked Everywhere",   fullyStocked.toLocaleString(), `All ${amcPlants.length} plants`, "purple"),
   ]);
 
@@ -395,8 +400,8 @@ async function renderAmcCoverage() {
     colorscale: [[0,"#f85149"],[1,"#2e9e5a"]],
     zmin:0, zmax:1,
     showscale: true,
-    colorbar: { tickvals:[0,1], ticktext:["N/A","Stocked"], len:0.4 },
-    hovertemplate: "<b>%{y}</b> × <b>%{x}</b><br>%{z==1?'✅ Stocked':'❌ N/A'}<extra></extra>",
+    colorbar: { tickvals:[0,1], ticktext:["Not Committed","Stocked"], len:0.4 },
+    hovertemplate: "<b>%{y}</b> × <b>%{x}</b><br>%{z==1?'✅ Stocked':'⬜ Not Committed (N/A)'}<extra></extra>",
   }], {
     ...PLOTLY_LAYOUT,
     height: Math.max(300, displayPlants.length * 22 + 80),
@@ -417,8 +422,8 @@ async function renderAmcCoverage() {
     { key:"type", label:"Type" },
     { key:"_stocked",   label:"Plants w/ Stock",
       fmt:(v) => `<span style="font-weight:600;color:${v===amcPlants.length?'var(--green)':v===0?'var(--red)':'var(--orange)'}">${v} / ${amcPlants.length}</span>`, raw:true },
-    { key:"_naPlants",  label:"N/A Plants",
-      fmt:(v,r) => v ? `<span style="font-size:0.78em;color:var(--red)">${escHtml(v)}</span>` : '<span style="color:var(--green)">None</span>', raw:true },
+    { key:"_naPlants",  label:"Not Committed (N/A) Plants",
+      fmt:(v,r) => v ? `<span style="font-size:0.78em;color:var(--muted);font-style:italic">${escHtml(v)}</span>` : '<span style="color:var(--green)">None</span>', raw:true },
     { key:"_totalAMC",  label:"Total AMC (Qty)", fmt:fmtQty },
   ];
 
@@ -447,7 +452,7 @@ async function renderAmcCoverage() {
   // Export
   const exportCols = [
     {key:"code",label:"Material Code"},{key:"desc",label:"Description"},{key:"type",label:"Type"},
-    {key:"_stocked",label:"Plants w/ Stock"},{key:"_naPlants",label:"N/A Plants"},{key:"_totalAMC",label:"Total AMC (Qty)"},
+    {key:"_stocked",label:"Plants w/ Stock"},{key:"_naPlants",label:"Not Committed Plants"},{key:"_totalAMC",label:"Total AMC (Qty)"},
   ];
   const dlRow = document.getElementById("amc-cov-dl-row");
   if (dlRow) {
@@ -612,7 +617,7 @@ function calcMOS(soh, amc) {
 
 /** Format MOS for display */
 function fmtMOS(mos) {
-  if (mos === null || mos === undefined) return '<span style="color:var(--muted);font-size:0.8em">N/A</span>';
+  if (mos === null || mos === undefined) return amcNABadge();
   if (mos === Infinity) return '<span style="color:var(--orange)">∞</span>';
   return `<b>${Number(mos).toFixed(1)}</b> mo`;
 }
@@ -764,7 +769,7 @@ async function renderAmcRedistribution() {
 
     // Transfer value proxy: qty × monthly consumption (quantity-based, not monetary)
     const mosDetailParts = plantMOS.map(e =>
-      `${e.plant}: ${e.mos === null ? "N/A" : e.mos === Infinity ? "∞" : e.mos.toFixed(1)}mo`
+      `${e.plant}: ${e.mos === null ? "Not Committed" : e.mos === Infinity ? "∞" : e.mos.toFixed(1)}mo`
     );
 
     surplusSuggestions.push({
@@ -826,7 +831,7 @@ async function renderAmcRedistribution() {
 
     const onlyPlant = plantMOS[0];
     const mosDetailParts = plantMOS.map(e =>
-      `${e.plant}: ${e.mos === null ? "N/A" : e.mos.toFixed(1)}mo`
+      `${e.plant}: ${e.mos === null ? "Not Committed" : e.mos.toFixed(1)}mo`
     );
 
     isolatedSuggestions.push({
@@ -1032,7 +1037,7 @@ async function renderAmcRedistribution() {
   const exportRows = allSuggestions.map(r => ({
     ...r,
     _targetLines: r._targetLines
-      ? r._targetLines.map(t=>`${t.plant}(MOS:${t.curMOS!==null?t.curMOS.toFixed(1):"N/A"} +${t.allocQty.toFixed(0)}u)`).join("; ")
+      ? r._targetLines.map(t=>`${t.plant}(MOS:${t.curMOS!==null?t.curMOS.toFixed(1):"N/C"} +${t.allocQty.toFixed(0)}u)`).join("; ")
       : "",
   }));
   const exportCols = [
@@ -1043,9 +1048,9 @@ async function renderAmcRedistribution() {
     {key:"person",       label:"Specialist"},
     {key:"_action",      label:"Action"},
     {key:"_sourceP",     label:"Source Plant"},
-    {key:"_sourceMOS",   label:"Source MOS (months)", fmt:v=>v!==null&&v!==undefined?Number(v).toFixed(1):"N/A"},
-    {key:"_sourceSOH",   label:"Source SOH (units)",  fmt:v=>v!==null&&v!==undefined?Number(v).toFixed(0):"N/A"},
-    {key:"_sourceAMC",   label:"Source AMC (Qty)",    fmt:v=>v!==null&&v!==undefined?Number(v).toFixed(0):"N/A"},
+    {key:"_sourceMOS",   label:"Source MOS (months)", fmt:v=>v!==null&&v!==undefined?Number(v).toFixed(1):"—"},
+    {key:"_sourceSOH",   label:"Source SOH (units)",  fmt:v=>v!==null&&v!==undefined?Number(v).toFixed(0):"—"},
+    {key:"_sourceAMC",   label:"Source AMC (Qty)",    fmt:v=>v!==null&&v!==undefined?Number(v).toFixed(0):"—"},
     {key:"_transferQty", label:"Transfer Qty (units)", fmt:v=>v!==null&&v!==undefined?Number(v).toFixed(0):""},
     {key:"_targets",     label:"Recipient Plants"},
     {key:"_targetLines", label:"Per-Plant Allocation"},
