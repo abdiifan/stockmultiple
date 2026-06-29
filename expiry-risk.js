@@ -384,7 +384,10 @@ async function renderExpiryRisk() {
     : '<div class="alert-info" style="margin:0.5rem 0">No eligible transfers found — either nothing is at risk, or no recipient plant has safe headroom for the at-risk items.</div>';
 
   // ── RESIDUAL (AFTER redistribution) — for marketing director ──────────────────
-  const visResidual = plantVal ? residual.filter(r => r.plant === plantVal) : residual;
+  // Exclude rows where Residual Qty is zero (or negligibly small due to float
+  // arithmetic) — nothing actionable to show the marketing director.
+  const visResidual = (plantVal ? residual.filter(r => r.plant === plantVal) : residual)
+    .filter(r => r.qty > 1e-9);
   const totalResidualQty = visResidual.reduce((s, r) => s + r.qty, 0);
   const totalResidualVal = visResidual.reduce((s, r) => s + r.val, 0);
   const hubResidual = visResidual.filter(r => r.isHub);
