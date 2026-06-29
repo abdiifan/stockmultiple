@@ -2061,12 +2061,7 @@ function renderBranch() {
     <div id="branch-tab-material" class="branch-tab-panel" style="display:none;padding-top:1rem"></div>
     <div id="branch-tab-mos"      class="branch-tab-panel" style="display:none;padding-top:1rem">
       <div id="mos-no-amc" class="alert-info" style="margin-bottom:1rem">
-        Upload <b>AMC.xlsx</b> to enable MOS analysis.
-        <label class="upload-btn" style="display:inline-flex;margin-left:0.75rem;padding:4px 12px;font-size:0.8rem;cursor:pointer" for="mosAmcFileInput">
-          📐 Upload AMC.xlsx
-          <input type="file" id="mosAmcFileInput" accept=".xlsx,.xls" style="display:none" />
-        </label>
-        <div id="mosAmcFileStatus" style="display:inline;margin-left:0.5rem;font-size:0.78rem"></div>
+        Upload <b>AMC.xlsx</b> via the <b>📐 AMC Data</b> section in the sidebar to enable MOS analysis.
       </div>
       <div id="mos-content" style="display:none">
         <div class="alert-info" style="margin-bottom:1rem;font-size:0.8rem">
