@@ -7,6 +7,99 @@
   <style>
     .brand-icon img { height: 38px; width: auto; display: block; }
     .landing-logo img { height: 86px; width: auto; display: block; margin: 0 auto 0.5rem; }
+
+    /* ── Overstock & Expiry Risk tab bar (mirrors Transit / QC pattern) ── */
+    .exprisk-tab-bar {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1.5rem;
+      margin-bottom: 0;
+      border-bottom: 2px solid var(--border2);
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .exprisk-tab-btn {
+      padding: 0.5rem 1.1rem;
+      border: none;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      font-weight: 500;
+      font-size: 0.82rem;
+      cursor: pointer;
+      margin-bottom: -2px;
+      font-family: inherit;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: color 0.15s, border-color 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .exprisk-tab-btn.active {
+      color: var(--blue);
+      font-weight: 700;
+      border-bottom-color: var(--blue);
+    }
+    .exprisk-tab-sub {
+      font-size: 0.72rem;
+      font-weight: 400;
+      opacity: 0.75;
+    }
+
+    /* ── Global Person Assigned filter (in-page filter bars) ── */
+    .person-filter-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      position: relative;
+    }
+    .person-filter-select {
+      padding: 5px 28px 5px 10px;
+      border-radius: 7px;
+      border: 1.5px solid var(--border, #1e2e3d);
+      background: var(--card-bg, #0d1b2a);
+      color: var(--text, #cdd9e5);
+      font-family: inherit;
+      font-size: 0.82rem;
+      cursor: pointer;
+      outline: none;
+      transition: border-color 0.15s, color 0.15s;
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%237a97b0'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 8px center;
+      min-width: 155px;
+    }
+    .person-filter-select:focus { border-color: var(--blue, #3a8fd4); }
+    .person-filter-select.pf-active {
+      border-color: var(--blue, #3a8fd4);
+      color: var(--blue, #3a8fd4);
+      font-weight: 600;
+    }
+    .person-filter-clear {
+      background: none;
+      border: 1.5px solid var(--border, #1e2e3d);
+      border-radius: 6px;
+      color: var(--muted, #7a97b0);
+      cursor: pointer;
+      font-size: 0.72rem;
+      padding: 4px 7px;
+      line-height: 1;
+      transition: border-color 0.15s, color 0.15s;
+      display: none;
+    }
+    .pf-active ~ .person-filter-clear,
+    .person-filter-chip.pf-chip-active .person-filter-clear { display: inline-flex; align-items: center; }
+    .person-filter-clear:hover { border-color: var(--red, #f85149); color: var(--red, #f85149); }
+    .filter-bar-divider {
+      width: 1px;
+      height: 22px;
+      background: var(--border, #1e2e3d);
+      margin: 0 0.1rem;
+      flex-shrink: 0;
+    }
   </style>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -130,6 +223,7 @@
       <div class="ms-wrap" id="ms-dash-plant"><button class="ms-btn" type="button">All Plants <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-dash-plant-dd"></div></div>
       <div class="ms-wrap" id="ms-dash-mg"><button class="ms-btn" type="button">All Material Groups <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-dash-mg-dd"></div></div>
       <div class="ms-wrap" id="ms-dash-vt"><button class="ms-btn" type="button">All Material Types <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-dash-vt-dd"></div></div>
+      <span class="filter-bar-divider"></span><span class="person-filter-chip" id="pf-chip-dash"><select id="global-person-filter-dash" class="person-filter-select" title="Filter by person assigned"><option value="">👤 All Persons</option></select><button type="button" class="person-filter-clear" id="pf-clear-dash" title="Clear person filter">✕</button></span>
       <button type="button" class="apply-btn small" id="dash-filter-apply">Apply</button>
       <button type="button" class="apply-btn secondary small" id="dash-filter-clear">Clear</button>
     </div>
@@ -180,6 +274,7 @@
       <div class="ms-wrap" id="ms-transit-mg"><button class="ms-btn" type="button">All Material Groups <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-transit-mg-dd"></div></div>
       <div class="ms-wrap" id="ms-transit-vt"><button class="ms-btn" type="button">All Material Types <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-transit-vt-dd"></div></div>
       <div class="ms-wrap" id="ms-transit-mat"><button class="ms-btn" type="button">All Materials <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-transit-mat-dd"></div></div>
+      <span class="filter-bar-divider"></span><span class="person-filter-chip" id="pf-chip-transit"><select id="global-person-filter-transit" class="person-filter-select" title="Filter by person assigned"><option value="">👤 All Persons</option></select><button type="button" class="person-filter-clear" id="pf-clear-transit" title="Clear person filter">✕</button></span>
       <button type="button" class="apply-btn small" id="transit-filter-apply">Apply</button>
       <button type="button" class="apply-btn secondary small" id="transit-filter-clear">Clear</button>
     </div>
@@ -227,6 +322,7 @@
       <div class="ms-wrap" id="ms-expiry-mg"><button class="ms-btn" type="button">All Material Groups <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-expiry-mg-dd"></div></div>
       <div class="ms-wrap" id="ms-expiry-vt"><button class="ms-btn" type="button">All Material Types <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-expiry-vt-dd"></div></div>
       <div class="ms-wrap" id="ms-expiry-mat"><button class="ms-btn" type="button">All Materials <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-expiry-mat-dd"></div></div>
+      <span class="filter-bar-divider"></span><span class="person-filter-chip" id="pf-chip-expiry"><select id="global-person-filter-expiry" class="person-filter-select" title="Filter by person assigned"><option value="">👤 All Persons</option></select><button type="button" class="person-filter-clear" id="pf-clear-expiry" title="Clear person filter">✕</button></span>
       <button type="button" class="apply-btn small" id="expiry-filter-apply">Apply</button>
       <button type="button" class="apply-btn secondary small" id="expiry-filter-clear">Clear</button>
     </div>
@@ -278,6 +374,7 @@
       <div class="ms-wrap" id="ms-qc-mg"><button class="ms-btn" type="button">All Material Groups <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-qc-mg-dd"></div></div>
       <div class="ms-wrap" id="ms-qc-vt"><button class="ms-btn" type="button">All Material Types <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-qc-vt-dd"></div></div>
       <div class="ms-wrap" id="ms-qc-mat"><button class="ms-btn" type="button">All Materials <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-qc-mat-dd"></div></div>
+      <span class="filter-bar-divider"></span><span class="person-filter-chip" id="pf-chip-qc"><select id="global-person-filter-qc" class="person-filter-select" title="Filter by person assigned"><option value="">👤 All Persons</option></select><button type="button" class="person-filter-clear" id="pf-clear-qc" title="Clear person filter">✕</button></span>
       <button type="button" class="apply-btn small" id="qc-filter-apply">Apply</button>
       <button type="button" class="apply-btn secondary small" id="qc-filter-clear">Clear</button>
     </div>
@@ -335,6 +432,7 @@
     <div class="filter-bar">
       <div class="ms-wrap" id="ms-conc-mg"><button class="ms-btn" type="button">All Material Groups <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-conc-mg-dd"></div></div>
       <div class="ms-wrap" id="ms-conc-vt"><button class="ms-btn" type="button">All Material Types <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-conc-vt-dd"></div></div>
+      <span class="filter-bar-divider"></span><span class="person-filter-chip" id="pf-chip-conc"><select id="global-person-filter-conc" class="person-filter-select" title="Filter by person assigned"><option value="">👤 All Persons</option></select><button type="button" class="person-filter-clear" id="pf-clear-conc" title="Clear person filter">✕</button></span>
       <button type="button" class="apply-btn small" id="conc-filter-apply">Apply</button>
       <button type="button" class="apply-btn secondary small" id="conc-filter-clear">Clear</button>
     </div>
@@ -399,6 +497,7 @@
         <label style="font-size:0.78rem;color:var(--muted);display:flex;align-items:center;gap:0.3rem">
           <input type="checkbox" id="mos-critical-only" /> Critical only (&lt; 1 month)
         </label>
+        <span class="filter-bar-divider"></span><span class="person-filter-chip" id="pf-chip-mos"><select id="global-person-filter-mos" class="person-filter-select" title="Filter by person assigned"><option value="">👤 All Persons</option></select><button type="button" class="person-filter-clear" id="pf-clear-mos" title="Clear person filter">✕</button></span>
         <button class="apply-btn small" id="mos-apply">Apply</button>
         <button class="apply-btn secondary small" id="mos-clear">Clear</button>
       </div>
@@ -437,6 +536,7 @@
           <option value="ZME">ZME (Medicines)</option>
           <option value="ZMS">ZMS (Medical Supplies)</option>
         </select>
+        <span class="filter-bar-divider"></span><span class="person-filter-chip" id="pf-chip-exprisk"><select id="global-person-filter-exprisk" class="person-filter-select" title="Filter by person assigned"><option value="">👤 All Persons</option></select><button type="button" class="person-filter-clear" id="pf-clear-exprisk" title="Clear person filter">✕</button></span>
         <button class="apply-btn small" id="exprisk-apply">Apply</button>
         <button class="apply-btn secondary small" id="exprisk-clear">Clear</button>
       </div>
@@ -444,17 +544,31 @@
 
       <div class="section-header">📉 Expiry Risk Before Redistribution</div>
       <div class="chart-box full"><div id="chart-exprisk-before" style="min-height:320px"></div></div>
-      <div class="section-header" style="margin-top:1rem">📋 At-Risk Detail (Before Redistribution)</div>
-      <div id="exprisk-table-before"></div>
 
-      <div class="section-header" style="margin-top:1.8rem">🔄 Suggested Redistribution Plan</div>
-      <div class="alert-warning" style="margin-bottom:0.8rem;font-size:0.78rem">⚠️ Stock is moved from at-risk plants (including HO01) to plants that can use it before their own shelf-life runs out. <b>HO01 never receives stock</b> in this plan — it's the source, never the destination.</div>
-      <div id="exprisk-redist-table"></div>
+      <!-- Tab bar — same pattern as Transit / QC -->
+      <div class="exprisk-tab-bar">
+        <button class="exprisk-tab-btn active" data-tab="before">📋 At-Risk Detail <span class="exprisk-tab-sub">Before Redistribution</span></button>
+        <button class="exprisk-tab-btn" data-tab="redist">🔄 Suggested Redistribution Plan</button>
+        <button class="exprisk-tab-btn" data-tab="after">🏷️ Residual Risk After Redistribution <span class="exprisk-tab-sub">For Marketing / Private Sale</span></button>
+      </div>
 
-      <div class="section-header" style="margin-top:1.8rem">🏷️ Residual Risk After Redistribution — For Marketing / Private Sale</div>
-      <div class="alert-danger" style="margin-bottom:0.8rem;font-size:0.78rem">This is stock that has nowhere to go in the network before it expires — no plant could absorb it without becoming at-risk itself. Candidate for private sale, discount channels, or donation, pending expiry date review.</div>
-      <div class="kpi-row" id="exprisk-kpis-after" style="margin:1rem 0"></div>
-      <div id="exprisk-table-after"></div>
+      <!-- Tab: At-Risk Detail (Before) -->
+      <div class="exprisk-tab-panel" id="exprisk-tab-before" style="display:block;padding-top:1rem">
+        <div id="exprisk-table-before"></div>
+      </div>
+
+      <!-- Tab: Suggested Redistribution Plan -->
+      <div class="exprisk-tab-panel" id="exprisk-tab-redist" style="display:none;padding-top:1rem">
+        <div class="alert-warning" style="margin-bottom:0.8rem;font-size:0.78rem">⚠️ Stock is moved from at-risk plants (including HO01) to plants that can use it before their own shelf-life runs out. <b>HO01 never receives stock</b> in this plan — it's the source, never the destination.</div>
+        <div id="exprisk-redist-table"></div>
+      </div>
+
+      <!-- Tab: Residual Risk After Redistribution -->
+      <div class="exprisk-tab-panel" id="exprisk-tab-after" style="display:none;padding-top:1rem">
+        <div class="alert-danger" style="margin-bottom:0.8rem;font-size:0.78rem">Stock that has nowhere to go in the network before it expires — no plant could absorb it without becoming at-risk. Candidate for private sale, discount channels, or donation.</div>
+        <div class="kpi-row" id="exprisk-kpis-after" style="margin:1rem 0"></div>
+        <div id="exprisk-table-after"></div>
+      </div>
     </div>
   </section>
 
@@ -532,7 +646,7 @@
 <script src="mos.js" defer></script>
 <script src="expiry-risk.js" defer></script>
 <script>
-// ── TAB SWITCHING (Transit + QC) ─────────────────────────────
+// ── TAB SWITCHING (Transit + QC + Overstock & Expiry Risk) ──
 document.addEventListener("DOMContentLoaded", function() {
   // Generic tab switcher — handles both .transit-tab-btn and .qc-tab-btn
   document.addEventListener("click", function(e) {
@@ -562,6 +676,19 @@ document.addEventListener("DOMContentLoaded", function() {
       });
       document.querySelectorAll(".qc-tab-panel").forEach(p => {
         p.style.display = p.id === "qc-tab-" + tab ? "block" : "none";
+      });
+      return;
+    }
+
+    const expriskBtn = e.target.closest(".exprisk-tab-btn");
+    if (expriskBtn) {
+      const tab = expriskBtn.dataset.tab;
+      document.querySelectorAll(".exprisk-tab-btn").forEach(b => {
+        const active = b.dataset.tab === tab;
+        b.classList.toggle("active", active);
+      });
+      document.querySelectorAll(".exprisk-tab-panel").forEach(p => {
+        p.style.display = p.id === "exprisk-tab-" + tab ? "block" : "none";
       });
     }
   });
