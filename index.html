@@ -8,69 +8,43 @@
     .brand-icon img { height: 38px; width: auto; display: block; }
     .landing-logo img { height: 86px; width: auto; display: block; margin: 0 auto 0.5rem; }
 
-    /* ── Expiry-Risk side-by-side collapsible panels ── */
-    .exprisk-side-panels {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1rem;
-      margin-top: 1.4rem;
+    /* ── Overstock & Expiry Risk tab bar (mirrors Transit / QC pattern) ── */
+    .exprisk-tab-bar {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1.5rem;
+      margin-bottom: 0;
+      border-bottom: 2px solid var(--border2);
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
     }
-    @media (max-width: 860px) {
-      .exprisk-side-panels { grid-template-columns: 1fr; }
-    }
-    .exprisk-panel {
-      border: 1.5px solid var(--border);
-      border-radius: 10px;
-      overflow: hidden;
-      background: var(--card-bg);
-      transition: box-shadow 0.18s;
-    }
-    .exprisk-panel--open {
-      border-color: var(--blue);
-      box-shadow: 0 0 0 2px rgba(88,166,255,0.15);
-    }
-    .exprisk-panel-header {
-      width: 100%;
+    .exprisk-tab-btn {
+      padding: 0.5rem 1.1rem;
+      border: none;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      font-weight: 500;
+      font-size: 0.82rem;
+      cursor: pointer;
+      margin-bottom: -2px;
+      font-family: inherit;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: color 0.15s, border-color 0.15s;
       display: flex;
       align-items: center;
-      gap: 0.7rem;
-      padding: 0.85rem 1.1rem;
-      background: none;
-      border: none;
-      cursor: pointer;
-      text-align: left;
-      color: var(--text);
-      font-family: inherit;
-      font-size: 0.92rem;
-      font-weight: 600;
-      transition: background 0.15s;
+      gap: 0.35rem;
     }
-    .exprisk-panel-header:hover { background: var(--hover, rgba(88,166,255,0.06)); }
-    .exprisk-panel--open .exprisk-panel-header { color: var(--blue); }
-    .exprisk-panel-icon { font-size: 1.05em; flex-shrink: 0; }
-    .exprisk-panel-title {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      gap: 0.1rem;
+    .exprisk-tab-btn.active {
+      color: var(--blue);
+      font-weight: 700;
+      border-bottom-color: var(--blue);
     }
-    .exprisk-panel-sub {
+    .exprisk-tab-sub {
       font-size: 0.72rem;
       font-weight: 400;
-      color: var(--muted);
-    }
-    .exprisk-panel--open .exprisk-panel-sub { color: var(--blue); opacity: 0.75; }
-    .exprisk-panel-chevron {
-      font-size: 0.85em;
-      color: var(--muted);
-      transition: transform 0.2s;
-      flex-shrink: 0;
-    }
-    .exprisk-panel--open .exprisk-panel-chevron { color: var(--blue); }
-    .exprisk-panel-body {
-      padding: 0 1rem 1rem;
-      border-top: 1px solid var(--border);
-      overflow-x: auto;
+      opacity: 0.75;
     }
 
     /* ── Global Person Assigned filter (in-page filter bars) ── */
@@ -571,40 +545,30 @@
       <div class="section-header">📉 Expiry Risk Before Redistribution</div>
       <div class="chart-box full"><div id="chart-exprisk-before" style="min-height:320px"></div></div>
 
-      <!-- Side-by-side collapsible panels -->
-      <div class="exprisk-side-panels">
-
-        <!-- Panel A: At-Risk Detail -->
-        <div class="exprisk-panel" id="panel-atrisk">
-          <button class="exprisk-panel-header" id="panel-atrisk-btn" aria-expanded="false" onclick="toggleExpPanel('panel-atrisk')">
-            <span class="exprisk-panel-icon">📋</span>
-            <span class="exprisk-panel-title">At-Risk Detail<span class="exprisk-panel-sub">Before Redistribution</span></span>
-            <span class="exprisk-panel-chevron">▾</span>
-          </button>
-          <div class="exprisk-panel-body" id="panel-atrisk-body" style="display:none">
-            <div id="exprisk-table-before"></div>
-          </div>
-        </div>
-
-        <!-- Panel B: Redistribution Plan -->
-        <div class="exprisk-panel" id="panel-redist">
-          <button class="exprisk-panel-header" id="panel-redist-btn" aria-expanded="false" onclick="toggleExpPanel('panel-redist')">
-            <span class="exprisk-panel-icon">🔄</span>
-            <span class="exprisk-panel-title">Suggested Redistribution Plan<span class="exprisk-panel-sub">Click to review transfers</span></span>
-            <span class="exprisk-panel-chevron">▾</span>
-          </button>
-          <div class="exprisk-panel-body" id="panel-redist-body" style="display:none">
-            <div class="alert-warning" style="margin-bottom:0.8rem;font-size:0.78rem">⚠️ Stock is moved from at-risk plants (including HO01) to plants that can use it before their own shelf-life runs out. <b>HO01 never receives stock</b> in this plan — it's the source, never the destination.</div>
-            <div id="exprisk-redist-table"></div>
-          </div>
-        </div>
-
+      <!-- Tab bar — same pattern as Transit / QC -->
+      <div class="exprisk-tab-bar">
+        <button class="exprisk-tab-btn active" data-tab="before">📋 At-Risk Detail <span class="exprisk-tab-sub">Before Redistribution</span></button>
+        <button class="exprisk-tab-btn" data-tab="redist">🔄 Suggested Redistribution Plan</button>
+        <button class="exprisk-tab-btn" data-tab="after">🏷️ Residual Risk After Redistribution <span class="exprisk-tab-sub">For Marketing / Private Sale</span></button>
       </div>
 
-      <div class="section-header" style="margin-top:1.8rem">🏷️ Residual Risk After Redistribution — For Marketing / Private Sale</div>
-      <div class="alert-danger" style="margin-bottom:0.8rem;font-size:0.78rem">This is stock that has nowhere to go in the network before it expires — no plant could absorb it without becoming at-risk itself. Candidate for private sale, discount channels, or donation, pending expiry date review.</div>
-      <div class="kpi-row" id="exprisk-kpis-after" style="margin:1rem 0"></div>
-      <div id="exprisk-table-after"></div>
+      <!-- Tab: At-Risk Detail (Before) -->
+      <div class="exprisk-tab-panel" id="exprisk-tab-before" style="display:block;padding-top:1rem">
+        <div id="exprisk-table-before"></div>
+      </div>
+
+      <!-- Tab: Suggested Redistribution Plan -->
+      <div class="exprisk-tab-panel" id="exprisk-tab-redist" style="display:none;padding-top:1rem">
+        <div class="alert-warning" style="margin-bottom:0.8rem;font-size:0.78rem">⚠️ Stock is moved from at-risk plants (including HO01) to plants that can use it before their own shelf-life runs out. <b>HO01 never receives stock</b> in this plan — it's the source, never the destination.</div>
+        <div id="exprisk-redist-table"></div>
+      </div>
+
+      <!-- Tab: Residual Risk After Redistribution -->
+      <div class="exprisk-tab-panel" id="exprisk-tab-after" style="display:none;padding-top:1rem">
+        <div class="alert-danger" style="margin-bottom:0.8rem;font-size:0.78rem">Stock that has nowhere to go in the network before it expires — no plant could absorb it without becoming at-risk. Candidate for private sale, discount channels, or donation.</div>
+        <div class="kpi-row" id="exprisk-kpis-after" style="margin:1rem 0"></div>
+        <div id="exprisk-table-after"></div>
+      </div>
     </div>
   </section>
 
@@ -682,21 +646,7 @@
 <script src="mos.js" defer></script>
 <script src="expiry-risk.js" defer></script>
 <script>
-// ── EXPIRY-RISK PANEL TOGGLE ─────────────────────────────────
-function toggleExpPanel(panelId) {
-  const panel  = document.getElementById(panelId);
-  const body   = document.getElementById(panelId + "-body");
-  const btn    = document.getElementById(panelId + "-btn");
-  const chev   = btn ? btn.querySelector(".exprisk-panel-chevron") : null;
-  if (!body) return;
-  const open = body.style.display !== "none";
-  body.style.display = open ? "none" : "block";
-  panel.classList.toggle("exprisk-panel--open", !open);
-  if (btn) btn.setAttribute("aria-expanded", String(!open));
-  if (chev) chev.textContent = open ? "▾" : "▴";
-}
-
-// ── TAB SWITCHING (Transit + QC) ─────────────────────────────
+// ── TAB SWITCHING (Transit + QC + Overstock & Expiry Risk) ──
 document.addEventListener("DOMContentLoaded", function() {
   // Generic tab switcher — handles both .transit-tab-btn and .qc-tab-btn
   document.addEventListener("click", function(e) {
@@ -726,6 +676,19 @@ document.addEventListener("DOMContentLoaded", function() {
       });
       document.querySelectorAll(".qc-tab-panel").forEach(p => {
         p.style.display = p.id === "qc-tab-" + tab ? "block" : "none";
+      });
+      return;
+    }
+
+    const expriskBtn = e.target.closest(".exprisk-tab-btn");
+    if (expriskBtn) {
+      const tab = expriskBtn.dataset.tab;
+      document.querySelectorAll(".exprisk-tab-btn").forEach(b => {
+        const active = b.dataset.tab === tab;
+        b.classList.toggle("active", active);
+      });
+      document.querySelectorAll(".exprisk-tab-panel").forEach(p => {
+        p.style.display = p.id === "exprisk-tab-" + tab ? "block" : "none";
       });
     }
   });
