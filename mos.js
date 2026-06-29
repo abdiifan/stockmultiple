@@ -469,14 +469,25 @@ async function renderMosPlant() {
     ...Object.fromEntries(displayPlants.map(p => [`_m_${p}`, r._plantMos.find(m => m.plant === p)])),
   }));
 
-  document.getElementById("mos-table").innerHTML = buildTable(
-    tableRows, cols,
-    (row) => {
-      const relevant = plantVal ? [row[`_m_${plantVal}`]] : displayPlants.map(p => row[`_m_${p}`]);
-      const nationalCritical = row._national && isMosCritical(row._national.mos);
-      return (relevant.some(v => v && isMosCritical(v.mos)) || nationalCritical) ? "row-critical" : "";
-    }
-  );
+  document.getElementById("mos-table").innerHTML =
+    '<div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-bottom:0.5rem">' +
+    '<button class="dl-btn" id="mos-table-dl-csv">\u2b07 CSV</button>' +
+    '<button class="dl-btn" id="mos-table-dl-xlsx">\u2b07 Excel</button></div>' +
+    buildTable(
+      tableRows, cols,
+      (row) => {
+        const relevant = plantVal ? [row[`_m_${plantVal}`]] : displayPlants.map(p => row[`_m_${p}`]);
+        const nationalCritical = row._national && isMosCritical(row._national.mos);
+        return (relevant.some(v => v && isMosCritical(v.mos)) || nationalCritical) ? "row-critical" : "";
+      }
+    );
+
+  setTimeout(() => {
+    const tCsv  = document.getElementById("mos-table-dl-csv");
+    const tXlsx = document.getElementById("mos-table-dl-xlsx");
+    if (tCsv)  tCsv.onclick  = () => downloadCSV(exportRows,   exportCols, "mos_by_plant.csv");
+    if (tXlsx) tXlsx.onclick = () => downloadExcel(exportRows, exportCols, "mos_by_plant.xlsx");
+  }, 0);
 
   // ── EXPORT ────────────────────────────────────────────────────────────────────
   const exportRows = scored.flatMap(r =>
