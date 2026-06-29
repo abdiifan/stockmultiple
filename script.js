@@ -17,23 +17,13 @@ const REQUIRED_COLUMNS = [
 
 const COLORWAY = ["#3a8fd4","#2e9e5a","#c47f17","#d94040","#8763cc","#5cbfdb","#4db87a","#e09b2d","#e86060","#a78bde","#59b8f5","#70ce94"];
 
-// PLOTLY_LAYOUT uses CSS vars read at call time via getPlotlyThemeColors() inside
-// the pl() helper below. The constant here is a structural template only — never
-// use it directly for charts. Always call pl({...overrides}) so colors update
-// correctly on dark/light theme switch.
-const PLOTLY_LAYOUT = {
-  paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
-  font: { family: "Inter, IBM Plex Sans, sans-serif", size: 12 },
-  xaxis: { gridcolor: "var(--border,#1e2e3d)", zerolinecolor: "var(--border,#1e2e3d)" },
-  yaxis: { gridcolor: "var(--border,#1e2e3d)", zerolinecolor: "var(--border,#1e2e3d)" },
-  legend: { bgcolor: "rgba(0,0,0,0)" },
-  margin: { l: 20, r: 20, t: 40, b: 40 },
-  colorway: COLORWAY,
-};
-const PLOTLY_CONFIG = { displayModeBar: false, responsive: true };
+// PLOTLY_LAYOUT and PLOTLY_CONFIG are defined below after getPlotlyThemeColors().
+
+const PLOTLY_CONFIG_STATIC = { displayModeBar: false, responsive: true };
 
 // NOTE: Exclusion rules (isNonMedicalCode, isNonMedicalGroup) are loaded from
 // filters.js which MUST be included before this script in the HTML.
+function injectDlButtons(rowId, onCsv, onXlsx) {
   const row = document.getElementById(rowId);
   if (!row) return;
   row.innerHTML = '<button class="dl-btn">⬇ CSV</button><button class="dl-btn">⬇ Excel</button>';
