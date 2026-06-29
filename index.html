@@ -54,9 +54,11 @@
     <button class="nav-btn" data-page="concentration">
       <span class="nav-icon">🎯</span> Stock Concentration
     </button>
-    <div class="nav-label" style="margin-top:0.75rem">AMC Analysis</div>
     <button class="nav-btn" data-page="mos-plant">
       <span class="nav-icon">📐</span> MOS by Plant
+    </button>
+    <button class="nav-btn" data-page="expiry-risk">
+      <span class="nav-icon">🧯</span> Overstock &amp; Expiry Risk
     </button>
   </nav>
 
@@ -408,6 +410,54 @@
     </div>
   </section>
 
+  <!-- ── OVERSTOCK & EXPIRY RISK ── -->
+  <section id="page-expiry-risk" class="page" style="display:none">
+    <div class="page-header-row">
+      <div>
+        <div class="page-title">🧯 Overstock &amp; Expiry Risk Analysis</div>
+        <div class="page-subtitle">Stock that will outlive its shelf life before it can be consumed — with a redistribution plan, and what's left for private sale afterward</div>
+      </div>
+      <div id="exprisk-dl-row" style="display:flex;gap:0.6rem"></div>
+    </div>
+    <div id="exprisk-no-data" class="alert-info" style="margin-bottom:1rem">Upload the <b>main inventory Excel</b> and <b>AMC.xlsx</b> (📐 AMC upload in the sidebar) to enable this analysis.</div>
+    <div id="exprisk-content" style="display:none">
+      <div class="alert-info" style="margin-bottom:1rem;font-size:0.8rem">
+        <b>ℹ️ How risk is measured:</b> for each plant + item, <b>Months of Stock (MOS)</b> = stock-on-hand ÷ AMC (HO01 uses total branch demand — see MOS by Plant).
+        <b>Shelf-life remaining</b> = months until the earliest-expiring batch at that plant expires.
+        An item is <b>at risk</b> when MOS &gt; shelf-life-remaining — there's more stock than can be sold/used before it goes out of date.
+        The <b>at-risk quantity</b> is only the excess: stock-on-hand minus what could realistically be consumed in time (shelf-life-remaining × AMC).
+      </div>
+      <div class="filter-bar" style="gap:0.6rem;flex-wrap:wrap;align-items:center">
+        <input id="exprisk-search" type="text" placeholder="Search material…" style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:0.82rem;min-width:220px"/>
+        <select id="exprisk-plant" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:0.82rem">
+          <option value="">All Plants</option>
+        </select>
+        <select id="exprisk-type" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:0.82rem">
+          <option value="">All Types</option>
+          <option value="ZME">ZME (Medicines)</option>
+          <option value="ZMS">ZMS (Medical Supplies)</option>
+        </select>
+        <button class="apply-btn small" id="exprisk-apply">Apply</button>
+        <button class="apply-btn secondary small" id="exprisk-clear">Clear</button>
+      </div>
+      <div class="kpi-row" id="exprisk-kpis-before" style="margin:1rem 0"></div>
+
+      <div class="section-header">📉 Expiry Risk Before Redistribution</div>
+      <div class="chart-box full"><div id="chart-exprisk-before" style="min-height:320px"></div></div>
+      <div class="section-header" style="margin-top:1rem">📋 At-Risk Detail (Before Redistribution)</div>
+      <div id="exprisk-table-before"></div>
+
+      <div class="section-header" style="margin-top:1.8rem">🔄 Suggested Redistribution Plan</div>
+      <div class="alert-warning" style="margin-bottom:0.8rem;font-size:0.78rem">⚠️ Stock is moved from at-risk plants (including HO01) to plants that can use it before their own shelf-life runs out. <b>HO01 never receives stock</b> in this plan — it's the source, never the destination.</div>
+      <div id="exprisk-redist-table"></div>
+
+      <div class="section-header" style="margin-top:1.8rem">🏷️ Residual Risk After Redistribution — For Marketing / Private Sale</div>
+      <div class="alert-danger" style="margin-bottom:0.8rem;font-size:0.78rem">This is stock that has nowhere to go in the network before it expires — no plant could absorb it without becoming at-risk itself. Candidate for private sale, discount channels, or donation, pending expiry date review.</div>
+      <div class="kpi-row" id="exprisk-kpis-after" style="margin:1rem 0"></div>
+      <div id="exprisk-table-after"></div>
+    </div>
+  </section>
+
 </main>
 
 <script>
@@ -480,6 +530,7 @@
 <script src="filters.js" defer></script>
 <script src="script.js" defer></script>
 <script src="mos.js" defer></script>
+<script src="expiry-risk.js" defer></script>
 <script>
 // ── TAB SWITCHING (Transit + QC) ─────────────────────────────
 document.addEventListener("DOMContentLoaded", function() {
