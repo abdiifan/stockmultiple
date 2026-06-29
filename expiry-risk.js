@@ -106,31 +106,51 @@ function buildRiskSnapshot(typeFilter, searchQ, plantFilter) {
 
     for (const pm of plantMos) {
       if (plantFilter && pm.plant !== plantFilter) continue;
-      if (pm.amc === null) continue; // not committed at this plant — no basis for risk
-      if (!pm.soh || pm.soh <= 0) continue; // nothing on hand, nothing to risk
+      // Include ghost-stock rows (amc null, soh > 0) — they carry real product
+      // that WILL expire. Without a consumption plan the entire SOH is at risk.
+      // Only skip when there is genuinely no stock at this plant.
+      if (!pm.soh || pm.soh <= 0) continue;
 
       const expEntry    = expiryMap.get(r.code)?.[pm.plant] || null;
       const shelfLeftMo  = expEntry ? monthsUntil(expEntry.expiry, today) : null;
       const unitVal      = unitValueFor(expEntry);
 
-      // Need both a real MOS and a real shelf-life date to judge risk.
-      if (shelfLeftMo === null || pm.mos === null || pm.mos === Infinity) continue;
+      // Need a shelf-life date to judge expiry risk.
+      // For ghost-stock (amc null): mos = Infinity → the whole SOH is at risk.
+      if (shelfLeftMo === null) continue;
 
-      const atRisk    = pm.mos > shelfLeftMo;
-      const safeQty    = Math.max(0, shelfLeftMo) * pm.amc; // qty consumable before expiry
-      const atRiskQty  = atRisk ? Math.max(0, pm.soh - safeQty) : 0;
-      const atRiskVal  = atRiskQty * unitVal;
+      const isGhost   = pm.amc === null;           // no AMC commitment
+      const effectiveMos = isGhost ? Infinity : pm.mos;
+
+      // Skip if mos is finite and well within shelf life (no risk)
+      if (effectiveMos !== null && effectiveMos !== Infinity && effectiveMos <= shelfLeftMo) {
+        // Still push so it appears in the "safe" pool for redistribution headroom calc
+        const safeQty = Math.max(0, shelfLeftMo) * (pm.amc || 0);
+        out.push({
+          code: r.code, desc: r.desc, type: r.type,
+          isMerged: r.isMerged, origCodes: r.origCodes,
+          plant: pm.plant, isHub: pm.isHub, isGhost,
+          soh: pm.soh, amc: pm.amc, mos: effectiveMos,
+          shelfLeftMo, unitVal,
+          atRisk: false, atRiskQty: 0, atRiskVal: 0,
+          headroom: Math.max(0, safeQty - pm.soh),
+        });
+        continue;
+      }
+
+      // Item is at risk (mos > shelfLeftMo, or mos === Infinity i.e. ghost stock)
+      const safeQty   = isGhost ? 0 : Math.max(0, shelfLeftMo) * (pm.amc || 0); // ghost: nothing consumable
+      const atRiskQty = Math.max(0, pm.soh - safeQty);
+      const atRiskVal = atRiskQty * unitVal;
 
       out.push({
         code: r.code, desc: r.desc, type: r.type,
         isMerged: r.isMerged, origCodes: r.origCodes,
-        plant: pm.plant, isHub: pm.isHub,
-        soh: pm.soh, amc: pm.amc, mos: pm.mos,
+        plant: pm.plant, isHub: pm.isHub, isGhost,
+        soh: pm.soh, amc: pm.amc, mos: effectiveMos,
         shelfLeftMo, unitVal,
-        atRisk, atRiskQty, atRiskVal,
-        // headroom = how much MORE this plant could safely receive without
-        // becoming at-risk itself (used as a recipient in redistribution)
-        headroom: atRisk ? 0 : Math.max(0, safeQty - pm.soh),
+        atRisk: atRiskQty > 0, atRiskQty, atRiskVal,
+        headroom: 0,
       });
     }
   }
@@ -352,10 +372,20 @@ async function renderExpiryRisk() {
     { key: "type", label: "Type" },
     { key: "plant", label: "Plant", fmt: (v, r) => r.isHub ? `<b>${escHtml(v)}</b> <span style="font-size:0.75em;color:var(--purple)">(Hub)</span>` : escHtml(v), raw: true },
     { key: "soh", label: "SOH", fmt: fmtQty },
-    { key: "amc", label: r => "AMC", fmt: (v, r) => `${fmtQty(v)}${r.isHub ? ' <span style="font-size:0.7em;color:var(--muted)">(Σ branch)</span>' : ""}`, raw: true },
-    { key: "mos", label: "MOS", fmt: v => `<b>${v.toFixed(1)}</b> mo` , raw:true },
+    { key: "amc", label: "AMC",
+      fmt: (v, r) => {
+        if (r.isGhost || v === null) return `<span class="amc-soh-only-badge" title="No AMC commitment — entire SOH is at risk of expiry">No AMC</span>`;
+        return `${fmtQty(v)}${r.isHub ? ' <span style="font-size:0.7em;color:var(--muted)">(Σ branch)</span>' : ""}`;
+      }, raw: true },
+    { key: "mos", label: "MOS",
+      fmt: (v, r) => (r.isGhost || v === Infinity)
+        ? `<span style="color:var(--amber);font-weight:700" title="No consumption plan — stock will not be drawn down">∞ mo</span>`
+        : `<b>${Number(v).toFixed(1)}</b> mo`,
+      raw: true },
     { key: "shelfLeftMo", label: "Shelf Life Left", fmt: v => v < 0 ? `<b style="color:var(--red)">EXPIRED</b>` : `<b>${v.toFixed(1)}</b> mo`, raw: true },
-    { key: "atRiskQty", label: "At-Risk Qty", fmt: v => `<b style="color:var(--red)">${fmtQty(v)}</b>`, raw: true },
+    { key: "atRiskQty", label: "At-Risk Qty", fmt: (v, r) => r.isGhost
+        ? `<b style="color:var(--red)">${fmtQty(r.soh)}</b> <span style="font-size:0.7em;color:var(--amber)">(all SOH)</span>`
+        : `<b style="color:var(--red)">${fmtQty(v)}</b>`, raw: true },
     { key: "atRiskVal", label: "At-Risk Value", fmt: v => `<b style="color:var(--red)">${fmtETB(v)}</b>`, raw: true },
   ];
   document.getElementById("exprisk-table-before").innerHTML = buildTable(
