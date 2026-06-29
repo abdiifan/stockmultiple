@@ -388,9 +388,27 @@ async function renderExpiryRisk() {
         : `<b style="color:var(--red)">${fmtQty(v)}</b>`, raw: true },
     { key: "atRiskVal", label: "At-Risk Value", fmt: v => `<b style="color:var(--red)">${fmtETB(v)}</b>`, raw: true },
   ];
-  document.getElementById("exprisk-table-before").innerHTML = buildTable(
-    [...atRiskBefore].sort((a,b)=>b.atRiskVal-a.atRiskVal), beforeCols, () => ""
-  );
+  const sortedBefore = [...atRiskBefore].sort((a,b)=>b.atRiskVal-a.atRiskVal);
+  document.getElementById("exprisk-table-before").innerHTML =
+    '<div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-bottom:0.5rem">' +
+    '<button class="dl-btn" id="exprisk-before-dl-csv">⬇ CSV</button>' +
+    '<button class="dl-btn" id="exprisk-before-dl-xlsx">⬇ Excel</button></div>' +
+    buildTable(sortedBefore, beforeCols, () => "");
+
+  const beforeExportCols = [
+    { key: "code", label: "Material Code" }, { key: "desc", label: "Description" },
+    { key: "type", label: "Type" }, { key: "plant", label: "Plant" },
+    { key: "soh", label: "SOH (units)" }, { key: "amc", label: "AMC" },
+    { key: "mos", label: "MOS (months)", fmt: v => v === Infinity || v === null ? "" : Number(v).toFixed(1) },
+    { key: "shelfLeftMo", label: "Shelf Life Left (months)", fmt: v => v === null ? "" : Number(v).toFixed(1) },
+    { key: "atRiskQty", label: "At-Risk Qty" }, { key: "atRiskVal", label: "At-Risk Value (ETB)" },
+  ];
+  setTimeout(() => {
+    const bCsv  = document.getElementById("exprisk-before-dl-csv");
+    const bXlsx = document.getElementById("exprisk-before-dl-xlsx");
+    if (bCsv)  bCsv.onclick  = () => downloadCSV(sortedBefore,   beforeExportCols, "expiry_risk_before.csv");
+    if (bXlsx) bXlsx.onclick = () => downloadExcel(sortedBefore, beforeExportCols, "expiry_risk_before.xlsx");
+  }, 0);
 
   // ── REDISTRIBUTION (always computed on the FULL unfiltered snapshot, so the
   //    plan is correct regardless of the plant filter applied to the view) ──────
@@ -409,9 +427,29 @@ async function renderExpiryRisk() {
     { key: "toMosAfter", label: "Recipient MOS After", fmt: v => v===null ? "—" : `${v.toFixed(1)} mo`, raw: true },
     { key: "toShelfLeftMo", label: "Recipient Shelf Life", fmt: v => `${v.toFixed(1)} mo`, raw: true },
   ];
+  const redistExportCols = [
+    { key: "code", label: "Material Code" }, { key: "desc", label: "Description" },
+    { key: "fromPlant", label: "From Plant" }, { key: "toPlant", label: "To Plant" },
+    { key: "qty", label: "Transfer Qty" }, { key: "val", label: "Transfer Value (ETB)" },
+    { key: "toMosAfter", label: "Recipient MOS After (months)", fmt: v => v===null ? "" : Number(v).toFixed(1) },
+    { key: "toShelfLeftMo", label: "Recipient Shelf Life (months)", fmt: v => Number(v).toFixed(1) },
+  ];
+  const sortedTransfers = [...visTransfers].sort((a,b)=>b.val-a.val);
   document.getElementById("exprisk-redist-table").innerHTML = visTransfers.length
-    ? buildTable([...visTransfers].sort((a,b)=>b.val-a.val), redistCols, () => "")
+    ? '<div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-bottom:0.5rem">' +
+      '<button class="dl-btn" id="exprisk-redist-dl-csv">⬇ CSV</button>' +
+      '<button class="dl-btn" id="exprisk-redist-dl-xlsx">⬇ Excel</button></div>' +
+      buildTable(sortedTransfers, redistCols, () => "")
     : '<div class="alert-info" style="margin:0.5rem 0">No eligible transfers found — either nothing is at risk, or no recipient plant has safe headroom for the at-risk items.</div>';
+
+  if (visTransfers.length) {
+    setTimeout(() => {
+      const rCsv  = document.getElementById("exprisk-redist-dl-csv");
+      const rXlsx = document.getElementById("exprisk-redist-dl-xlsx");
+      if (rCsv)  rCsv.onclick  = () => downloadCSV(sortedTransfers,   redistExportCols, "redistribution_plan.csv");
+      if (rXlsx) rXlsx.onclick = () => downloadExcel(sortedTransfers, redistExportCols, "redistribution_plan.xlsx");
+    }, 0);
+  }
 
   // ── RESIDUAL (AFTER redistribution) — for marketing director ──────────────────
   // Exclude rows where Residual Qty is zero (or negligibly small due to float
@@ -443,11 +481,6 @@ async function renderExpiryRisk() {
     { key: "val", label: "Residual Value", fmt: v => `<b style="color:var(--red)">${fmtETB(v)}</b>`, raw: true },
     { key: "unitVal", label: "Unit Value", fmt: v => fmtETB(v) },
   ];
-  document.getElementById("exprisk-table-after").innerHTML = visResidual.length
-    ? buildTable([...visResidual].sort((a,b)=>b.val-a.val), afterCols, () => "")
-    : '<div class="alert-info" style="margin:0.5rem 0">✓ Nothing left over — redistribution fully resolves the at-risk stock for the current filters.</div>';
-
-  // ── EXPORT (export the marketing-director residual list, the most actionable one) ──
   const exportCols = [
     { key: "code", label: "Material Code" }, { key: "desc", label: "Description" }, { key: "type", label: "Type" },
     { key: "plant", label: "Plant" }, { key: "isHub", label: "Hub Plant?", fmt: v => v ? "Yes" : "No" },
@@ -455,11 +488,29 @@ async function renderExpiryRisk() {
     { key: "val", label: "Residual Value (ETB)", fmt: v => Number(v).toFixed(2) },
     { key: "unitVal", label: "Unit Value (ETB)", fmt: v => Number(v).toFixed(2) },
   ];
+  const sortedResidual = [...visResidual].sort((a,b)=>b.val-a.val);
+  document.getElementById("exprisk-table-after").innerHTML = visResidual.length
+    ? '<div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-bottom:0.5rem">' +
+      '<button class="dl-btn" id="exprisk-after-dl-csv">⬇ CSV</button>' +
+      '<button class="dl-btn" id="exprisk-after-dl-xlsx">⬇ Excel</button></div>' +
+      buildTable(sortedResidual, afterCols, () => "")
+    : '<div class="alert-info" style="margin:0.5rem 0">✓ Nothing left over — redistribution fully resolves the at-risk stock for the current filters.</div>';
+
+  if (visResidual.length) {
+    setTimeout(() => {
+      const aCsv  = document.getElementById("exprisk-after-dl-csv");
+      const aXlsx = document.getElementById("exprisk-after-dl-xlsx");
+      if (aCsv)  aCsv.onclick  = () => downloadCSV(sortedResidual,   exportCols, "expiry_risk_residual_for_marketing.csv");
+      if (aXlsx) aXlsx.onclick = () => downloadExcel(sortedResidual, exportCols, "expiry_risk_residual_for_marketing.xlsx");
+    }, 0);
+  }
+
+  // ── PAGE-LEVEL EXPORT (header row — mirrors the residual tab, most actionable) ──
   const dlRow = document.getElementById("exprisk-dl-row");
   if (dlRow) {
     dlRow.innerHTML = '<button class="dl-btn">⬇ CSV</button><button class="dl-btn">⬇ Excel</button>';
-    dlRow.querySelectorAll(".dl-btn")[0].onclick = () => downloadCSV(visResidual,   exportCols, "expiry_risk_residual_for_marketing.csv");
-    dlRow.querySelectorAll(".dl-btn")[1].onclick = () => downloadExcel(visResidual, exportCols, "expiry_risk_residual_for_marketing.xlsx");
+    dlRow.querySelectorAll(".dl-btn")[0].onclick = () => downloadCSV(sortedResidual,   exportCols, "expiry_risk_residual_for_marketing.csv");
+    dlRow.querySelectorAll(".dl-btn")[1].onclick = () => downloadExcel(sortedResidual, exportCols, "expiry_risk_residual_for_marketing.xlsx");
   }
 }
 
