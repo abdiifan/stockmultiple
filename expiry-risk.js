@@ -274,23 +274,66 @@ async function renderExpiryRisk() {
     exprKpiCard(`${HUB_PLANT} Share`, fmtQty(hubAtRiskBefore.reduce((s,r)=>s+r.atRiskQty,0)), `${hubAtRiskBefore.length} hub item(s) at risk`, "purple"),
   ]);
 
-  // ── CHART: BEFORE — top 20 at-risk plant-item pairs by value ──────────────────
-  const top20Before = [...atRiskBefore].sort((a,b) => b.atRiskVal - a.atRiskVal).slice(0, 20);
-  if (top20Before.length) {
-    Plotly.newPlot("chart-exprisk-before", [{
-      type: "bar", orientation: "h",
-      x: top20Before.map(r => r.atRiskVal).reverse(),
-      y: top20Before.map(r => `${r.desc.length>32?r.desc.slice(0,32)+"…":r.desc} @ ${r.plant}`).reverse(),
-      marker: { color: top20Before.map(r => r.isHub ? "#8763cc" : "#f85149").reverse() },
-      text: top20Before.map(r => `${fmtQty(r.atRiskQty)} units`).reverse(),
-      textposition: "outside", textfont: { size: 9 },
-      hovertemplate: "<b>%{y}</b><br>At-risk value: ETB %{x:,.0f}<extra></extra>",
-    }], {
+  // ── CHART: BEFORE — items at risk aggregated across all plants (line chart) ──
+  // Collapse plant-level rows into one entry per material (sum qty & val, keep
+  // earliest shelf-life and worst MOS so the line reflects the true item-level risk).
+  const itemRiskMap = new Map();
+  for (const r of atRiskBefore) {
+    if (!itemRiskMap.has(r.code)) {
+      itemRiskMap.set(r.code, { code: r.code, desc: r.desc, atRiskQty: 0, atRiskVal: 0,
+        shelfLeftMo: r.shelfLeftMo, mos: r.mos });
+    }
+    const e = itemRiskMap.get(r.code);
+    e.atRiskQty  += r.atRiskQty;
+    e.atRiskVal  += r.atRiskVal;
+    // Worst-case shelf life (minimum across plants)
+    if (r.shelfLeftMo !== null && (e.shelfLeftMo === null || r.shelfLeftMo < e.shelfLeftMo))
+      e.shelfLeftMo = r.shelfLeftMo;
+    // Highest MOS (most overstocked plant drives the risk score)
+    if (r.mos !== null && (e.mos === null || r.mos > e.mos)) e.mos = r.mos;
+  }
+  const itemRiskArr = [...itemRiskMap.values()]
+    .sort((a, b) => b.atRiskVal - a.atRiskVal)
+    .slice(0, 30);
+
+  if (itemRiskArr.length) {
+    const labels = itemRiskArr.map(r => r.desc.length > 36 ? r.desc.slice(0, 36) + "…" : r.desc);
+    Plotly.newPlot("chart-exprisk-before", [
+      {
+        // At-risk VALUE line (primary axis)
+        type: "scatter", mode: "lines+markers",
+        name: "At-Risk Value (ETB)",
+        x: labels,
+        y: itemRiskArr.map(r => r.atRiskVal),
+        line: { color: "#f85149", width: 2.5 },
+        marker: { color: "#f85149", size: 7 },
+        hovertemplate: "<b>%{x}</b><br>At-risk value: ETB %{y:,.0f}<extra></extra>",
+        yaxis: "y",
+      },
+      {
+        // At-risk QTY line (secondary axis)
+        type: "scatter", mode: "lines+markers",
+        name: "At-Risk Qty (units)",
+        x: labels,
+        y: itemRiskArr.map(r => r.atRiskQty),
+        line: { color: "#ffa657", width: 2, dash: "dot" },
+        marker: { color: "#ffa657", size: 6 },
+        hovertemplate: "<b>%{x}</b><br>At-risk qty: %{y:,.0f} units<extra></extra>",
+        yaxis: "y2",
+      },
+    ], {
       ...PLOTLY_LAYOUT,
-      height: Math.max(320, top20Before.length * 24 + 80),
-      margin: { l: 260, r: 100, t: 20, b: 40 },
-      xaxis: { title: "At-Risk Value (ETB)" },
-      yaxis: { tickfont: { size: 10 } },
+      height: 360,
+      margin: { l: 60, r: 70, t: 24, b: 130 },
+      xaxis: {
+        tickangle: -38,
+        tickfont: { size: 9.5 },
+        showgrid: false,
+      },
+      yaxis:  { title: "At-Risk Value (ETB)", titlefont: { color: "#f85149" }, tickfont: { color: "#f85149" } },
+      yaxis2: { title: "At-Risk Qty", titlefont: { color: "#ffa657" }, tickfont: { color: "#ffa657" },
+                overlaying: "y", side: "right", showgrid: false },
+      legend: { orientation: "h", y: 1.12, x: 0 },
       paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
     }, PLOTLY_CONFIG);
   } else {
