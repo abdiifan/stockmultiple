@@ -147,9 +147,6 @@
     <button class="nav-btn" data-page="concentration">
       <span class="nav-icon">🎯</span> Stock Concentration
     </button>
-    <button class="nav-btn" data-page="mos-plant">
-      <span class="nav-icon">📐</span> MOS by Plant
-    </button>
     <button class="nav-btn" data-page="expiry-risk">
       <span class="nav-icon">🧯</span> Overstock &amp; Expiry Risk
     </button>
@@ -171,14 +168,6 @@
   </label>
   <div id="mappingFileStatus"></div>
 
-  <div class="sidebar-divider"></div>
-  <div class="upload-label">📐 AMC (for MOS)</div>
-  <label class="upload-btn" style="background:var(--card-bg);border:1.5px solid var(--blue)" for="mosAmcFileInput">
-    <span id="mosAmcUploadBtnText">📐 Upload AMC.xlsx</span>
-    <input type="file" id="mosAmcFileInput" accept=".xlsx,.xls" />
-  </label>
-  <div id="mosAmcFileStatus"></div>
-
 </aside>
 
 <!-- Theme Toggle -->
@@ -197,6 +186,16 @@
   <div id="landingView">
     <div class="landing-logo"><img src="epss-logo.png" alt="EPSS Logo" /></div>
     <h1 class="landing-title">Stock-MultipleTrack</h1>
+    <p class="landing-desc">
+      Upload your pharmaceutical inventory Excel file from the sidebar to begin analysis.<br/>
+      All values are displayed in <strong style="color:var(--blue)">Ethiopian Birr (ETB)</strong>.
+    </p>
+    <div class="landing-features">
+
+      <div class="feature-chip">⏰ Expiry Watchlist</div>
+      <div class="feature-chip">🔬 QC Inspection</div>
+      <div class="feature-chip">🏢 Branch Compare</div>
+    </div>
   </div>
 
   <div id="errorBanner" class="alert-danger" style="display:none"></div>
@@ -374,18 +373,9 @@
       <div class="section-header">QC Quantity &amp; Value by Plant</div>
       <div id="chart-qc-plant"></div>
     </div>
-    <!-- QC Tab Bar -->
-    <div class="qc-tab-bar" style="display:flex;gap:0.5rem;margin-top:1.5rem;margin-bottom:0;border-bottom:2px solid var(--border2);overflow-x:auto;-webkit-overflow-scrolling:touch">
-      <button class="qc-tab-btn" data-tab="items" style="padding:0.5rem 1.1rem;border:none;border-bottom:2px solid var(--blue);background:transparent;color:var(--blue);font-weight:700;font-size:0.82rem;cursor:pointer;margin-bottom:-2px;font-family:inherit;white-space:nowrap;flex-shrink:0">📋 Detailed QC Items</button>
-      <button class="qc-tab-btn" data-tab="days"  style="padding:0.5rem 1.1rem;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);font-weight:500;font-size:0.82rem;cursor:pointer;margin-bottom:-2px;font-family:inherit;white-space:nowrap;flex-shrink:0">⏱ Days in Quality</button>
-    </div>
-    <div id="qc-tab-items" class="qc-tab-panel" style="display:block;padding-top:1rem">
+    <div style="padding-top:1rem">
       <div id="qc-dl-row" style="display:flex;gap:0.6rem;justify-content:flex-end;margin-bottom:0.5rem"></div>
       <div id="qc-table-wrap"></div>
-    </div>
-    <div id="qc-tab-days" class="qc-tab-panel" style="display:none;padding-top:1rem">
-      <div id="qc-days-dl-row" style="display:flex;gap:0.6rem;justify-content:flex-end;margin-bottom:0.5rem"></div>
-      <div id="qc-days-wrap"></div>
     </div>
   </section>
 
@@ -455,47 +445,6 @@
         <div class="conc-chart-sub" style="margin-bottom:0.9rem">How many distinct plants hold each material (unrestricted stock only)</div>
         <div id="chart-conc-spread" style="min-height:260px;flex:1"></div>
       </div>
-    </div>
-  </section>
-
-  <!-- ── MOS BY PLANT ── -->
-  <section id="page-mos-plant" class="page" style="display:none">
-    <div class="page-header-row">
-      <div>
-        <div class="page-title">📐 Months of Stock (MOS) by Plant</div>
-        <div class="page-subtitle">Stock-on-hand ÷ consumption, per plant. HO01 is the distribution hub — it has no consumption of its own, so its MOS is calculated against total branch demand.</div>
-      </div>
-      <div id="mos-dl-row" style="display:flex;gap:0.6rem"></div>
-    </div>
-    <div id="mos-no-amc" class="alert-info" style="margin-bottom:1rem">Upload <b>AMC.xlsx</b> using the <b>📐 Upload AMC.xlsx</b> button in the sidebar to enable MOS analysis.</div>
-    <div id="mos-content" style="display:none">
-      <div class="alert-info" style="margin-bottom:1rem;font-size:0.8rem">
-        <b>ℹ️ HO01 (Hub) MOS rule:</b> HO01 distributes stock to all branch plants and does not consume it directly.
-        For HO01, MOS = HO01's stock-on-hand ÷ the <b>sum of every branch plant's AMC</b> for that item — i.e. how many months HO01 can keep supplying the entire network at current demand.
-        For every other plant, MOS = that plant's stock-on-hand ÷ its own AMC.
-      </div>
-      <div class="filter-bar" style="gap:0.6rem;flex-wrap:wrap;align-items:center">
-        <input id="mos-search" type="text" placeholder="Search material…" style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:0.82rem;min-width:220px"/>
-        <select id="mos-plant-filter" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:0.82rem">
-          <option value="">All Plants</option>
-        </select>
-        <select id="mos-type" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:0.82rem">
-          <option value="">All Types</option>
-          <option value="ZME">ZME (Medicines)</option>
-          <option value="ZMS">ZMS (Medical Supplies)</option>
-        </select>
-        <label style="font-size:0.78rem;color:var(--muted);display:flex;align-items:center;gap:0.3rem">
-          <input type="checkbox" id="mos-critical-only" /> Critical only (&lt; 1 month)
-        </label>
-        <span class="filter-bar-divider"></span><span class="person-filter-chip" id="pf-chip-mos"><select id="global-person-filter-mos" class="person-filter-select" title="Filter by person assigned"><option value="">👤 All Persons</option></select><button type="button" class="person-filter-clear" id="pf-clear-mos" title="Clear person filter">✕</button></span>
-        <button class="apply-btn small" id="mos-apply">Apply</button>
-        <button class="apply-btn secondary small" id="mos-clear">Clear</button>
-      </div>
-      <div class="kpi-row" id="mos-kpis" style="margin:1rem 0"></div>
-      <div class="section-header">📊 MOS by Plant — Overview</div>
-      <div class="chart-box full"><div id="chart-mos-plant" style="min-height:320px"></div></div>
-      <div class="section-header" style="margin-top:1.5rem">📋 MOS Detail Table</div>
-      <div id="mos-table"></div>
     </div>
   </section>
 
@@ -641,7 +590,7 @@
 // Convention: tab buttons carry class "{prefix}-tab-btn" and data-tab="{id}".
 //             tab panels carry class "{prefix}-tab-panel" and id="{prefix}-tab-{id}".
 document.addEventListener("DOMContentLoaded", function () {
-  const TAB_PREFIXES = ["transit", "qc", "exprisk"];
+  const TAB_PREFIXES = ["transit", "exprisk"];
 
   document.addEventListener("click", function (e) {
     for (const prefix of TAB_PREFIXES) {
