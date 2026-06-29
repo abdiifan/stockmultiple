@@ -521,33 +521,10 @@ function mosKpiRow(cards) {
   if (el) el.innerHTML = cards.join("");
 }
 
-// ── WIRE INTO PAGE_RENDERERS AND EVENT LISTENERS ──────────────────────────────
+// ── WIRE INTO BRANCH COMPARISON TAB ──────────────────────────────────────────
 (function wireMosModule() {
   function extend() {
-    if (typeof PAGE_RENDERERS !== "undefined") {
-      PAGE_RENDERERS["mos-plant"] = renderMosPlant;
-    }
-
-    // Allow this page to render even before the main inventory file is loaded,
-    // same pattern used by the old AMC module — renderPage() normally bails
-    // out early when rawDf is empty.
-    const _origRenderPage = window.renderPage;
-    window.renderPage = function (id) {
-      if (id === "mos-plant") {
-        currentPage = id;
-        document.getElementById("landingView").style.display = "none";
-        document.querySelectorAll(".page").forEach(el => { el.style.display = "none"; });
-        const pg = document.getElementById("page-mos-plant");
-        if (pg) pg.style.display = "block";
-        document.querySelectorAll(".nav-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.page === id));
-        if (mosMerged.length) {
-          try { renderMosPlant(); } catch (e) { console.error(e); }
-        }
-        return;
-      }
-      _origRenderPage(id);
-    };
-
+    // Wire the AMC file input (still in sidebar)
     const amcInput = document.getElementById("mosAmcFileInput");
     if (amcInput) {
       amcInput.addEventListener("change", e => {
@@ -556,6 +533,7 @@ function mosKpiRow(cards) {
       });
     }
 
+    // Filter button listeners — delegated so they work after branch tab renders the DOM
     const filterMap = {
       "mos-apply": renderMosPlant,
       "mos-clear": () => {
@@ -574,25 +552,28 @@ function mosKpiRow(cards) {
       if (fn) { e.stopPropagation(); fn(); }
     }, true);
 
-    // Recompute SOH-driven values whenever the main inventory file finishes
-    // loading (rawDf changes) and the user is already on this page.
+    // Re-render MOS when main inventory file changes (if MOS tab is visible)
     const fileInput = document.getElementById("fileInput");
     if (fileInput) {
       fileInput.addEventListener("change", () => {
         setTimeout(() => {
-          if (currentPage === "mos-plant" && mosMerged.length) renderMosPlant();
+          const mosTab = document.getElementById("branch-tab-mos");
+          if (mosMerged.length && mosTab && mosTab.style.display !== "none") {
+            try { renderMosPlant(); } catch (e) { console.error(e); }
+          }
         }, 300);
       });
     }
 
-    // Rebuild mosMerged when the mapping file changes, like the old AMC module did.
+    // Rebuild mosMerged when the mapping file changes
     const _origApplyMapping = window.applyMaterialMapping;
     if (_origApplyMapping) {
       window.applyMaterialMapping = function () {
         _origApplyMapping.apply(this, arguments);
         if (mosAmcRaw.length) {
           mosMerged = buildMosMerged();
-          if (currentPage === "mos-plant") {
+          const mosTab = document.getElementById("branch-tab-mos");
+          if (mosTab && mosTab.style.display !== "none") {
             try { renderMosPlant(); } catch (e) {}
           }
         }
