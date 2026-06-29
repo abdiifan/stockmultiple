@@ -2093,6 +2093,17 @@ function renderBranch() {
     </div>`;
   document.getElementById("branch-tabs-wrap").innerHTML = tabsHtml;
 
+
+  // Restore mos panel visibility if AMC already loaded before Branch tab opened
+  const _noAmc  = document.getElementById("mos-no-amc");
+  const _mosCnt = document.getElementById("mos-content");
+  if (typeof mosMerged !== "undefined" && mosMerged.length > 0) {
+    if (_noAmc)  _noAmc.style.display  = "none";
+    if (_mosCnt) _mosCnt.style.display = "block";
+  } else {
+    if (_noAmc)  _noAmc.style.display  = "block";
+    if (_mosCnt) _mosCnt.style.display = "none";
+  }
   // ── Branch tab switcher ───────────────────────────────────────────────────
   document.querySelectorAll(".branch-tab-btn").forEach(btn => {
     btn.addEventListener("click", () => {
