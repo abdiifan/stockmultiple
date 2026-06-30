@@ -37,6 +37,13 @@
 // =============================================================================
 
 // ── NATIONAL SHELF-LIFE LOOKUP (qty-weighted avg months-to-expiry per material) ──
+// Batches with LESS THAN 6 months remaining are excluded from the average
+// entirely (not counted in either the numerator or denominator) — a
+// near-expiry batch shouldn't drag down the shelf-life figure for a material
+// that's mostly long-dated stock. If a material has NO batch with >= 6 months
+// remaining, its shelf life is reported as 0 (per product decision), not N/A.
+const NATL_SHELF_LIFE_FLOOR_MO = 6;
+
 function buildNatlShelfLifeMap() {
   const out  = new Map();
   const base = (typeof getReconciledBase === "function") ? getReconciledBase() : (typeof rawDf !== "undefined" ? rawDf : []);
@@ -47,7 +54,7 @@ function buildNatlShelfLifeMap() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const acc = new Map(); // code → { qtySum, weightedSum }
+  const acc = new Map(); // code → { qtySum, weightedSum, hasAnyBatch, hasQualifying }
   for (const row of base) {
     const mat = String(row._mappedMaterial || row["Material"] || "").trim();
     const qty = Number(row["Unrestricted Stock"] || 0);
@@ -55,12 +62,18 @@ function buildNatlShelfLifeMap() {
     if (!(row._expiry instanceof Date) || isNaN(row._expiry)) continue;
 
     const mo = (row._expiry.getTime() - today.getTime()) / MS_PER_DAY / DAYS_PER_MO; // can be negative if expired
-    if (!acc.has(mat)) acc.set(mat, { qtySum: 0, weightedSum: 0 });
+    if (!acc.has(mat)) acc.set(mat, { qtySum: 0, weightedSum: 0, hasAnyBatch: false });
     const e = acc.get(mat);
+    e.hasAnyBatch = true;
+
+    if (mo < NATL_SHELF_LIFE_FLOOR_MO) continue; // excluded — near-expiry batch, doesn't count toward the average
     e.qtySum      += qty;
     e.weightedSum += qty * mo;
   }
-  acc.forEach((v, k) => { out.set(k, v.qtySum > 0 ? v.weightedSum / v.qtySum : null); });
+  acc.forEach((v, k) => {
+    // No batch with >= 6mo remaining → report 0, not N/A (per product decision).
+    out.set(k, v.qtySum > 0 ? v.weightedSum / v.qtySum : (v.hasAnyBatch ? 0 : null));
+  });
   return out;
 }
 
