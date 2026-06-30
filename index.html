@@ -107,6 +107,7 @@
   <link rel="stylesheet" href="style.css" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.26.0/plotly.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -169,29 +170,32 @@
     </button>
   </nav>
 
-  <div class="sidebar-divider"></div>
-  <div class="upload-label">Data Source</div>
-  <label class="upload-btn" for="fileInput">
-    <span id="uploadBtnText">📂 Upload Inventory Excel</span>
-    <input type="file" id="fileInput" accept=".xlsx,.xls" />
-  </label>
-  <div id="fileStatus"></div>
+  <!-- Upload controls — visible to admins only; auth.js toggles this -->
+  <div id="admin-upload-section" style="display:none">
+    <div class="sidebar-divider"></div>
+    <div class="upload-label">Data Source</div>
+    <label class="upload-btn" for="fileInput">
+      <span id="uploadBtnText">📂 Upload Inventory Excel</span>
+      <input type="file" id="fileInput" accept=".xlsx,.xls" />
+    </label>
+    <div id="fileStatus"></div>
 
-  <div class="sidebar-divider"></div>
-  <div class="upload-label">⚗️ Material Standardization</div>
-  <label class="upload-btn mapping-upload-btn" for="mappingFileInput">
-    <span id="mappingUploadBtnText">🗺️ Upload Mapping Excel</span>
-    <input type="file" id="mappingFileInput" accept=".xlsx,.xls" />
-  </label>
-  <div id="mappingFileStatus"></div>
+    <div class="sidebar-divider"></div>
+    <div class="upload-label">⚗️ Material Standardization</div>
+    <label class="upload-btn mapping-upload-btn" for="mappingFileInput">
+      <span id="mappingUploadBtnText">🗺️ Upload Mapping Excel</span>
+      <input type="file" id="mappingFileInput" accept=".xlsx,.xls" />
+    </label>
+    <div id="mappingFileStatus"></div>
 
-  <div class="sidebar-divider"></div>
-  <div class="upload-label">📐 AMC (for MOS)</div>
-  <label class="upload-btn" style="background:var(--card-bg);border:1.5px solid var(--blue)" for="mosAmcFileInput">
-    <span id="mosAmcUploadBtnText">📐 Upload AMC.xlsx</span>
-    <input type="file" id="mosAmcFileInput" accept=".xlsx,.xls" />
-  </label>
-  <div id="mosAmcFileStatus"></div>
+    <div class="sidebar-divider"></div>
+    <div class="upload-label">📐 AMC (for MOS)</div>
+    <label class="upload-btn" style="background:var(--card-bg);border:1.5px solid var(--blue)" for="mosAmcFileInput">
+      <span id="mosAmcUploadBtnText">📐 Upload AMC.xlsx</span>
+      <input type="file" id="mosAmcFileInput" accept=".xlsx,.xls" />
+    </label>
+    <div id="mosAmcFileStatus"></div>
+  </div>
 
 </aside>
 
@@ -677,6 +681,8 @@
 })();
 </script>
 <!-- filters + script deferred: run after DOM is ready -->
+<script src="auth.js" defer></script>
+<script src="storage-sync.js" defer></script>
 <script src="filters.js" defer></script>
 <script src="script.js" defer></script>
 <script src="mos.js" defer></script>
