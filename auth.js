@@ -6,8 +6,8 @@
 // ════════════════════════════════════════════════════════════════
 
 // ── 1) FILL THESE IN from Supabase Dashboard → Project Settings → API ──
-const SUPABASE_URL      = "https://YOUR-PROJECT-REF.supabase.co";
-const SUPABASE_ANON_KEY = "YOUR-ANON-PUBLIC-KEY";
+const SUPABASE_URL      = "https://qcccdwossgrotjiosurg.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFjY2Nkd29zc2dyb3RqaW9zdXJnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3OTAxOTgsImV4cCI6MjA5ODM2NjE5OH0.pmDkCdQxAsh2f11MEe8MgdDy1vpTw6X6-R-gMiAEsq0";
 
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 window.supabaseClient = supabaseClient; // used by storage-sync.js
