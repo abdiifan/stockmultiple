@@ -19,16 +19,70 @@ const FILE_SLOTS = {
 
 const BUCKET = "inventory-files";
 
+// ── Toast notifications ──
+function ensureToastStyles() {
+  if (document.getElementById("sync-toast-styles")) return;
+  const style = document.createElement("style");
+  style.id = "sync-toast-styles";
+  style.textContent = `
+    #sync-toast-stack {
+      position: fixed; top: 16px; right: 16px; z-index: 10000;
+      display: flex; flex-direction: column; gap: 8px; max-width: 320px;
+    }
+    .sync-toast {
+      padding: 10px 14px; border-radius: 8px; font-size: 0.82rem;
+      color: #fff; box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+      display: flex; align-items: center; gap: 8px;
+      animation: sync-toast-in 0.2s ease-out;
+    }
+    .sync-toast.ok   { background: #1f8a4c; }
+    .sync-toast.err  { background: #b3322a; }
+    .sync-toast.info { background: #2563a8; }
+    .sync-toast button {
+      margin-left: auto; background: none; border: none; color: #fff;
+      opacity: 0.8; cursor: pointer; font-size: 0.9rem; line-height: 1;
+    }
+    .sync-toast button:hover { opacity: 1; }
+    @keyframes sync-toast-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+  `;
+  document.head.appendChild(style);
+}
+
+function showToast(message, type = "info", timeoutMs = 4500) {
+  ensureToastStyles();
+  let stack = document.getElementById("sync-toast-stack");
+  if (!stack) {
+    stack = document.createElement("div");
+    stack.id = "sync-toast-stack";
+    document.body.appendChild(stack);
+  }
+  const el = document.createElement("div");
+  el.className = `sync-toast ${type}`;
+  el.innerHTML = `<span>${message}</span><button aria-label="Dismiss">✕</button>`;
+  el.querySelector("button").addEventListener("click", () => el.remove());
+  stack.appendChild(el);
+  if (timeoutMs) setTimeout(() => el.remove(), timeoutMs);
+  return el;
+}
+
 // ── Push: called when an admin selects a file ──
 async function pushFileToSupabase(slot, file) {
   const { path } = FILE_SLOTS[slot];
   const sc = window.supabaseClient;
+  const label = slot.charAt(0).toUpperCase() + slot.slice(1);
+
+  const pending = showToast(`⏳ Syncing ${label} to Supabase…`, "info", 0);
 
   const { error: upErr } = await sc.storage.from(BUCKET).upload(path, file, {
     upsert: true,
     contentType: file.type || "application/octet-stream",
   });
-  if (upErr) { console.error(`Upload failed (${slot}):`, upErr); return; }
+  pending.remove();
+  if (upErr) {
+    console.error(`Upload failed (${slot}):`, upErr);
+    showToast(`✗ ${label} sync failed: ${upErr.message || "unknown error"}`, "err");
+    return;
+  }
 
   const { error: metaErr } = await sc.from("app_files").upsert({
     slot,
@@ -37,7 +91,13 @@ async function pushFileToSupabase(slot, file) {
     uploaded_by: window.APP_USER ? window.APP_USER.id : null,
     uploaded_at: new Date().toISOString(),
   });
-  if (metaErr) console.error(`Metadata save failed (${slot}):`, metaErr);
+  if (metaErr) {
+    console.error(`Metadata save failed (${slot}):`, metaErr);
+    showToast(`⚠️ ${label} file synced, but metadata save failed`, "err");
+    return;
+  }
+
+  showToast(`✓ ${label} synced — all users will see this on refresh`, "ok");
 }
 
 // ── Pull: called on app load for every signed-in user ──
@@ -80,9 +140,50 @@ function attachAdminUploadSync() {
   });
 }
 
+// ── Live update banner — shown to viewers (and admins) when someone
+//    else uploads new data, via Supabase Realtime on app_files ──
+function showNewDataBanner(slot) {
+  if (document.getElementById("new-data-banner")) return; // already showing
+  const label = slot.charAt(0).toUpperCase() + slot.slice(1);
+  const el = document.createElement("div");
+  el.id = "new-data-banner";
+  el.style.cssText = `
+    position: fixed; top: 0; left: 0; right: 0; z-index: 10001;
+    background: var(--blue, #3a8fd4); color: #fff; text-align: center;
+    padding: 10px 14px; font-size: 0.85rem;
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+  `;
+  el.innerHTML = `
+    <span>🔔 New ${label} data is available.</span>
+    <button id="refresh-data-btn" style="background:#fff;color:var(--blue,#3a8fd4);border:none;border-radius:6px;padding:4px 12px;font-weight:600;cursor:pointer;font-size:0.8rem">Refresh now</button>
+    <button id="dismiss-banner-btn" style="background:none;border:1px solid rgba(255,255,255,0.6);color:#fff;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:0.8rem">Later</button>
+  `;
+  document.body.prepend(el);
+  document.getElementById("refresh-data-btn").addEventListener("click", () => location.reload());
+  document.getElementById("dismiss-banner-btn").addEventListener("click", () => el.remove());
+}
+
+function attachRealtimeSync() {
+  const sc = window.supabaseClient;
+  sc.channel("app_files_changes")
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "app_files" },
+      (payload) => {
+        const slot = payload.new && payload.new.slot;
+        const uploadedBy = payload.new && payload.new.uploaded_by;
+        // Don't show the banner to the admin who just uploaded it themselves
+        if (window.APP_USER && uploadedBy === window.APP_USER.id) return;
+        showNewDataBanner(slot || "inventory");
+      }
+    )
+    .subscribe();
+}
+
 // ── On auth ready: load whatever's already in Supabase for everyone ──
 document.addEventListener("epss-auth-ready", async () => {
   attachAdminUploadSync();
+  attachRealtimeSync();
 
   for (const slot of Object.keys(FILE_SLOTS)) {
     const input = document.getElementById(FILE_SLOTS[slot].inputId);
