@@ -126,6 +126,17 @@
     </div>
   </div>
 
+  <div class="sidebar-divider"></div>
+  <div class="upload-label">👤 Person Assigned</div>
+  <div class="sidebar-person-filter">
+    <span class="person-filter-chip" id="pf-chip-global">
+      <select id="global-person-filter" class="person-filter-select" title="Filter by person assigned">
+        <option value="">👤 All Persons</option>
+      </select>
+      <button type="button" class="person-filter-clear" id="pf-clear-global" title="Clear person filter">✕</button>
+    </span>
+  </div>
+
   <nav id="nav">
     <div class="nav-label">Navigation</div>
     <button class="nav-btn active" data-page="dashboard">
@@ -226,7 +237,6 @@
       <div class="ms-wrap" id="ms-dash-plant"><button class="ms-btn" type="button">All Plants <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-dash-plant-dd"></div></div>
       <div class="ms-wrap" id="ms-dash-mg"><button class="ms-btn" type="button">All Material Groups <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-dash-mg-dd"></div></div>
       <div class="ms-wrap" id="ms-dash-vt"><button class="ms-btn" type="button">All Material Types <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-dash-vt-dd"></div></div>
-      <span class="filter-bar-divider"></span><span class="person-filter-chip" id="pf-chip-dash"><select id="global-person-filter-dash" class="person-filter-select" title="Filter by person assigned"><option value="">👤 All Persons</option></select><button type="button" class="person-filter-clear" id="pf-clear-dash" title="Clear person filter">✕</button></span>
       <button type="button" class="apply-btn small" id="dash-filter-apply">Apply</button>
       <button type="button" class="apply-btn secondary small" id="dash-filter-clear">Clear</button>
     </div>
@@ -244,10 +254,10 @@
         <span style="font-size:0.7rem;font-weight:400;color:var(--muted);margin-left:0.25rem">— Items expiring within 6 months · Value &amp; Quantity at risk</span>
       </div>
       <div style="display:flex;gap:1.2rem;margin-bottom:0.6rem;font-size:0.72rem;color:var(--muted);flex-wrap:wrap">
-        <span><span style="display:inline-block;width:10px;height:10px;background:#f85149;border-radius:2px;margin-right:4px"></span>Highest risk</span>
-        <span><span style="display:inline-block;width:10px;height:10px;background:#ffa657;border-radius:2px;margin-right:4px"></span>High risk</span>
-        <span><span style="display:inline-block;width:10px;height:10px;background:#d29922;border-radius:2px;margin-right:4px"></span>Moderate risk</span>
-        <span style="margin-left:auto;color:#f85149;font-weight:600">Red labels = units at risk</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:var(--risk-critical);border-radius:2px;margin-right:4px"></span>Highest risk</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:var(--risk-high);border-radius:2px;margin-right:4px"></span>High risk</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:var(--risk-moderate);border-radius:2px;margin-right:4px"></span>Moderate risk</span>
+        <span style="margin-left:auto;color:var(--risk-critical);font-weight:600">Red labels = units at risk</span>
       </div>
       <div id="chart-mg-bar"></div>
     </div>
@@ -257,8 +267,8 @@
         <span style="font-size:0.62rem;font-weight:400;color:var(--muted)">next 6 months</span>
       </div>
       <div id="mg-expiry-risk-legend" style="display:flex;gap:0.7rem;flex-wrap:wrap;margin-bottom:0.65rem;font-size:0.68rem;color:var(--muted)">
-        <span><span class="mg-risk-dot" style="background:#f85149"></span>Critical (&lt;3 mo)</span>
-        <span><span class="mg-risk-dot" style="background:#ffa657"></span>High (3–6 mo)</span>
+        <span><span class="mg-risk-dot" style="background:var(--risk-critical)"></span>Critical (&lt;3 mo)</span>
+        <span><span class="mg-risk-dot" style="background:var(--risk-high)"></span>High (3–6 mo)</span>
       </div>
       <div id="chart-mg-expiry-risk"></div>
     </div>
@@ -277,7 +287,6 @@
       <div class="ms-wrap" id="ms-transit-mg"><button class="ms-btn" type="button">All Material Groups <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-transit-mg-dd"></div></div>
       <div class="ms-wrap" id="ms-transit-vt"><button class="ms-btn" type="button">All Material Types <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-transit-vt-dd"></div></div>
       <div class="ms-wrap" id="ms-transit-mat"><button class="ms-btn" type="button">All Materials <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-transit-mat-dd"></div></div>
-      <span class="filter-bar-divider"></span><span class="person-filter-chip" id="pf-chip-transit"><select id="global-person-filter-transit" class="person-filter-select" title="Filter by person assigned"><option value="">👤 All Persons</option></select><button type="button" class="person-filter-clear" id="pf-clear-transit" title="Clear person filter">✕</button></span>
       <button type="button" class="apply-btn small" id="transit-filter-apply">Apply</button>
       <button type="button" class="apply-btn secondary small" id="transit-filter-clear">Clear</button>
     </div>
@@ -325,7 +334,6 @@
       <div class="ms-wrap" id="ms-expiry-mg"><button class="ms-btn" type="button">All Material Groups <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-expiry-mg-dd"></div></div>
       <div class="ms-wrap" id="ms-expiry-vt"><button class="ms-btn" type="button">All Material Types <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-expiry-vt-dd"></div></div>
       <div class="ms-wrap" id="ms-expiry-mat"><button class="ms-btn" type="button">All Materials <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-expiry-mat-dd"></div></div>
-      <span class="filter-bar-divider"></span><span class="person-filter-chip" id="pf-chip-expiry"><select id="global-person-filter-expiry" class="person-filter-select" title="Filter by person assigned"><option value="">👤 All Persons</option></select><button type="button" class="person-filter-clear" id="pf-clear-expiry" title="Clear person filter">✕</button></span>
       <button type="button" class="apply-btn small" id="expiry-filter-apply">Apply</button>
       <button type="button" class="apply-btn secondary small" id="expiry-filter-clear">Clear</button>
     </div>
@@ -377,7 +385,6 @@
       <div class="ms-wrap" id="ms-qc-mg"><button class="ms-btn" type="button">All Material Groups <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-qc-mg-dd"></div></div>
       <div class="ms-wrap" id="ms-qc-vt"><button class="ms-btn" type="button">All Material Types <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-qc-vt-dd"></div></div>
       <div class="ms-wrap" id="ms-qc-mat"><button class="ms-btn" type="button">All Materials <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-qc-mat-dd"></div></div>
-      <span class="filter-bar-divider"></span><span class="person-filter-chip" id="pf-chip-qc"><select id="global-person-filter-qc" class="person-filter-select" title="Filter by person assigned"><option value="">👤 All Persons</option></select><button type="button" class="person-filter-clear" id="pf-clear-qc" title="Clear person filter">✕</button></span>
       <button type="button" class="apply-btn small" id="qc-filter-apply">Apply</button>
       <button type="button" class="apply-btn secondary small" id="qc-filter-clear">Clear</button>
     </div>
@@ -435,7 +442,6 @@
     <div class="filter-bar">
       <div class="ms-wrap" id="ms-conc-mg"><button class="ms-btn" type="button">All Material Groups <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-conc-mg-dd"></div></div>
       <div class="ms-wrap" id="ms-conc-vt"><button class="ms-btn" type="button">All Material Types <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-conc-vt-dd"></div></div>
-      <span class="filter-bar-divider"></span><span class="person-filter-chip" id="pf-chip-conc"><select id="global-person-filter-conc" class="person-filter-select" title="Filter by person assigned"><option value="">👤 All Persons</option></select><button type="button" class="person-filter-clear" id="pf-clear-conc" title="Clear person filter">✕</button></span>
       <button type="button" class="apply-btn small" id="conc-filter-apply">Apply</button>
       <button type="button" class="apply-btn secondary small" id="conc-filter-clear">Clear</button>
     </div>
@@ -457,8 +463,8 @@
           <span style="font-size:0.62rem;color:var(--muted)">Qty + Value basis</span>
         </div>
         <div class="conc-legend" style="margin-bottom:0.85rem">
-          <span class="conc-dot" style="background:#f85149"></span><span>Critical &gt;95%</span>
-          <span class="conc-dot" style="background:#ffa657"></span><span>High 80–95%</span>
+          <span class="conc-dot" style="background:var(--risk-critical)"></span><span>Critical &gt;95%</span>
+          <span class="conc-dot" style="background:var(--risk-high)"></span><span>High 80–95%</span>
         </div>
         <div id="conc-dl-row" style="display:flex;gap:0.6rem;justify-content:flex-end;margin-bottom:0.5rem"></div>
         <div id="conc-table-wrap"></div>
@@ -500,7 +506,6 @@
         <label style="font-size:0.78rem;color:var(--muted);display:flex;align-items:center;gap:0.3rem">
           <input type="checkbox" id="mos-critical-only" /> Critical only (&lt; 1 month)
         </label>
-        <span class="filter-bar-divider"></span><span class="person-filter-chip" id="pf-chip-mos"><select id="global-person-filter-mos" class="person-filter-select" title="Filter by person assigned"><option value="">👤 All Persons</option></select><button type="button" class="person-filter-clear" id="pf-clear-mos" title="Clear person filter">✕</button></span>
         <button class="apply-btn small" id="mos-apply">Apply</button>
         <button class="apply-btn secondary small" id="mos-clear">Clear</button>
       </div>
@@ -539,7 +544,6 @@
           <option value="ZME">ZME (Medicines)</option>
           <option value="ZMS">ZMS (Medical Supplies)</option>
         </select>
-        <span class="filter-bar-divider"></span><span class="person-filter-chip" id="pf-chip-exprisk"><select id="global-person-filter-exprisk" class="person-filter-select" title="Filter by person assigned"><option value="">👤 All Persons</option></select><button type="button" class="person-filter-clear" id="pf-clear-exprisk" title="Clear person filter">✕</button></span>
         <button class="apply-btn small" id="exprisk-apply">Apply</button>
         <button class="apply-btn secondary small" id="exprisk-clear">Clear</button>
       </div>
