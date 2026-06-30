@@ -153,6 +153,9 @@
     <button class="nav-btn" data-page="expiry-risk">
       <span class="nav-icon">🧯</span> Overstock &amp; Expiry Risk
     </button>
+    <button class="nav-btn" data-page="natl-table">
+      <span class="nav-icon">🗂️</span> National Stock &amp; MOS
+    </button>
   </nav>
 
   <div class="sidebar-divider"></div>
@@ -572,6 +575,38 @@
     </div>
   </section>
 
+  <!-- ── NATIONAL STOCK & MOS ── -->
+  <section id="page-natl-table" class="page" style="display:none">
+    <div class="page-header-row">
+      <div>
+        <div class="page-title">🗂️ National Stock &amp; MOS</div>
+        <div class="page-subtitle">One row per material, network-wide: stock-on-hand, Months of Stock, and an expiry-adjusted view based on each material's quantity-weighted average shelf life across all batches.</div>
+      </div>
+      <div id="natl-dl-row" style="display:flex;gap:0.6rem"></div>
+    </div>
+    <div id="natl-no-amc" class="alert-info" style="margin-bottom:1rem">Upload <b>AMC.xlsx</b> using the <b>📐 Upload AMC.xlsx</b> button in the sidebar to enable this table.</div>
+    <div id="natl-content" style="display:none">
+      <div class="alert-info" style="margin-bottom:1rem;font-size:0.8rem">
+        <b>ℹ️ How these numbers are calculated:</b> <b>SOH</b> and <b>MOS</b> are network-wide (sum of every plant incl. HO01 for stock; AMC = sum of every branch plant's own AMC, HO01 excluded — same rule as MOS by Plant).
+        <b>Shelf life in Month</b> is the quantity-weighted average months-to-expiry across every batch of this material, at every plant.
+        <b>Adjusted SOH/MOS for Expiry</b> cap stock-on-hand at what can realistically be consumed before that average shelf life runs out.
+      </div>
+      <div class="filter-bar" style="gap:0.6rem;flex-wrap:wrap;align-items:center">
+        <input id="natl-search" type="text" placeholder="Search material…" style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:0.82rem;min-width:220px"/>
+        <select id="natl-type" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:0.82rem">
+          <option value="">All Types</option>
+          <option value="ZME">ZME (Medicines)</option>
+          <option value="ZMS">ZMS (Medical Supplies)</option>
+        </select>
+        <button class="apply-btn small" id="natl-apply">Apply</button>
+        <button class="apply-btn secondary small" id="natl-clear">Clear</button>
+      </div>
+      <div class="kpi-row" id="natl-kpis" style="margin:1rem 0"></div>
+      <div class="section-header">📋 National Stock &amp; MOS Table</div>
+      <div id="natl-table"></div>
+    </div>
+  </section>
+
 </main>
 
 <script>
@@ -644,6 +679,7 @@
 <script src="filters.js" defer></script>
 <script src="script.js" defer></script>
 <script src="mos.js" defer></script>
+<script src="national-table.js" defer></script>
 <script src="expiry-risk.js" defer></script>
 <script>
 // ── TAB SWITCHING (Transit + QC + Overstock & Expiry Risk) ──
