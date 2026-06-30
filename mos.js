@@ -54,14 +54,20 @@ function loadMosAmcFile(file) {
       const detectedPlants = Object.keys(firstRow).filter(k => !META.includes(k));
       if (!detectedPlants.length) throw new Error("No plant columns found in AMC file.");
 
-      mosPlants  = detectedPlants;
+      // Normalize plant codes the SAME way buildMosSohMap() normalizes the
+      // inventory file's "Plant" column (trim + uppercase). Without this,
+      // any AMC column header that isn't already exact-case (e.g. "Ho01"
+      // instead of "HO01", or with stray whitespace) silently fails to
+      // match the SOH map's keys, and that plant's stock is dropped to 0
+      // everywhere it's looked up — including in National SOH/MOS.
+      mosPlants  = detectedPlants.map(p => String(p).trim().toUpperCase());
       mosAmcRaw  = rows.map(r => ({
         code:   String(r["Material Code"] || "").trim(),
         desc:   String(r["Description"]   || "").trim(),
         type:   String(r["Material Type Code"] || "").trim().toUpperCase(),
         person: String(r["PERSON"] || "").trim(),
         amcs: Object.fromEntries(
-          detectedPlants.map(p => [p, (r[p] == null || r[p] === "" || typeof r[p] === "string") ? null : Number(r[p])])
+          detectedPlants.map(p => [String(p).trim().toUpperCase(), (r[p] == null || r[p] === "" || typeof r[p] === "string") ? null : Number(r[p])])
         ),
       }));
 
