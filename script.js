@@ -2276,7 +2276,7 @@ function renderBranch() {
       const style = (typeof mosCellStyle === "function") ? mosCellStyle(mos) : "";
       const mosHtml = (typeof fmtMosVal === "function") ? fmtMosVal(mos)
         : (mos === null || mos === undefined ? "N/A" : mos === Infinity ? "∞" : `${mos.toFixed(1)} mo`);
-      return `<div>${fmtQty(qty)}</div><div style="font-size:0.7em;margin-top:2px;${style}">${mosHtml}</div>`;
+      return `<div>${fmtQty(qty)}</div><div style="font-size:0.82em;font-weight:600;margin-top:3px;opacity:0.95;${style}">${mosHtml}</div>`;
     }
 
     function mosExportVal(mos) {
@@ -2329,6 +2329,15 @@ function renderBranch() {
               <option value="ZMD">ZMD</option>
             </select>
           </div>
+          <div>
+            <div class="nav-label" style="font-size:0.65rem;margin-bottom:3px">Sort By</div>
+            <select id="mat-sort" style="background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px">
+              <option value="total_desc">Highest Total ↓</option>
+              <option value="total_asc">Lowest Total ↑</option>
+              <option value="desc_asc">Description A–Z</option>
+              <option value="spread_desc">Most Branches ↓</option>
+            </select>
+          </div>
           <button id="mat-apply" class="apply-btn">Apply</button>
           <button id="mat-clear" class="apply-btn secondary">Clear</button>
         </div>
@@ -2343,6 +2352,7 @@ function renderBranch() {
         if (mgWrap2  && mgWrap2._clearSelected)  mgWrap2._clearSelected();
         document.getElementById("mat-metric").value    = "TotalValue";
         document.getElementById("mat-mgfilter").value  = "";
+        document.getElementById("mat-sort").value      = "total_desc";
         refreshMaterialView();
       });
       // Build the material multi-select after HTML is in DOM
@@ -2398,7 +2408,7 @@ function renderBranch() {
       const mgWrap      = document.getElementById("mat-mg-ms-wrap");
       const selectedMgs = (mgWrap && mgWrap._getSelected) ? mgWrap._getSelected() : [];
       const metric    = document.getElementById("mat-metric").value;
-      const sortMode  = "total_desc";
+      const sortMode  = document.getElementById("mat-sort").value;
       const mgFilter  = document.getElementById("mat-mgfilter").value;
       const isQty     = metric.includes("Qty");
       const fmtFn     = isQty ? fmtQty : fmtETB;
@@ -3239,18 +3249,12 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    const searchBtn   = document.getElementById("global-search-btn");
-    const searchInput = document.getElementById("global-search-input");
-    const searchClear = document.getElementById("global-search-clear");
-    const resultsClose = document.getElementById("global-search-results-close");
-    if (!searchBtn || !searchInput) return; // global search bar not present in this layout
-
-    searchBtn.addEventListener("click", runSearch);
-    if (searchClear) searchClear.addEventListener("click", clearSearch);
-    searchInput.addEventListener("keydown", e => {
+    document.getElementById("global-search-btn").addEventListener("click", runSearch);
+    document.getElementById("global-search-clear").addEventListener("click", clearSearch);
+    document.getElementById("global-search-input").addEventListener("keydown", e => {
       if (e.key === "Enter") runSearch();
     });
-    if (resultsClose) resultsClose.addEventListener("click", hideResultsPanel);
+    document.getElementById("global-search-results-close").addEventListener("click", hideResultsPanel);
   });
 })();
 // ═══════════════════════════════════════════════════════════════════════════
