@@ -3239,12 +3239,18 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    document.getElementById("global-search-btn").addEventListener("click", runSearch);
-    document.getElementById("global-search-clear").addEventListener("click", clearSearch);
-    document.getElementById("global-search-input").addEventListener("keydown", e => {
+    const searchBtn   = document.getElementById("global-search-btn");
+    const searchInput = document.getElementById("global-search-input");
+    const searchClear = document.getElementById("global-search-clear");
+    const resultsClose = document.getElementById("global-search-results-close");
+    if (!searchBtn || !searchInput) return; // global search bar not present in this layout
+
+    searchBtn.addEventListener("click", runSearch);
+    if (searchClear) searchClear.addEventListener("click", clearSearch);
+    searchInput.addEventListener("keydown", e => {
       if (e.key === "Enter") runSearch();
     });
-    document.getElementById("global-search-results-close").addEventListener("click", hideResultsPanel);
+    if (resultsClose) resultsClose.addEventListener("click", hideResultsPanel);
   });
 })();
 // ═══════════════════════════════════════════════════════════════════════════
