@@ -2309,14 +2309,14 @@ function renderBranch() {
           <div>
             <div class="nav-label" style="font-size:0.65rem;margin-bottom:3px">Metric</div>
             <select id="mat-metric" style="background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px">
+              <option value="TotalQty" selected>Total Quantity</option>
+              <option value="UnrestrictedQty">Unrestricted Stock Quantity</option>
+              <option value="TransitQty">Transit Quantity</option>
+              <option value="QCQty">Stock in Quality Inspection Quantity</option>
               <option value="TotalValue">Total Value (ETB)</option>
               <option value="Unrestricted">Unrestricted Value (ETB)</option>
               <option value="Transit">Transit Value (ETB)</option>
               <option value="QC">Stock in Quality Inspection Value (ETB)</option>
-              <option value="TotalQty">Total Quantity</option>
-              <option value="UnrestrictedQty">Unrestricted Stock Quantity</option>
-              <option value="TransitQty">Transit Quantity</option>
-              <option value="QCQty">Stock in Quality Inspection Quantity</option>
             </select>
           </div>
           <div>
@@ -2354,7 +2354,7 @@ function renderBranch() {
         const mgWrap2  = document.getElementById("mat-mg-ms-wrap");
         if (matWrap2 && matWrap2._clearSelected) matWrap2._clearSelected();
         if (mgWrap2  && mgWrap2._clearSelected)  mgWrap2._clearSelected();
-        document.getElementById("mat-metric").value    = "TotalValue";
+        document.getElementById("mat-metric").value    = "TotalQty";
         document.getElementById("mat-mgfilter").value  = "";
         document.getElementById("mat-sort").value      = "total_desc";
         refreshMaterialView();
