@@ -2455,8 +2455,14 @@ function renderBranch() {
             mosData = {};
             const mosRow = mosByCode.get(mat);
             allPlantNames.forEach(pn => {
+              // FIX-BRANCH-MOS-HUB: detect the hub by pn === centralName (already
+              // correctly resolved above — handles HO01-not-found fallback, and
+              // doesn't depend on the AMC file having an HO01/hub column at all),
+              // rather than matching plantNameToCode[pn] against mosHubCode, which
+              // silently fails to flag the hub when there's no such AMC column.
+              const isHubPlant = pn === centralName;
               const code = plantNameToCode[pn];
-              const amc  = mosRow ? branchAmcFor(mosRow, code) : null;
+              const amc  = mosRow ? branchAmcFor(mosRow, isHubPlant ? mosHubCode : code) : null;
               mosData[pn] = mosFor(plantData[pn], amc);
             });
             // National = network-wide qty (grandTotal, already incl. HO01) ÷ branch-only AMC
