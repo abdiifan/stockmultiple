@@ -2531,7 +2531,7 @@ function renderBranch() {
 
       const centralKey = `__p__${centralName}`;
       const thead = `<thead><tr>${colDefs.map(c =>
-        `<th${c.key === centralKey ? ' style="color:#58a6ff;background:#0d2035"' : ""}>${escHtml(c.label)}</th>`
+        `<th${c.key === centralKey ? ' class="col-central-th"' : ""}>${escHtml(c.label)}</th>`
       ).join("")}</tr></thead>`;
       const tbody = tableRows.map(r => {
         const cells = colDefs.map(c => {
@@ -2541,8 +2541,13 @@ function renderBranch() {
                         : c.fmt ? c.fmt(v, r)
                         : (v == null ? "" : escHtml(String(v)));
           const isZero  = typeof v === "number" && v === 0;
-          const style   = c.key === centralKey ? 'style="color:#58a6ff;background:#0d2035"' : isZero ? 'style="color:#484f58"' : "";
-          const cls     = c.cellClass || "";
+          // FIX-CENTRAL-COL-CONTRAST: previously hardcoded color:#58a6ff;background:#0d2035
+          // here — a fixed dark background that never adapted to light theme, while the
+          // MOS sub-text inside it does (var(--text)), killing contrast in light mode.
+          // Use a theme-aware tint class instead and let normal text colors (qty/MOS)
+          // render on top of it unmodified.
+          const style   = isZero && c.key !== centralKey ? 'style="color:var(--dim)"' : "";
+          const cls     = [c.cellClass, c.key === centralKey ? "col-central" : ""].filter(Boolean).join(" ");
           return `<td class="${cls}" ${style}>${display}</td>`;
         }).join("");
         return `<tr>${cells}</tr>`;
