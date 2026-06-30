@@ -158,42 +158,34 @@ function getPersonFilteredCodes() {
 }
 
 // ── PERSON FILTER DROPDOWN POPULATION ──────────────────────────────────────
-// All per-page person dropdowns share the same ids pattern: global-person-filter-{page}.
-// Called by mos.js after the AMC file is parsed.
-const _PF_PAGES = ["dash","transit","expiry","qc","conc","mos","exprisk"];
-
+// Single global dropdown lives in the sidebar (#global-person-filter) and
+// applies to every page. Called by mos.js after the AMC file is parsed.
 function populatePersonFilter(persons) {
-  _PF_PAGES.forEach(page => {
-    const sel = document.getElementById("global-person-filter-" + page);
-    if (!sel) return;
-    const prev = sel.value;
-    sel.innerHTML = '<option value="">\u{1F464} All Persons</option>';
-    persons.forEach(p => {
-      const opt = document.createElement("option");
-      opt.value = p;
-      opt.textContent = p;
-      if (personFilter.has(p)) opt.selected = true;
-      sel.appendChild(opt);
-    });
-    // Restore previous selection if still valid
-    if (prev && persons.includes(prev)) sel.value = prev;
-    _syncChipState(page, sel);
+  const sel = document.getElementById("global-person-filter");
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">\u{1F464} All Persons</option>';
+  persons.forEach(p => {
+    const opt = document.createElement("option");
+    opt.value = p;
+    opt.textContent = p;
+    if (personFilter.has(p)) opt.selected = true;
+    sel.appendChild(opt);
   });
+  // Restore previous selection if still valid
+  if (prev && persons.includes(prev)) sel.value = prev;
+  _syncChipState();
 }
 
-function _syncChipState(page, sel) {
-  if (!sel) sel = document.getElementById("global-person-filter-" + page);
+function _syncChipState() {
+  const sel = document.getElementById("global-person-filter");
   if (!sel) return;
-  const chip  = document.getElementById("pf-chip-" + page);
-  const clear = document.getElementById("pf-clear-" + page);
+  const chip  = document.getElementById("pf-chip-global");
+  const clear = document.getElementById("pf-clear-global");
   const active = personFilter.size > 0;
   sel.classList.toggle("pf-active", active);
   if (chip)  chip.classList.toggle("pf-chip-active", active);
   if (clear) clear.style.display = active ? "inline-flex" : "none";
-}
-
-function _syncAllChips() {
-  _PF_PAGES.forEach(page => _syncChipState(page));
 }
 
 // ── MATERIAL STANDARDIZATION MAPPING STATE ─────────────────────────────────
@@ -543,32 +535,24 @@ document.addEventListener("click", () => {
 });
 
 // ── GLOBAL PERSON FILTER WIRING ─────────────────────────────────────────────
-// One delegated listener on document.body handles all per-page dropdowns and
-// clear buttons — no need to re-wire when pages show/hide.
+// Single dropdown in the sidebar drives the filter for every page.
 (function wirePersonFilter() {
   function applyAndRender(newPerson) {
     personFilter.clear();
     if (newPerson) personFilter.add(newPerson);
-
-    // Mirror selection to every other page's dropdown
-    _PF_PAGES.forEach(page => {
-      const sel = document.getElementById("global-person-filter-" + page);
-      if (sel) sel.value = newPerson || "";
-      _syncChipState(page, sel);
-    });
-
+    _syncChipState();
     if (typeof renderPage === "function") renderPage(currentPage);
   }
 
   document.body.addEventListener("change", e => {
-    const sel = e.target.closest("select[id^='global-person-filter-']");
-    if (!sel) return;
-    applyAndRender(sel.value);
+    if (e.target.id !== "global-person-filter") return;
+    applyAndRender(e.target.value);
   });
 
   document.body.addEventListener("click", e => {
-    const btn = e.target.closest("button[id^='pf-clear-']");
-    if (!btn) return;
+    if (!e.target.closest("#pf-clear-global")) return;
+    const sel = document.getElementById("global-person-filter");
+    if (sel) sel.value = "";
     applyAndRender("");
   });
 })();
