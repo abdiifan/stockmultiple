@@ -2276,7 +2276,7 @@ function renderBranch() {
       const style = (typeof mosCellStyle === "function") ? mosCellStyle(mos) : "";
       const mosHtml = (typeof fmtMosVal === "function") ? fmtMosVal(mos)
         : (mos === null || mos === undefined ? "N/A" : mos === Infinity ? "∞" : `${mos.toFixed(1)} mo`);
-      return `<div>${fmtQty(qty)}</div><div style="font-size:0.82em;font-weight:600;margin-top:3px;opacity:0.95;${style}">${mosHtml}</div>`;
+      return `<div>${fmtQty(qty)}</div><div style="font-size:0.92em;font-weight:600;margin-top:3px;opacity:0.95;${style}">${mosHtml}</div>`;
     }
 
     function mosExportVal(mos) {
