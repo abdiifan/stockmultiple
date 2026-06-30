@@ -352,15 +352,16 @@
         <div id="expiry-drill-table"></div>
       </div>
     </div>
-    <div id="expiry-dl-row" style="display:flex;gap:0.6rem;justify-content:flex-end;margin-bottom:0.5rem"></div>
     <div id="expiry-table-wrap"></div>
     <div id="expired-section" style="margin-top:1.5rem">
-      <div class="section-header" id="expired-header"></div>
-      <div id="expired-table-wrap"></div>
-      <div style="display:flex;gap:0.6rem;margin-top:0.5rem">
-        <button class="dl-btn" id="btn-dl-expired-csv">⬇ CSV</button>
-        <button class="dl-btn" id="btn-dl-expired-xlsx">⬇ Excel</button>
+      <div class="section-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem">
+        <span id="expired-header"></span>
+        <div style="display:flex;gap:0.6rem">
+          <button class="dl-btn" id="btn-dl-expired-csv">⬇ CSV</button>
+          <button class="dl-btn" id="btn-dl-expired-xlsx">⬇ Excel</button>
+        </div>
       </div>
+      <div id="expired-table-wrap"></div>
     </div>
   </section>
 
