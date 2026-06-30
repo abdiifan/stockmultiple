@@ -371,7 +371,7 @@ async function renderExpiryRisk() {
     { key: "code", label: "Material Code", cellClass: "col-mat-code-wrap" },
     { key: "desc", label: "Description", cellClass: "col-mat-desc-wrap" },
     { key: "fromPlant", label: "From",
-      fmt: (v, r) => r.fromIsHub ? `<b style="color:var(--purple)">${escHtml(v)} (Hub)</b>` : `<b style="color:var(--orange)">${escHtml(v)}</b>`,
+      fmt: (v, r) => r.fromIsHub ? `<b style="color:var(--purple)">${escHtml(v)} (Hub)</b>` : `<b style="color:var(--amber)">${escHtml(v)}</b>`,
       raw: true },
     { key: "toPlant", label: "To", fmt: v => `<b style="color:var(--blue)">${escHtml(v)}</b>`, raw: true },
     { key: "qty", label: "Transfer Qty", fmt: fmtQty },
