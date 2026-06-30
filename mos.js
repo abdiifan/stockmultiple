@@ -149,15 +149,25 @@ function buildMosMerged() {
 }
 
 // ── SOH LOOKUP (from main inventory file) ─────────────────────────────────────
-// materialCode → plantCode → unrestricted stock-on-hand
+// materialCode → plantCode → Total Quantity on hand.
+// Total Quantity = Unrestricted Stock + verified Stock in Transit (phantom/
+// unverified transit excluded) + Stock in Quality Inspection — same definition
+// and same getMappedQty/getVerifiedTransitQty helpers Branch Comparison's
+// "Total Quantity" metric uses (see script.js matPlantMap[mat][pln].TotalQty),
+// so the two pages agree on the same number for the same material.
 function buildMosSohMap() {
   const map = new Map();
   if (typeof rawDf === "undefined" || !rawDf.length) return map;
   for (const row of rawDf) {
     const mat = String(row._mappedMaterial || row["Material"] || "").trim();
     const plt = String(row["Plant"] || "").trim().toUpperCase();
-    const qty = Number(row["Unrestricted Stock"] || 0);
     if (!mat || !plt) continue;
+
+    const unrestricted = (typeof getMappedQty === "function") ? getMappedQty(row, "Unrestricted Stock") : Number(row["Unrestricted Stock"] || 0);
+    const transit       = (typeof getVerifiedTransitQty === "function") ? getVerifiedTransitQty(row) : Number(row["Stock in Transit"] || 0);
+    const qc            = (typeof getMappedQty === "function") ? getMappedQty(row, "Stock in Quality Inspection") : Number(row["Stock in Quality Inspection"] || 0);
+    const qty = (Number(unrestricted) || 0) + (Number(transit) || 0) + (Number(qc) || 0);
+
     if (!map.has(mat)) map.set(mat, {});
     map.get(mat)[plt] = (map.get(mat)[plt] || 0) + qty;
   }
