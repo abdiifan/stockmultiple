@@ -2245,6 +2245,62 @@ function renderBranch() {
       if (a === centralName) return -1; if (b === centralName) return 1; return a.localeCompare(b);
     });
 
+    // ── MOS WIRING (FEAT-BRANCH-MOS) ──────────────────────────────────────────
+    // Lets the Material Across Branches table show Months-of-Stock alongside
+    // quantity figures, reusing the AMC engine from mos.js. Only meaningful for
+    // Qty metrics (MOS = qty ÷ AMC), so it's only rendered when one of those is
+    // selected. Uses the exact same hub/branch AMC rules as mos.js:
+    //   - HO01's AMC = sum of every branch plant's own AMC (HO01 has no real
+    //     consumption of its own — see mos.js header comment).
+    //   - Every other (branch) plant uses its own AMC column.
+    //   - "National" uses the same branch-only AMC denominator as HO01 (per
+    //     mos.js's National MOS definition), but its SOH numerator is the
+    //     network-wide total (every plant incl. HO01) rather than HO01 alone.
+    const plantNameToCode = {};
+    baseDf.forEach(r => {
+      const pn = r["Plant Name"];
+      if (pn && !plantNameToCode[pn]) plantNameToCode[pn] = String(r["Plant"] || "").trim().toUpperCase();
+    });
+    const mosAvailable = typeof mosMerged !== "undefined" && mosMerged.length > 0
+                       && typeof mosPlants !== "undefined" && mosPlants.length > 0;
+    const mosByCode  = mosAvailable ? new Map(mosMerged.map(r => [r.code, r])) : new Map();
+    const mosHubCode = (typeof HUB_PLANT !== "undefined") ? HUB_PLANT : "HO01";
+
+    // AMC a given plant code should be measured against for this AMC row.
+    // Hub plant (and National) both use the sum of every branch plant's AMC —
+    // that's the "AMC is the same for National and HO01" rule.
+    function branchAmcFor(mosRow, plantCode) {
+      if (!mosRow) return null;
+      const branchCodes = mosPlants.filter(p => p !== mosHubCode);
+      if (plantCode === mosHubCode) {
+        const anyCommitted = branchCodes.some(p => mosRow.amcs[p] !== null && mosRow.amcs[p] !== undefined);
+        if (!anyCommitted) return null;
+        return branchCodes.reduce((s, p) => s + (mosRow.amcs[p] || 0), 0);
+      }
+      const v = mosRow.amcs[plantCode];
+      return (v === null || v === undefined) ? null : v;
+    }
+
+    function mosFor(qty, amc) {
+      if (amc === null || amc === undefined) return null; // not committed at this plant
+      if (amc > 0) return qty / amc;
+      return qty > 0 ? Infinity : null;
+    }
+
+    // Renders a table cell showing the qty value with its MOS underneath.
+    function plantCellWithMos(qty, mos) {
+      const style = (typeof mosCellStyle === "function") ? mosCellStyle(mos) : "";
+      const mosHtml = (typeof fmtMosVal === "function") ? fmtMosVal(mos)
+        : (mos === null || mos === undefined ? "N/A" : mos === Infinity ? "∞" : `${mos.toFixed(1)} mo`);
+      return `<div>${fmtQty(qty)}</div><div style="font-size:0.7em;margin-top:2px;${style}">${mosHtml}</div>`;
+    }
+
+    function mosExportVal(mos) {
+      if (mos === null || mos === undefined) return "Not Committed";
+      if (mos === Infinity) return "∞";
+      return Number(mos).toFixed(1);
+    }
+
     if (!matTabInitialized) {
       matTabInitialized = true;
       // FIX-BRANCH-MG: use baseDf (not aggregated df) so all material groups are available
@@ -2392,7 +2448,22 @@ function renderBranch() {
             grandTotal   += plantData[pn];
             if (plantData[pn] > 0) branchCount++;
           });
-          return {mat, desc:info.desc, group:info.group, valType:info.valType, plantData, grandTotal, branchCount};
+          // FEAT-BRANCH-MOS: MOS only makes sense against a quantity, and only
+          // when AMC data has been loaded.
+          let mosData = null;
+          if (isQty && mosAvailable) {
+            mosData = {};
+            const mosRow = mosByCode.get(mat);
+            allPlantNames.forEach(pn => {
+              const code = plantNameToCode[pn];
+              const amc  = mosRow ? branchAmcFor(mosRow, code) : null;
+              mosData[pn] = mosFor(plantData[pn], amc);
+            });
+            // National = network-wide qty (grandTotal, already incl. HO01) ÷ branch-only AMC
+            const nationalAmc = mosRow ? branchAmcFor(mosRow, mosHubCode) : null;
+            mosData.__national__ = mosFor(grandTotal, nationalAmc);
+          }
+          return {mat, desc:info.desc, group:info.group, valType:info.valType, plantData, mosData, grandTotal, branchCount};
         });
 
       if (sortMode === "total_desc") materials.sort((a,b) => b.grandTotal - a.grandTotal);
@@ -2411,18 +2482,26 @@ function renderBranch() {
       }
       chartWrap.innerHTML = "";
 
+      const showMos = isQty && mosAvailable;
       const colDefs = [
         {key:"mat",  label:"Material Code", fmt:(val,r)=>renderMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap"},
         {key:"desc", label:"Material Description", fmt:(val,r)=>renderMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap"},
         {key:"group",label:"Material Group"},
-        ...allPlantNames.map(pn => ({key:`__p__${pn}`, label:pn, fmt:fmtFn, rawKey:`__r__${pn}`, cellClass:isQty?"col-qty":"col-val"})),
-        {key:"grandTotal",  label:"Grand Total", fmt:fmtFn, rawKey:"grandTotal", cellClass:isQty?"col-qty":"col-val"},
+        ...allPlantNames.map(pn => ({
+          key:`__p__${pn}`, label:pn,
+          fmt:(val,r) => showMos ? plantCellWithMos(val, r.__mosData ? r.__mosData[pn] : null) : fmtFn(val),
+          rawKey:`__r__${pn}`, cellClass:isQty?"col-qty":"col-val",
+        })),
+        {key:"grandTotal",  label:"National", // FEAT-BRANCH-MOS: "Grand Total" renamed to "National"
+          fmt:(val,r) => showMos ? plantCellWithMos(val, r.__mosData ? r.__mosData.__national__ : null) : fmtFn(val),
+          rawKey:"grandTotal", cellClass:isQty?"col-qty":"col-val"},
         {key:"branchCount", label:"# Branches"},
       ];
       const tableRows = materials.slice(0, 200).map(m => {
         const row = {mat:m.mat, desc:m.desc, group:m.group, grandTotal:m.grandTotal, branchCount:m.branchCount};
         allPlantNames.forEach(pn => { row[`__p__${pn}`] = m.plantData[pn] || 0; row[`__r__${pn}`] = m.plantData[pn] || 0; });
         row["__r__grandTotal"] = m.grandTotal;
+        row.__mosData = m.mosData; // FEAT-BRANCH-MOS: consumed by plant/national column fmt()
         return row;
       });
 
@@ -2435,7 +2514,7 @@ function renderBranch() {
           const v       = r[c.key];
           const raw     = c.raw ? v : null;           // raw HTML — don't escape
           const display = raw != null ? (raw ?? "")
-                        : c.fmt ? c.fmt(v)
+                        : c.fmt ? c.fmt(v, r)
                         : (v == null ? "" : escHtml(String(v)));
           const isZero  = typeof v === "number" && v === 0;
           const style   = c.key === centralKey ? 'style="color:#58a6ff;background:#0d2035"' : isZero ? 'style="color:#484f58"' : "";
@@ -2453,16 +2532,28 @@ function renderBranch() {
         {key:"mat",  label:"Material Code"},
         {key:"desc", label:"Material Description"},
         {key:"group",label:"Material Group"},
-        ...allPlantNames.map(pn => ({key:`__p__${pn}`, label:pn, rawKey:`__r__${pn}`})),
-        {key:"grandTotal", label:"Grand Total", rawKey:"grandTotal"},
+        ...allPlantNames.flatMap(pn => showMos
+          ? [{key:`__p__${pn}`, label:pn, rawKey:`__r__${pn}`}, {key:`__mos__${pn}`, label:`${pn} MOS`, rawKey:`__mos__${pn}`}]
+          : [{key:`__p__${pn}`, label:pn, rawKey:`__r__${pn}`}]),
+        {key:"grandTotal", label:"National", rawKey:"grandTotal"},
+        ...(showMos ? [{key:"__mos__national", label:"National MOS", rawKey:"__mos__national"}] : []),
         {key:"branchCount", label:"# Branches"},
       ];
       // tableRows entries only carry mat/desc/group plus __p__/__r__ plant keys and
       // grandTotal/branchCount — already exactly what exportCols needs, so export
-      // directly from tableRows (no HTML-formatting fns involved).
+      // directly from tableRows (no HTML-formatting fns involved). When MOS is
+      // shown, add plain numeric/text MOS fields (mosExportVal) for export only.
+      const exportRows = showMos
+        ? tableRows.map(r => {
+            const er = {...r};
+            allPlantNames.forEach(pn => { er[`__mos__${pn}`] = mosExportVal(r.__mosData ? r.__mosData[pn] : null); });
+            er["__mos__national"] = mosExportVal(r.__mosData ? r.__mosData.__national__ : null);
+            return er;
+          })
+        : tableRows;
       injectDlButtons("mat-dl-row",
-        () => downloadCSV(tableRows,   exportCols, "branch_material_comparison.csv"),
-        () => downloadExcel(tableRows, exportCols, "branch_material_comparison.xlsx"),
+        () => downloadCSV(exportRows,   exportCols, "branch_material_comparison.csv"),
+        () => downloadExcel(exportRows, exportCols, "branch_material_comparison.xlsx"),
       );
     }
   }
@@ -3523,4 +3614,3 @@ function renderConcentration() {
     renderPage("branch");
   });
 }
-
