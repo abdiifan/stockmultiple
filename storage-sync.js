@@ -121,11 +121,17 @@ async function pullFileFromSupabase(slot) {
   const input = document.getElementById(inputId);
   if (!input) { console.warn(`[storage-sync] No input #${inputId} found for ${slot}`); return; }
 
-  // Populate the real <input type=file> so existing handlers work unmodified
+  // Populate the real <input type=file> so existing handlers work unmodified.
+  // Mark + unmark fromSupabase tightly around the synchronous dispatch so the
+  // flag can never get stuck (previously it was set earlier in the caller and
+  // only cleared by the listener — if the pull failed/returned early above,
+  // it stayed stuck "on" forever and silently blocked all future real uploads).
+  input.dataset.fromSupabase = "1";
   const dt = new DataTransfer();
   dt.items.add(file);
   input.files = dt.files;
-  input.dispatchEvent(new Event("change", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true })); // capture-phase listener consumes the flag synchronously here
+  input.dataset.fromSupabase = "";
 }
 
 // ── Wire up: intercept admin's own file picks to also push to Supabase ──
@@ -197,8 +203,6 @@ document.addEventListener("epss-auth-ready", async () => {
   attachRealtimeSync();
 
   for (const slot of Object.keys(FILE_SLOTS)) {
-    const input = document.getElementById(FILE_SLOTS[slot].inputId);
-    if (input) input.dataset.fromSupabase = "1"; // mark so the change-sync above skips re-uploading
     await pullFileFromSupabase(slot);
   }
 });
