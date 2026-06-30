@@ -107,7 +107,11 @@ async function pullFileFromSupabase(slot) {
 
   const { data: blob, error } = await sc.storage.from(BUCKET).download(path);
   if (error) {
-    // Nothing uploaded yet for this slot — that's fine, not an error state
+    // statusCode 404 / "Object not found" just means nothing uploaded yet — fine.
+    // Anything else (permission denied, etc.) is worth knowing about.
+    if (error.statusCode !== "404" && !/not.?found/i.test(error.message || "")) {
+      console.error(`[storage-sync] Pull failed (${slot}):`, error);
+    }
     return;
   }
 
@@ -115,7 +119,7 @@ async function pullFileFromSupabase(slot) {
   const file = new File([blob], filename, { type: blob.type });
 
   const input = document.getElementById(inputId);
-  if (!input) return;
+  if (!input) { console.warn(`[storage-sync] No input #${inputId} found for ${slot}`); return; }
 
   // Populate the real <input type=file> so existing handlers work unmodified
   const dt = new DataTransfer();
@@ -125,18 +129,25 @@ async function pullFileFromSupabase(slot) {
 }
 
 // ── Wire up: intercept admin's own file picks to also push to Supabase ──
+// NOTE: script.js resets input.value = "" right after reading the file in
+// its own (bubble-phase) change listener. We use { capture: true } here so
+// OUR listener runs FIRST, before that reset wipes e.target.files.
 function attachAdminUploadSync() {
   Object.entries(FILE_SLOTS).forEach(([slot, { inputId }]) => {
     const input = document.getElementById(inputId);
     if (!input) return;
-    input.addEventListener("change", (e) => {
-      if (!window.isAdmin) return;            // safety net; UI is already hidden for non-admins
-      const file = e.target.files && e.target.files[0];
-      if (!file) return;
-      // Don't re-upload the file we just pulled from Supabase ourselves
-      if (input.dataset.fromSupabase === "1") { input.dataset.fromSupabase = ""; return; }
-      pushFileToSupabase(slot, file);
-    });
+    input.addEventListener(
+      "change",
+      (e) => {
+        if (!window.isAdmin) return;            // safety net; UI is already hidden for non-admins
+        const file = e.target.files && e.target.files[0];
+        if (!file) { console.warn(`[storage-sync] No file found on change for ${slot}`); return; }
+        // Don't re-upload the file we just pulled from Supabase ourselves
+        if (input.dataset.fromSupabase === "1") { input.dataset.fromSupabase = ""; return; }
+        pushFileToSupabase(slot, file);
+      },
+      { capture: true }
+    );
   });
 }
 
