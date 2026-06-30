@@ -159,9 +159,7 @@
     <button class="nav-btn" data-page="concentration">
       <span class="nav-icon">🎯</span> Stock Concentration
     </button>
-    <button class="nav-btn" data-page="mos-plant">
-      <span class="nav-icon">📐</span> MOS by Plant
-    </button>
+
     <button class="nav-btn" data-page="expiry-risk">
       <span class="nav-icon">🧯</span> Overstock &amp; Expiry Risk
     </button>
@@ -481,45 +479,6 @@
     </div>
   </section>
 
-  <!-- ── MOS BY PLANT ── -->
-  <section id="page-mos-plant" class="page" style="display:none">
-    <div class="page-header-row">
-      <div>
-        <div class="page-title">📐 Months of Stock (MOS) by Plant</div>
-        <div class="page-subtitle">Stock-on-hand ÷ consumption, per plant. HO01 is the distribution hub — it has no consumption of its own, so its MOS is calculated against total branch demand.</div>
-      </div>
-      <div id="mos-dl-row" style="display:flex;gap:0.6rem"></div>
-    </div>
-    <div id="mos-no-amc" class="alert-info" style="margin-bottom:1rem">Upload <b>AMC.xlsx</b> using the <b>📐 Upload AMC.xlsx</b> button in the sidebar to enable MOS analysis.</div>
-    <div id="mos-content" style="display:none">
-      <div class="alert-info" style="margin-bottom:1rem;font-size:0.8rem">
-        <b>ℹ️ HO01 (Hub) MOS rule:</b> HO01 distributes stock to all branch plants and does not consume it directly.
-        For HO01, MOS = HO01's stock-on-hand ÷ the <b>sum of every branch plant's AMC</b> for that item — i.e. how many months HO01 can keep supplying the entire network at current demand.
-        For every other plant, MOS = that plant's stock-on-hand ÷ its own AMC.
-      </div>
-      <div class="filter-bar" style="gap:0.6rem;flex-wrap:wrap;align-items:center">
-        <select id="mos-plant-filter" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:0.82rem">
-          <option value="">All Plants</option>
-        </select>
-        <select id="mos-type" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:0.82rem">
-          <option value="">All Types</option>
-          <option value="ZME">ZME (Medicines)</option>
-          <option value="ZMS">ZMS (Medical Supplies)</option>
-        </select>
-        <label style="font-size:0.78rem;color:var(--muted);display:flex;align-items:center;gap:0.3rem">
-          <input type="checkbox" id="mos-critical-only" /> Critical only (&lt; 1 month)
-        </label>
-        <button class="apply-btn small" id="mos-apply">Apply</button>
-        <button class="apply-btn secondary small" id="mos-clear">Clear</button>
-      </div>
-      <div class="kpi-row" id="mos-kpis" style="margin:1rem 0"></div>
-      <div class="section-header">📊 MOS by Plant — Overview</div>
-      <div class="chart-box full"><div id="chart-mos-plant" style="min-height:320px"></div></div>
-      <div class="section-header" style="margin-top:1.5rem">📋 MOS Detail Table</div>
-      <div id="mos-table"></div>
-    </div>
-  </section>
-
   <!-- ── OVERSTOCK & EXPIRY RISK ── -->
   <section id="page-expiry-risk" class="page" style="display:none">
     <div class="page-header-row">
@@ -532,7 +491,7 @@
     <div id="exprisk-no-data" class="alert-info" style="margin-bottom:1rem">Upload the <b>main inventory Excel</b> and <b>AMC.xlsx</b> (📐 AMC upload in the sidebar) to enable this analysis.</div>
     <div id="exprisk-content" style="display:none">
       <div class="alert-info" style="margin-bottom:1rem;font-size:0.8rem">
-        <b>ℹ️ How risk is measured:</b> for each plant + item, <b>Months of Stock (MOS)</b> = stock-on-hand ÷ AMC (HO01 uses total branch demand — see MOS by Plant).
+        <b>ℹ️ How risk is measured:</b> for each plant + item, <b>Months of Stock (MOS)</b> = stock-on-hand ÷ AMC (HO01 uses total branch demand — see National Stock &amp; MOS).
         <b>Shelf-life remaining</b> = months until the earliest-expiring batch at that plant expires.
         An item is <b>at risk</b> when MOS &gt; shelf-life-remaining — there's more stock than can be sold/used before it goes out of date.
         The <b>at-risk quantity</b> is only the excess: stock-on-hand minus what could realistically be consumed in time (shelf-life-remaining × AMC).
@@ -593,7 +552,7 @@
     <div id="natl-no-amc" class="alert-info" style="margin-bottom:1rem">Upload <b>AMC.xlsx</b> using the <b>📐 Upload AMC.xlsx</b> button in the sidebar to enable this table.</div>
     <div id="natl-content" style="display:none">
       <div class="alert-info" style="margin-bottom:1rem;font-size:0.8rem">
-        <b>ℹ️ How these numbers are calculated:</b> <b>SOH</b> and <b>MOS</b> are network-wide (sum of every plant incl. HO01 for stock; AMC = sum of every branch plant's own AMC, HO01 excluded — same rule as MOS by Plant).
+        <b>ℹ️ How these numbers are calculated:</b> <b>SOH</b> and <b>MOS</b> are network-wide (sum of every plant incl. HO01 for stock; AMC = sum of every branch plant's own AMC, HO01 excluded). HO01 is the distribution hub and has no consumption of its own — its MOS reflects how long it can keep supplying the whole network at current demand, not its own usage.
         <b>Shelf life in Month</b> is the quantity-weighted average months-to-expiry across every batch of this material, at every plant.
         <b>Adjusted SOH/MOS for Expiry</b> cap stock-on-hand at what can realistically be consumed before that average shelf life runs out.
       </div>
@@ -682,7 +641,7 @@
 </script>
 <!-- filters + script deferred: run after DOM is ready -->
 <script src="auth.js" defer></script>
-<script src="storage-sync.js?v=2" defer></script>
+<script src="storage-sync.js" defer></script>
 <script src="filters.js" defer></script>
 <script src="script.js" defer></script>
 <script src="mos.js" defer></script>
