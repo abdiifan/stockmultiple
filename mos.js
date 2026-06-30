@@ -82,7 +82,7 @@ function loadMosAmcFile(file) {
       if (statusEl) statusEl.innerHTML =
         `<div class="status-ok">✓ LOADED</div><div class="status-name">${escHtml(file.name)}</div>` +
         `<div class="status-name" style="color:var(--green)">${count} items · ${detectedPlants.length} plants</div>` +
-        (hasHub ? "" : `<div class="status-name" style="color:var(--orange)">⚠️ "${HUB_PLANT}" column not found — hub MOS rule won't apply</div>`);
+        (hasHub ? "" : `<div class="status-name" style="color:var(--amber)">⚠️ "${HUB_PLANT}" column not found — hub MOS rule won't apply</div>`);
       if (btnEl) btnEl.textContent = "✓ " + file.name;
 
       document.getElementById("mos-no-amc").style.display  = "none";
@@ -258,7 +258,7 @@ function mosNABadge() {
 
 function fmtMosVal(mos) {
   if (mos === null || mos === undefined) return mosNABadge();
-  if (mos === Infinity) return '<span style="color:var(--orange)">∞</span>';
+  if (mos === Infinity) return '<span style="color:var(--amber)">∞</span>';
   return `<b>${Number(mos).toFixed(1)}</b> mo`;
 }
 
@@ -351,7 +351,7 @@ async function renderMosPlant() {
   mosKpiRow([
     mosKpiCard("Items Screened", scored.length.toLocaleString(), typeVal || "All types", "blue"),
     mosKpiCard("National MOS Critical (<1mo)", nationalCriticalCount.toLocaleString(), `of ${nationalEntries.length.toLocaleString()} items with national MOS`, "red"),
-    mosKpiCard("Plant-Item Pairs Critical (<1mo)", criticalCount.toLocaleString(), `of ${committedEntries.length.toLocaleString()} committed pairs`, "orange"),
+    mosKpiCard("Plant-Item Pairs Critical (<1mo)", criticalCount.toLocaleString(), `of ${committedEntries.length.toLocaleString()} committed pairs`, "amber"),
     mosKpiCard(`${HUB_PLANT} Critical (<1mo)`, hubCriticalCount.toLocaleString(), "vs. total branch demand", "purple"),
     mosKpiCard("SOH Data Loaded", hasSoh ? "Yes" : "No", hasSoh ? "From inventory file" : "Upload inventory Excel for SOH", hasSoh ? "green" : "amber"),
   ]);
