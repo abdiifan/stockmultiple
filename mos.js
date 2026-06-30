@@ -227,7 +227,13 @@ function computeNationalMOS(row, sohMap) {
   const totalBranchAmc = branchPlants.reduce((s, p) => s + (row.amcs[p] || 0), 0);
   const anyBranchCommitted = branchPlants.some(p => row.amcs[p] !== null);
 
-  const totalSoh = mosPlants.reduce((s, p) => s + mosSohFor(sohMap, row, p), 0);
+  // FIX-NATL-SOH: SOH must cover ALL plants holding this material in the
+  // inventory file — not just plants that happen to have a column in the
+  // uploaded AMC file. Previously this summed mosPlants only, which silently
+  // dropped stock sitting at any plant absent from the AMC upload (or whose
+  // plant code didn't match an AMC column), undercounting national SOH.
+  const allPlantsForRow = sohMap.get(row.code) || {};
+  const totalSoh = Object.values(allPlantsForRow).reduce((s, v) => s + (Number(v) || 0), 0);
   const hasHo01  = mosPlants.includes(HUB_PLANT);
 
   if (!anyBranchCommitted) return { totalSoh, totalAmc: null, mos: null, hasHo01 };
