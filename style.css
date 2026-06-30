@@ -942,7 +942,7 @@ td.col-mat-desc-wrap { max-width: 280px; white-space: normal; line-height: 1.4; 
 .ms-wrap.open .ms-arrow { transform: rotate(180deg); }
 .ms-dropdown {
   display: none; position: absolute; top: calc(100% + 4px); left: 0;
-  min-width: 220px; max-height: 260px; overflow-y: auto;
+  min-width: 220px; max-width: calc(100vw - 2rem); max-height: 260px; overflow-y: auto;
   background: var(--surface2); border: 1px solid var(--border2);
   border-radius: var(--radius-md); box-shadow: 0 10px 30px rgba(0,0,0,0.4);
   z-index: 300; padding: 0.35rem 0;
@@ -1272,12 +1272,46 @@ td.col-mat-desc-wrap { max-width: 280px; white-space: normal; line-height: 1.4; 
 
   tbody td { padding: 0.45rem 0.65rem; }
   thead th  { padding: 0.55rem 0.65rem; }
+  table { font-size: 0.73rem; }
+
+  /* Larger, thumb-friendly tap targets */
+  .nav-btn { padding: 0.62rem 0.65rem; font-size: 0.83rem; min-height: 42px; }
+  .upload-btn, .ms-btn, .dl-btn, .apply-btn, .gsb-clear, #global-search-btn {
+    min-height: 42px;
+  }
+  .ms-item { padding: 0.55rem 0.75rem; min-height: 38px; }
+  #mobile-menu-btn { width: 44px; height: 44px; }
+
+  /* Dropdowns should hug the full width of their trigger on small screens
+     instead of risking horizontal overflow off the viewport edge */
+  .ms-dropdown { left: 0; right: 0; width: 100%; min-width: 0; max-width: none; }
+  .filter-bar .ms-wrap .ms-dropdown { width: 100%; }
+
+  /* Compact theme toggle — keep the switch, drop the label to save space */
+  #theme-toggle { padding: 0.4rem 0.55rem; gap: 0.35rem; }
+  .theme-toggle-label { display: none; }
+
+  /* Denser KPI cards on phones */
+  .kpi-card { padding: 0.85rem 0.95rem 0.8rem; }
+  .kpi-value { font-size: 1.05rem; }
+  .kpi-row { gap: 0.65rem; margin-bottom: 1.2rem; }
+
+  .brand { padding: 1rem 0.85rem 0.85rem; }
+  .landing-logo img { height: 64px; }
+  .landing-features { gap: 0.5rem; }
+  .feature-chip { padding: 0.45rem 0.85rem; font-size: 0.72rem; }
+
+  /* Prevent any stray wide element from forcing page-level horizontal scroll */
+  html, body { overflow-x: hidden; }
 }
 
 @media (max-width: 400px) {
   #dash-kpis { grid-template-columns: 1fr; }
   .kpi-row { grid-template-columns: 1fr; }
   #expiry-kpis { grid-template-columns: 1fr; }
+  #transit-kpis { grid-template-columns: 1fr; }
+  .page-title { font-size: 1.05rem; }
+  .landing-title { font-size: 1.5rem; }
 }
 
 /* ══════════════════════════════════════════════
