@@ -714,8 +714,15 @@ function sortBy(arr, key, asc=false) { return [...arr].sort((a,b) => asc ? a[key
 // ── TABLE BUILDER ──────────────────────────────────────────────────────────
 // Columns with raw:true may contain trusted HTML (badges etc.) — all others
 // are escaped to prevent XSS from Excel data landing in the DOM.
-function buildTable(rows, cols, rowClass, extraClass="") {
-  if (!rows.length) return `<div class="alert-info">No data to display.</div>`;
+function buildTable(rows, cols, rowClass, extraClass="", exportOpts=null) {
+  // exportOpts: { id, title } — when provided, renders a header bar with the
+  // table's title (optional) and CSV/Excel export buttons inline, top-right
+  // of the table itself. Caller must wire clicks via wireTableExport(id, ...)
+  // after the HTML is inserted into the DOM.
+  const exportHeader = exportOpts
+    ? `<div class="tbl-export-header"><span class="tbl-export-title">${escHtml(exportOpts.title || "")}</span><div class="tbl-export-btns"><button class="dl-btn" id="${exportOpts.id}-csv">⬇ CSV</button><button class="dl-btn" id="${exportOpts.id}-xlsx">⬇ Excel</button></div></div>`
+    : "";
+  if (!rows.length) return `${exportHeader}<div class="alert-info">No data to display.</div>`;
   const thead = `<thead><tr>${cols.map(c => `<th>${escHtml(c.label)}</th>`).join("")}</tr></thead>`;
   const tbody = `<tbody>${rows.map(row => {
     const cls = rowClass ? rowClass(row) : "";
@@ -727,7 +734,17 @@ function buildTable(rows, cols, rowClass, extraClass="") {
       return `<td class="${cellCls}">${val}</td>`;
     }).join("")}</tr>`;
   }).join("")}</tbody>`;
-  return `<div class="tbl-wrap"><table class="${extraClass}">${thead}${tbody}</table></div>`;
+  return `<div class="tbl-wrap">${exportHeader}<table class="${extraClass}">${thead}${tbody}</table></div>`;
+}
+
+// ── Wire CSV/Excel buttons rendered by buildTable's exportOpts header ──────
+// Call right after the table HTML (from buildTable with exportOpts) has been
+// inserted into the DOM.
+function wireTableExport(id, data, exportCols, filenameBase) {
+  const csvBtn  = document.getElementById(`${id}-csv`);
+  const xlsxBtn = document.getElementById(`${id}-xlsx`);
+  if (csvBtn)  csvBtn.onclick  = () => downloadCSV(data,   exportCols, `${filenameBase}.csv`);
+  if (xlsxBtn) xlsxBtn.onclick = () => downloadExcel(data, exportCols, `${filenameBase}.xlsx`);
 }
 
 // ── EXCEL DOWNLOAD ─────────────────────────────────────────────────────────
@@ -1617,14 +1634,11 @@ function renderTransit() {
     document.getElementById("chart-transit-plant").innerHTML = "";
   }
 
-  injectDlButtons("transit-dl-row",
-    () => downloadCSV(_transitRowsCache,   transitCols.slice(0,-1), "transit_analysis.csv"),
-    () => downloadExcel(_transitRowsCache, transitCols.slice(0,-1), "transit_analysis.xlsx"));
-
   // Show all filtered transit items directly (no search gate)
   document.getElementById("transit-table-wrap").innerHTML = transitRows.length
-    ? buildTable(transitRows, transitCols, r => r._phantomTransitQty > 0 ? "row-red" : "")
+    ? buildTable(transitRows, transitCols, r => r._phantomTransitQty > 0 ? "row-red" : "", "", {id:"transit-export", title:"Transit Analysis"})
     : `<div class="alert-info">No pharmaceutical transit items found.</div>`;
+  if (transitRows.length) wireTableExport("transit-export", _transitRowsCache, transitCols.slice(0,-1), "transit_analysis");
 }
 
 // NOTE: Transit material lookup is now handled via the Material filter-bar
@@ -1760,14 +1774,12 @@ function renderExpiryDetailTable(baseDf, today) {
 
   if (!selectedMaterials.length) {
     wrap.innerHTML = `<div class="alert-info">🔍 Select one or more materials in the filter bar above to view detailed batch/location-level expiry data.</div>`;
-    document.getElementById("expiry-dl-row").innerHTML = "";
     return;
   }
 
   const matches = baseDf.filter(r => (r["Unrestricted Stock"] || 0) > 0 && (r["Value of Unrestricted Stock"] || 0) > 0);
   if (!matches.length) {
     wrap.innerHTML = `<div class="alert-info">No batch/location records found for the selected material(s).</div>`;
-    document.getElementById("expiry-dl-row").innerHTML = "";
     return;
   }
 
@@ -1803,12 +1815,8 @@ function renderExpiryDetailTable(baseDf, today) {
     {key:"Value of Unrestricted Stock",    label:"Value (ETB)", fmt:fmtETB, rawKey:"Value of Unrestricted Stock", cellClass:"col-val"},
   ];
 
-  wrap.innerHTML = summary + buildTable(sorted, cols, r => r._statusClass);
-
-  // Export buttons
-  injectDlButtons("expiry-dl-row",
-    () => downloadCSV(sorted,   cols, "expiry_detail.csv"),
-    () => downloadExcel(sorted, cols, "expiry_detail.xlsx"));
+  wrap.innerHTML = summary + buildTable(sorted, cols, r => r._statusClass, "", {id:"expiry-export", title:"Expiry Detail"});
+  wireTableExport("expiry-export", sorted, cols, "expiry_detail");
 }
 
 // NOTE: QC and Flow material lookup are now handled via the Material
@@ -1858,10 +1866,8 @@ function renderQC() {
     })),
     "Value of Stock in Quality Inspection"
   );
-  document.getElementById("qc-table-wrap").innerHTML = buildTable(qcRows, qcCols, r => r["Value of Stock in Quality Inspection"] > 10000 ? "row-red" : "");
-  injectDlButtons("qc-dl-row",
-    () => downloadCSV(qcRows,   qcCols, "qc_inspection.csv"),
-    () => downloadExcel(qcRows, qcCols, "qc_inspection.xlsx"));
+  document.getElementById("qc-table-wrap").innerHTML = buildTable(qcRows, qcCols, r => r["Value of Stock in Quality Inspection"] > 10000 ? "row-red" : "", "", {id:"qc-export", title:"Quality Inspection"});
+  wireTableExport("qc-export", qcRows, qcCols, "qc_inspection");
 
   // ── DAYS IN QUALITY PANEL ─────────────────────────────────────────────────
   _renderQCDaysPanel(qcRows);
@@ -1994,10 +2000,13 @@ function _renderQCDaysPanel(qcRows) {
   }
 
   let html = `
-    <div style="font-size:0.68rem;color:var(--muted);margin-bottom:0.5rem;display:flex;gap:0.8rem;flex-wrap:wrap">
-      <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--green);margin-right:3px"></span>≤14 days</span>
-      <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--amber);margin-right:3px"></span>15–30 days</span>
-      <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--red);margin-right:3px"></span>&gt;30 days</span>
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.5rem">
+      <div style="font-size:0.68rem;color:var(--muted);display:flex;gap:0.8rem;flex-wrap:wrap">
+        <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--green);margin-right:3px"></span>≤14 days</span>
+        <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--amber);margin-right:3px"></span>15–30 days</span>
+        <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--red);margin-right:3px"></span>&gt;30 days</span>
+      </div>
+      <div class="tbl-export-btns"><button class="dl-btn" id="qc-days-export-csv">⬇ CSV</button><button class="dl-btn" id="qc-days-export-xlsx">⬇ Excel</button></div>
     </div>
     <div class="tbl-wrap" style="max-height:520px;overflow-y:auto">
     <table style="font-size:0.76rem;width:100%">
@@ -2053,10 +2062,8 @@ function _renderQCDaysPanel(qcRows) {
     {key:"PostingDate", label:"Posting Date"},
     {key:"DaysInQC",    label:"Days in QC"},
   ];
-  injectDlButtons("qc-days-dl-row",
-    () => downloadCSV(exportRows,   exportCols, "days_in_quality_inspection.csv"),
-    () => downloadExcel(exportRows, exportCols, "days_in_quality_inspection.xlsx"),
-  );
+  // Wire export buttons rendered inline in the table header above.
+  wireTableExport("qc-days-export", exportRows, exportCols, "days_in_quality_inspection");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
