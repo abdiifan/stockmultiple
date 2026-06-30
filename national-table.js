@@ -4,9 +4,13 @@
 //
 // COLUMNS
 // -------
-//   SOH                      total Unrestricted Stock across ALL plants,
-//                            including HO01 (same numerator as mos.js's
-//                            National MOS — computeNationalMOS().totalSoh)
+//   SOH                      Total Quantity (Unrestricted + verified Transit +
+//                            QC) across ALL plants, including HO01 — same
+//                            numerator as mos.js's National MOS
+//                            (computeNationalMOS().totalSoh) and the same
+//                            "Total Quantity" metric shown on Branch
+//                            Comparison's material tab, so the two pages
+//                            agree on this material's total.
 //   <6mo SOH Excluded        portion of SOH sitting in batches with LESS THAN
 //                            6 months to expiry — this is the qty left out of
 //                            the weighted-average shelf-life calc below (it's
@@ -218,7 +222,7 @@ function renderNatlTable() {
     { key: "code", label: "Material Code" },
     { key: "desc", label: "Material Description" },
     { key: "type", label: "Type" },
-    { key: "soh", label: "SOH (all plants incl. " + ((typeof HUB_PLANT !== "undefined") ? HUB_PLANT : "HO01") + ")" },
+    { key: "soh", label: "SOH / Total Qty (all plants incl. " + ((typeof HUB_PLANT !== "undefined") ? HUB_PLANT : "HO01") + ")" },
     { key: "excludedQty", label: "<6mo SOH Excluded (from shelf-life avg)" },
     { key: "adjSoh", label: "Adjusted SOH for Expiry" },
     { key: "mos", label: "MOS (months)" },
