@@ -24,6 +24,14 @@
   --red:       #e04545;
   --purple:    #9471d6;
 
+  /* Risk-severity scale — used for expiry/concentration risk indicators.
+     Kept distinct from --red/--amber/--green (those are general semantic
+     colors) so risk visuals stay coordinated but adapt correctly per theme. */
+  --risk-critical: #f85149;
+  --risk-high:     #ffa657;
+  --risk-moderate: #d29922;
+  --risk-low:      #3fb950;
+
   --accent-glow: rgba(61,148,224,0.14);
   --kpi-hover-shadow: 0 12px 36px rgba(0,0,0,0.6);
 
@@ -58,6 +66,12 @@
   --amber:     #b56800;
   --red:       #c02000;
   --purple:    #6340a8;
+
+  /* Risk-severity scale — darker stops than dark mode for AA contrast on white */
+  --risk-critical: #d63a32;
+  --risk-high:     #c97a1f;
+  --risk-moderate: #a8780f;
+  --risk-low:      #2a8f4e;
 
   --accent-glow: rgba(10,110,209,0.09);
   --kpi-hover-shadow: 0 8px 28px rgba(0,0,0,0.11);
@@ -440,6 +454,7 @@ body { display: flex; }
   gap: 0.65rem;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -479,6 +494,140 @@ body { display: flex; }
 #incoming-content .filter-bar select:hover { border-color: var(--blue); background: var(--surface3); }
 #incoming-content .filter-bar .ms-wrap { flex: 0 1 auto; align-self: flex-end; }
 #incoming-content .filter-bar .apply-btn { align-self: flex-end; }
+
+/* ── Filter group / actions split — groups filters left, actions right.
+   Wrap existing .filter-bar children into:
+   <div class="filter-group">…search/selects/checkbox…</div>
+   <div class="filter-actions">…divider, person filter, apply, clear…</div> ── */
+.filter-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ── Consolidated control classes — replaces the repeated inline
+   style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);
+   background:var(--card-bg);color:var(--text);font-size:0.82rem" found on
+   mos-search, mos-plant-filter, mos-type, exprisk-search, exprisk-plant,
+   exprisk-type, natl-search, natl-type ── */
+.filter-input,
+.filter-select {
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-family: inherit;
+  transition: border-color 0.14s, background 0.14s;
+}
+.filter-input { min-width: 220px; }
+.filter-select { padding: 6px 10px; cursor: pointer; }
+.filter-input:hover,
+.filter-select:hover { border-color: var(--blue); background: var(--surface3); }
+.filter-input:focus,
+.filter-select:focus { outline: none; border-color: var(--blue); }
+
+.filter-search-wrap { position: relative; display: inline-flex; align-items: center; }
+.filter-search-wrap .filter-input { padding-left: 30px; }
+.filter-search-icon {
+  position: absolute;
+  left: 10px;
+  font-size: 0.85rem;
+  color: var(--dim);
+  pointer-events: none;
+}
+
+.filter-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* ── Person filter chip — was a bare select + separate clear button with
+   inline-styled fallback colors; now a single contained control using
+   project tokens, consistent with .person-filter-chip already in index.html ── */
+.person-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--surface2);
+  border: 1.5px solid var(--border2);
+  border-radius: var(--radius-sm);
+  padding: 0 2px 0 8px;
+  transition: border-color 0.14s;
+}
+.person-filter-chip.pf-chip-active { border-color: var(--blue); }
+
+.person-filter-select {
+  padding: 5px 26px 5px 6px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%237a9ab8'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  min-width: 110px;
+}
+.person-filter-select.pf-active { color: var(--blue); font-weight: 600; }
+
+.person-filter-clear {
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.72rem;
+  padding: 4px 7px;
+  line-height: 1;
+  transition: color 0.14s;
+  display: none;
+}
+.pf-active ~ .person-filter-clear,
+.person-filter-chip.pf-chip-active .person-filter-clear { display: inline-flex; align-items: center; }
+.person-filter-clear:hover { color: var(--red); }
+
+.filter-bar-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--border2);
+  margin: 0 0.1rem;
+  flex-shrink: 0;
+}
+
+/* ── Sidebar placement of the global Person Assigned filter ── */
+.sidebar-person-filter {
+  padding: 0 1rem 0.6rem;
+}
+.sidebar-person-filter .person-filter-chip {
+  width: 100%;
+  justify-content: space-between;
+}
+.sidebar-person-filter .person-filter-select {
+  width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .filter-bar { flex-direction: column; align-items: stretch; }
+  .filter-group, .filter-actions { width: 100%; }
+  .filter-actions { justify-content: flex-end; }
+}
 
 /* ══════════════════════════════════════════════
    KPI CARDS
@@ -969,10 +1118,10 @@ td.col-mat-desc-wrap { max-width: 280px; white-space: normal; line-height: 1.4; 
   content: ''; position: absolute; top: 0; left: 0; right: 0;
   height: 3px; border-radius: var(--radius-md) var(--radius-md) 0 0;
 }
-.conc-band-card.sole::before   { background: #f85149; }
-.conc-band-card.few::before    { background: #ffa657; }
-.conc-band-card.spread::before { background: #3fb950; }
-.conc-band-card.wide::before   { background: #3a8fd4; }
+.conc-band-card.sole::before   { background: var(--risk-critical); }
+.conc-band-card.few::before    { background: var(--risk-high); }
+.conc-band-card.spread::before { background: var(--risk-low); }
+.conc-band-card.wide::before   { background: var(--blue); }
 
 .conc-band-icon  { font-size: 1.4rem; line-height: 1; margin-bottom: 0.1rem; }
 .conc-band-count {
@@ -990,8 +1139,8 @@ td.col-mat-desc-wrap { max-width: 280px; white-space: normal; line-height: 1.4; 
   font-size: 0.7rem; font-weight: 700;
   font-family: 'IBM Plex Mono', monospace; line-height: 1.5;
 }
-.conc-pct-badge.critical { background: rgba(248,81,73,0.15); color: #f85149; border: 1px solid rgba(248,81,73,0.3); }
-.conc-pct-badge.high     { background: rgba(255,166,87,0.15); color: #ffa657; border: 1px solid rgba(255,166,87,0.3); }
+.conc-pct-badge.critical { background: color-mix(in srgb, var(--risk-critical) 15%, transparent); color: var(--risk-critical); border: 1px solid color-mix(in srgb, var(--risk-critical) 30%, transparent); }
+.conc-pct-badge.high     { background: color-mix(in srgb, var(--risk-high) 15%, transparent); color: var(--risk-high); border: 1px solid color-mix(in srgb, var(--risk-high) 30%, transparent); }
 
 .conc-plant-pill {
   display: inline-block; background: var(--accent-glow); color: var(--blue);
