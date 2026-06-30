@@ -7,6 +7,10 @@
 //   SOH                      total Unrestricted Stock across ALL plants,
 //                            including HO01 (same numerator as mos.js's
 //                            National MOS — computeNationalMOS().totalSoh)
+//   <6mo SOH Excluded        portion of SOH sitting in batches with LESS THAN
+//                            6 months to expiry — this is the qty left out of
+//                            the weighted-average shelf-life calc below (it's
+//                            included in SOH but not in the shelf-life avg).
 //   MOS                      SOH ÷ AMC, where AMC = sum of every BRANCH
 //                            plant's own AMC (HO01 excluded — HO01 doesn't
 //                            consume, see mos.js header comment). This is
@@ -44,6 +48,12 @@
 // remaining, its shelf life is reported as 0 (per product decision), not N/A.
 const NATL_SHELF_LIFE_FLOOR_MO = 6;
 
+// Each map value is { shelf, excludedQty }:
+//   shelf       — qty-weighted avg months-to-expiry (>= 6mo batches only), or
+//                 0 if the material has batches but none qualify, or null if
+//                 the material has no batches with expiry data at all.
+//   excludedQty — total Unrestricted Stock qty across batches with LESS THAN
+//                 6 months remaining (the qty left out of the shelf-life avg).
 function buildNatlShelfLifeMap() {
   const out  = new Map();
   const base = (typeof getReconciledBase === "function") ? getReconciledBase() : (typeof rawDf !== "undefined" ? rawDf : []);
@@ -54,7 +64,7 @@ function buildNatlShelfLifeMap() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const acc = new Map(); // code → { qtySum, weightedSum, hasAnyBatch, hasQualifying }
+  const acc = new Map(); // code → { qtySum, weightedSum, hasAnyBatch, excludedQty }
   for (const row of base) {
     const mat = String(row._mappedMaterial || row["Material"] || "").trim();
     const qty = Number(row["Unrestricted Stock"] || 0);
@@ -62,17 +72,21 @@ function buildNatlShelfLifeMap() {
     if (!(row._expiry instanceof Date) || isNaN(row._expiry)) continue;
 
     const mo = (row._expiry.getTime() - today.getTime()) / MS_PER_DAY / DAYS_PER_MO; // can be negative if expired
-    if (!acc.has(mat)) acc.set(mat, { qtySum: 0, weightedSum: 0, hasAnyBatch: false });
+    if (!acc.has(mat)) acc.set(mat, { qtySum: 0, weightedSum: 0, hasAnyBatch: false, excludedQty: 0 });
     const e = acc.get(mat);
     e.hasAnyBatch = true;
 
-    if (mo < NATL_SHELF_LIFE_FLOOR_MO) continue; // excluded — near-expiry batch, doesn't count toward the average
+    if (mo < NATL_SHELF_LIFE_FLOOR_MO) { // excluded — near-expiry batch, doesn't count toward the average
+      e.excludedQty += qty;
+      continue;
+    }
     e.qtySum      += qty;
     e.weightedSum += qty * mo;
   }
   acc.forEach((v, k) => {
     // No batch with >= 6mo remaining → report 0, not N/A (per product decision).
-    out.set(k, v.qtySum > 0 ? v.weightedSum / v.qtySum : (v.hasAnyBatch ? 0 : null));
+    const shelf = v.qtySum > 0 ? v.weightedSum / v.qtySum : (v.hasAnyBatch ? 0 : null);
+    out.set(k, { shelf, excludedQty: v.excludedQty });
   });
   return out;
 }
@@ -91,7 +105,9 @@ function buildNatlTableRows(typeFilter, searchQ) {
     const soh   = nat.totalSoh;
     const amc   = nat.totalAmc;
     const mos   = nat.mos;
-    const shelf = shelfMap.has(r.code) ? shelfMap.get(r.code) : null;
+    const shelfEntry  = shelfMap.has(r.code) ? shelfMap.get(r.code) : null;
+    const shelf       = shelfEntry ? shelfEntry.shelf : null;
+    const excludedQty = shelfEntry ? shelfEntry.excludedQty : 0;
 
     let adjSoh = null, adjMos = null;
     if (amc !== null && shelf !== null) {
@@ -101,7 +117,7 @@ function buildNatlTableRows(typeFilter, searchQ) {
     }
 
     return { sn: i + 1, code: r.code, desc: r.desc, type: r.type, isMerged: r.isMerged, origCodes: r.origCodes,
-             soh, amc, mos, shelf, adjSoh, adjMos };
+             soh, amc, mos, shelf, excludedQty, adjSoh, adjMos };
   });
 }
 
@@ -171,6 +187,8 @@ function renderNatlTable() {
       raw: true, cellClass: "col-mat-code-wrap" },
     { key: "desc", label: "Material Description", cellClass: "col-mat-desc-wrap" },
     { key: "soh", label: "SOH", fmt: v => fmtQty(v), cellClass: "col-qty" },
+    { key: "excludedQty", label: "<6mo SOH Excluded",
+      fmt: v => v > 0 ? `<b style="color:#b45309">${fmtQty(v)}</b>` : fmtQty(0), raw: true, cellClass: "col-qty" },
     { key: "adjSoh", label: "Adjusted SOH for Expiry",
       fmt: v => v === null ? mosNABadge() : fmtQty(v), raw: true, cellClass: "col-qty" },
     { key: "mos", label: "MOS",
@@ -190,6 +208,7 @@ function renderNatlTable() {
   const exportRows = data.map(d => ({
     code: d.code, desc: d.desc, type: d.type,
     soh: natlExportNum(d.soh),
+    excludedQty: natlExportNum(d.excludedQty),
     adjSoh: d.adjSoh === null ? "N/A" : natlExportNum(d.adjSoh),
     mos: natlExportMos(d.mos),
     adjMos: natlExportMos(d.adjMos),
@@ -200,6 +219,7 @@ function renderNatlTable() {
     { key: "desc", label: "Material Description" },
     { key: "type", label: "Type" },
     { key: "soh", label: "SOH (all plants incl. " + ((typeof HUB_PLANT !== "undefined") ? HUB_PLANT : "HO01") + ")" },
+    { key: "excludedQty", label: "<6mo SOH Excluded (from shelf-life avg)" },
     { key: "adjSoh", label: "Adjusted SOH for Expiry" },
     { key: "mos", label: "MOS (months)" },
     { key: "adjMos", label: "Adjusted MOS for Expiry (months)" },
