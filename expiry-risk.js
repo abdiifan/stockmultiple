@@ -411,7 +411,7 @@ async function renderExpiryRisk() {
     { key: "unitVal", label: "Unit Value", fmt: v => fmtETB(v) },
   ];
   document.getElementById("exprisk-table-after").innerHTML = visResidual.length
-    ? buildTable([...visResidual].sort((a,b)=>b.val-a.val), afterCols, () => "")
+    ? buildTable([...visResidual].sort((a,b)=>b.val-a.val), afterCols, () => "", "", {id:"exprisk-export", title:"Residual After Redistribution"})
     : '<div class="alert-info" style="margin:0.5rem 0">✓ Nothing left over — redistribution fully resolves the at-risk stock for the current filters.</div>';
 
   // ── EXPORT (export the marketing-director residual list, the most actionable one) ──
@@ -422,12 +422,7 @@ async function renderExpiryRisk() {
     { key: "val", label: "Residual Value (ETB)", fmt: v => Number(v).toFixed(2) },
     { key: "unitVal", label: "Unit Value (ETB)", fmt: v => Number(v).toFixed(2) },
   ];
-  const dlRow = document.getElementById("exprisk-dl-row");
-  if (dlRow) {
-    dlRow.innerHTML = '<button class="dl-btn">⬇ CSV</button><button class="dl-btn">⬇ Excel</button>';
-    dlRow.querySelectorAll(".dl-btn")[0].onclick = () => downloadCSV(visResidual,   exportCols, "expiry_risk_residual_for_marketing.csv");
-    dlRow.querySelectorAll(".dl-btn")[1].onclick = () => downloadExcel(visResidual, exportCols, "expiry_risk_residual_for_marketing.xlsx");
-  }
+  if (visResidual.length) wireTableExport("exprisk-export", visResidual, exportCols, "expiry_risk_residual_for_marketing");
 }
 
 // ── WIRE INTO PAGE_RENDERERS AND EVENT LISTENERS ──────────────────────────────
