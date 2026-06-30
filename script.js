@@ -2342,6 +2342,10 @@ function renderBranch() {
           <button id="mat-clear" class="apply-btn secondary">Clear</button>
         </div>
         <div id="mat-chart-wrap" style="margin-bottom:1rem"></div>
+        <label for="mat-export-mos" style="display:flex;align-items:center;gap:6px;font-size:0.78rem;color:var(--muted);margin-bottom:0.5rem;${mosAvailable ? "cursor:pointer" : "opacity:0.5"}" title="Adds {Plant} MOS columns to the exported file even if the table above isn't currently showing MOS (calculated from Total Quantity).">
+          <input type="checkbox" id="mat-export-mos" ${mosAvailable ? "checked" : "disabled"} />
+          Include MOS columns in export
+        </label>
         <div id="mat-dl-row" style="display:flex;gap:0.6rem;justify-content:flex-end;margin-bottom:0.5rem"></div>
         <div id="mat-table-wrap"></div>`;
       document.getElementById("mat-apply").addEventListener("click", refreshMaterialView);
@@ -2361,6 +2365,8 @@ function renderBranch() {
       // more material groups (e.g. only "Antibiotics" or "Vaccines") in addition
       // to / instead of picking individual materials.
       buildMultiSelect("mat-mg-ms-wrap", "mat-mg-ms-dd", mgNamesForFilter, "All Material Groups");
+      const exportMosCb = document.getElementById("mat-export-mos");
+      if (exportMosCb) exportMosCb.addEventListener("change", refreshMaterialView);
     }
 
     // ── Spread-chart drilldown: auto-select materials from the clicked group ──
@@ -2434,9 +2440,13 @@ function renderBranch() {
           });
           // FEAT-BRANCH-MOS: MOS only makes sense against a quantity, and only
           // when AMC data has been loaded.
-          let mosData = null;
-          if (isQty && mosAvailable) {
-            mosData = {};
+          // computeMosData() takes a plant->qty map (+ grand total qty) and
+          // returns the matching plant->MOS map. Shared by the on-screen MOS
+          // (tied to whichever qty metric is selected) and the export-only
+          // MOS (EXPORT-MOS-CB: always based on Total Quantity, so "Include
+          // MOS columns in export" works even when viewing a Value metric).
+          function computeMosData(qtyByPlant, grandQty) {
+            const out = {};
             const mosRow = mosByCode.get(mat);
             allPlantNames.forEach(pn => {
               // FIX-BRANCH-MOS-HUB: detect the hub by pn === centralName (already
@@ -2447,13 +2457,36 @@ function renderBranch() {
               const isHubPlant = pn === centralName;
               const code = plantNameToCode[pn];
               const amc  = mosRow ? branchAmcFor(mosRow, isHubPlant ? mosHubCode : code) : null;
-              mosData[pn] = mosFor(plantData[pn], amc);
+              out[pn] = mosFor(qtyByPlant[pn] || 0, amc);
             });
-            // National = network-wide qty (grandTotal, already incl. HO01) ÷ branch-only AMC
+            // National = network-wide qty (grandQty, already incl. HO01) ÷ branch-only AMC
             const nationalAmc = mosRow ? branchAmcFor(mosRow, mosHubCode) : null;
-            mosData.__national__ = mosFor(grandTotal, nationalAmc);
+            out.__national__ = mosFor(grandQty, nationalAmc);
+            return out;
           }
-          return {mat, desc:info.desc, group:info.group, valType:info.valType, plantData, mosData, grandTotal, branchCount};
+
+          const mosData = (isQty && mosAvailable) ? computeMosData(plantData, grandTotal) : null;
+
+          // EXPORT-MOS-CB: export-only MOS, always computed from Total Quantity
+          // regardless of the currently selected metric (qty or value), so it's
+          // available no matter what the table is currently displaying.
+          let exportMosData = null;
+          if (mosAvailable) {
+            if (isQty && metric === "TotalQty") {
+              exportMosData = mosData; // already exactly this calc — reuse
+            } else {
+              const totalQtyByPlant = {};
+              let totalQtyGrand = 0;
+              allPlantNames.forEach(pn => {
+                const tq = info[pn] ? (info[pn].TotalQty || 0) : 0;
+                totalQtyByPlant[pn] = tq;
+                totalQtyGrand += tq;
+              });
+              exportMosData = computeMosData(totalQtyByPlant, totalQtyGrand);
+            }
+          }
+
+          return {mat, desc:info.desc, group:info.group, valType:info.valType, plantData, mosData, exportMosData, grandTotal, branchCount};
         });
 
       if (sortMode === "total_desc") materials.sort((a,b) => b.grandTotal - a.grandTotal);
@@ -2492,6 +2525,7 @@ function renderBranch() {
         allPlantNames.forEach(pn => { row[`__p__${pn}`] = m.plantData[pn] || 0; row[`__r__${pn}`] = m.plantData[pn] || 0; });
         row["__r__grandTotal"] = m.grandTotal;
         row.__mosData = m.mosData; // FEAT-BRANCH-MOS: consumed by plant/national column fmt()
+        row.__exportMosData = m.exportMosData; // EXPORT-MOS-CB: consumed by export-only MOS columns
         return row;
       });
 
@@ -2518,26 +2552,35 @@ function renderBranch() {
         <div class="tbl-wrap"><table>${thead}<tbody>${tbody}</tbody></table></div>
         ${materials.length > 200 ? `<div class="alert-info">Showing first 200 of ${materials.length}. Refine search.</div>` : ""}`;
 
+      // EXPORT-MOS-CB: "Include MOS columns in export" is independent of the
+      // on-screen MOS display (showMos) — it reads its own checkbox, defaults
+      // to checked, and only requires MOS data to exist at all (mosAvailable),
+      // not that the table is currently in a qty-metric view.
+      const exportMosCbEl = document.getElementById("mat-export-mos");
+      const exportMos = mosAvailable && !!(exportMosCbEl && exportMosCbEl.checked);
+
       const exportCols = [
         {key:"mat",  label:"Material Code"},
         {key:"desc", label:"Material Description"},
         {key:"group",label:"Material Group"},
-        ...allPlantNames.flatMap(pn => showMos
+        ...allPlantNames.flatMap(pn => exportMos
           ? [{key:`__p__${pn}`, label:pn, rawKey:`__r__${pn}`}, {key:`__mos__${pn}`, label:`${pn} MOS`, rawKey:`__mos__${pn}`}]
           : [{key:`__p__${pn}`, label:pn, rawKey:`__r__${pn}`}]),
         {key:"grandTotal", label:"National", rawKey:"grandTotal"},
-        ...(showMos ? [{key:"__mos__national", label:"National MOS", rawKey:"__mos__national"}] : []),
+        ...(exportMos ? [{key:"__mos__national", label:"National MOS", rawKey:"__mos__national"}] : []),
         {key:"branchCount", label:"# Branches"},
       ];
       // tableRows entries only carry mat/desc/group plus __p__/__r__ plant keys and
       // grandTotal/branchCount — already exactly what exportCols needs, so export
-      // directly from tableRows (no HTML-formatting fns involved). When MOS is
-      // shown, add plain numeric/text MOS fields (mosExportVal) for export only.
-      const exportRows = showMos
+      // directly from tableRows (no HTML-formatting fns involved). When the
+      // "Include MOS columns in export" checkbox is on, add plain numeric/text
+      // MOS fields (mosExportVal) sourced from __exportMosData (always
+      // Total-Quantity-based, so it works even when viewing a Value metric).
+      const exportRows = exportMos
         ? tableRows.map(r => {
             const er = {...r};
-            allPlantNames.forEach(pn => { er[`__mos__${pn}`] = mosExportVal(r.__mosData ? r.__mosData[pn] : null); });
-            er["__mos__national"] = mosExportVal(r.__mosData ? r.__mosData.__national__ : null);
+            allPlantNames.forEach(pn => { er[`__mos__${pn}`] = mosExportVal(r.__exportMosData ? r.__exportMosData[pn] : null); });
+            er["__mos__national"] = mosExportVal(r.__exportMosData ? r.__exportMosData.__national__ : null);
             return er;
           })
         : tableRows;
