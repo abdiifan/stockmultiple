@@ -337,8 +337,7 @@ async function renderExpiryRisk() {
       paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
     }, PLOTLY_CONFIG);
   } else {
-    document.getElementById("chart-exprisk-before").innerHTML =
-      '<div class="alert-info" style="margin:1rem 0">✓ No items currently at risk of expiring before they can be consumed.</div>';
+    document.getElementById("chart-exprisk-before").innerHTML = "";
   }
 
   // ── TABLE: BEFORE ──────────────────────────────────────────────────────────────
@@ -360,22 +359,8 @@ async function renderExpiryRisk() {
   ];
   const sortedAtRiskBefore = [...atRiskBefore].sort((a,b)=>b.atRiskVal-a.atRiskVal);
   document.getElementById("exprisk-table-before").innerHTML = buildTable(
-    sortedAtRiskBefore, beforeCols, () => "",
-    "", {id:"exprisk-before-export", title:"At-Risk Detail (Before Redistribution)"}
+    sortedAtRiskBefore, beforeCols, () => ""
   );
-
-  // ── EXPORT (At-Risk Detail before redistribution) ───────────────────────────
-  const beforeExportCols = [
-    { key: "code", label: "Material Code" }, { key: "desc", label: "Description" }, { key: "type", label: "Type" },
-    { key: "plant", label: "Plant" }, { key: "isHub", label: "Hub Plant?", fmt: v => v ? "Yes" : "No" },
-    { key: "soh", label: "SOH (units)", fmt: v => Number(v).toFixed(2) },
-    { key: "amc", label: "AMC (units/mo)", fmt: v => Number(v).toFixed(2) },
-    { key: "mos", label: "MOS (months)", fmt: v => Number(v).toFixed(2) },
-    { key: "shelfLeftMo", label: "Shelf Life Left (months)", fmt: v => Number(v).toFixed(2) },
-    { key: "atRiskQty", label: "At-Risk Qty (units)", fmt: v => Number(v).toFixed(2) },
-    { key: "atRiskVal", label: "At-Risk Value (ETB)", fmt: v => Number(v).toFixed(2) },
-  ];
-  if (sortedAtRiskBefore.length) wireTableExport("exprisk-before-export", sortedAtRiskBefore, beforeExportCols, "expiry_risk_at_risk_before");
 
   // ── REDISTRIBUTION (always computed on the FULL unfiltered snapshot, so the
   //    plan is correct regardless of the plant filter applied to the view) ──────
@@ -396,21 +381,8 @@ async function renderExpiryRisk() {
   ];
   const sortedTransfers = [...visTransfers].sort((a,b)=>b.val-a.val);
   document.getElementById("exprisk-redist-table").innerHTML = visTransfers.length
-    ? buildTable(sortedTransfers, redistCols, () => "",
-        "", {id:"exprisk-redist-export", title:"Suggested Redistribution Plan"})
+    ? buildTable(sortedTransfers, redistCols, () => "")
     : '<div class="alert-info" style="margin:0.5rem 0">No eligible transfers found — either nothing is at risk, or no recipient plant has safe headroom for the at-risk items.</div>';
-
-  // ── EXPORT (Suggested Redistribution Plan) ──────────────────────────────────
-  const redistExportCols = [
-    { key: "code", label: "Material Code" }, { key: "desc", label: "Description" },
-    { key: "fromPlant", label: "From Plant" }, { key: "fromIsHub", label: "From Is Hub?", fmt: v => v ? "Yes" : "No" },
-    { key: "toPlant", label: "To Plant" },
-    { key: "qty", label: "Transfer Qty (units)", fmt: v => Number(v).toFixed(2) },
-    { key: "val", label: "Transfer Value (ETB)", fmt: v => Number(v).toFixed(2) },
-    { key: "toMosAfter", label: "Recipient MOS After (months)", fmt: v => v===null ? "" : Number(v).toFixed(2) },
-    { key: "toShelfLeftMo", label: "Recipient Shelf Life (months)", fmt: v => Number(v).toFixed(2) },
-  ];
-  if (sortedTransfers.length) wireTableExport("exprisk-redist-export", sortedTransfers, redistExportCols, "expiry_risk_redistribution_plan");
 
   // ── RESIDUAL (AFTER redistribution) — for marketing director ──────────────────
   const visResidual = plantVal ? residual.filter(r => r.plant === plantVal) : residual;
@@ -441,7 +413,7 @@ async function renderExpiryRisk() {
   ];
   const sortedResidual = [...visResidual].sort((a,b)=>b.val-a.val);
   document.getElementById("exprisk-table-after").innerHTML = visResidual.length
-    ? buildTable(sortedResidual, afterCols, () => "", "", {id:"exprisk-export", title:"Residual After Redistribution"})
+    ? buildTable(sortedResidual, afterCols, () => "")
     : '<div class="alert-info" style="margin:0.5rem 0">✓ Nothing left over — redistribution fully resolves the at-risk stock for the current filters.</div>';
 
   // ── EXPORT (export the marketing-director residual list, the most actionable one) ──
@@ -452,7 +424,9 @@ async function renderExpiryRisk() {
     { key: "val", label: "Residual Value (ETB)", fmt: v => Number(v).toFixed(2) },
     { key: "unitVal", label: "Unit Value (ETB)", fmt: v => Number(v).toFixed(2) },
   ];
-  if (sortedResidual.length) wireTableExport("exprisk-export", sortedResidual, exportCols, "expiry_risk_residual_for_marketing");
+  injectDlButtons("exprisk-dl-row",
+    () => downloadCSV(sortedResidual,   exportCols, "expiry_risk_residual_for_marketing.csv"),
+    () => downloadExcel(sortedResidual, exportCols, "expiry_risk_residual_for_marketing.xlsx"));
 }
 
 // ── WIRE INTO PAGE_RENDERERS AND EVENT LISTENERS ──────────────────────────────
