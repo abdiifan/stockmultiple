@@ -205,8 +205,7 @@ function renderNatlTable() {
 
   document.getElementById("natl-table").innerHTML = buildTable(
     data, cols,
-    (row) => (isMosCritical(row.mos) || isMosCritical(row.adjMos)) ? "row-red" : "",
-    "", {id:"natl-export", title:"National Stock & MOS"}
+    (row) => (isMosCritical(row.mos) || isMosCritical(row.adjMos)) ? "row-red" : ""
   );
 
   // ── EXPORT ───────────────────────────────────────────────────────────────────
@@ -230,7 +229,9 @@ function renderNatlTable() {
     { key: "adjMos", label: "Adjusted MOS for Expiry (months)" },
     { key: "shelf", label: "Shelf life in Month (qty-weighted avg)" },
   ];
-  wireTableExport("natl-export", exportRows, exportCols, "national_stock_mos");
+  injectDlButtons("natl-dl-row",
+    () => downloadCSV(exportRows,   exportCols, "national_stock_mos.csv"),
+    () => downloadExcel(exportRows, exportCols, "national_stock_mos.xlsx"));
 }
 
 // ── WIRE INTO PAGE_RENDERERS AND EVENT LISTENERS ──────────────────────────────
