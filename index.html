@@ -100,6 +100,149 @@
       margin: 0 0.1rem;
       flex-shrink: 0;
     }
+
+    /* ── 🔎 Who's Responsible? sidebar search ── */
+    .who-resp-wrap {
+      position: relative;
+      margin: 0 0.75rem 0.9rem;
+    }
+    .who-resp-input {
+      width: 100%;
+      background: var(--surface2, #141c2b);
+      border: 1px solid var(--border2, #263548);
+      border-radius: var(--radius-md, 10px);
+      color: var(--text, #dce8f5);
+      font-family: inherit;
+      font-size: 0.78rem;
+      padding: 0.5rem 0.7rem;
+      outline: none;
+      transition: border-color 0.18s, box-shadow 0.18s;
+    }
+    .who-resp-input::placeholder { color: var(--dim, #4a6275); }
+    .who-resp-input:focus {
+      border-color: var(--blue, #3d94e0);
+      box-shadow: 0 0 0 3px var(--blue-glow, rgba(61,148,224,0.22));
+    }
+    .who-resp-suggestions {
+      position: fixed;
+      display: none;
+      background: var(--surface2, #141c2b);
+      border: 1px solid var(--border2, #263548);
+      border-radius: var(--radius-md, 10px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+      max-height: 300px;
+      overflow-y: auto;
+      z-index: 500;
+      padding: 0.3rem 0;
+    }
+    .who-resp-suggestions.open { display: block; }
+    .who-resp-item {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      padding: 0.4rem 0.75rem;
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+    .who-resp-item:hover,
+    .who-resp-item.who-resp-active { background: var(--accent-glow, rgba(61,148,224,0.14)); }
+    .who-resp-item-code {
+      font-size: 0.76rem;
+      font-weight: 700;
+      color: var(--text, #dce8f5);
+      font-family: 'IBM Plex Mono', monospace;
+    }
+    .who-resp-item-desc {
+      font-size: 0.68rem;
+      color: var(--muted, #7a9ab8);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .who-resp-item mark {
+      background: none;
+      color: var(--blue, #3d94e0);
+      font-weight: 800;
+    }
+    .who-resp-empty {
+      padding: 0.55rem 0.75rem;
+      font-size: 0.7rem;
+      color: var(--dim, #4a6275);
+    }
+
+    /* ── Result modal ── */
+    .who-resp-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.55);
+      backdrop-filter: blur(2px);
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+      animation: who-resp-fade-in 0.15s ease-out;
+    }
+    @keyframes who-resp-fade-in { from { opacity: 0; } to { opacity: 1; } }
+    .who-resp-modal {
+      position: relative;
+      width: 100%;
+      max-width: 440px;
+      background: var(--surface, #0e1420);
+      border: 1px solid var(--border2, #263548);
+      border-radius: var(--radius-lg, 14px);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      padding: 1.4rem 1.4rem 1.3rem;
+    }
+    .who-resp-modal-close {
+      position: absolute;
+      top: 0.7rem; right: 0.7rem;
+      background: var(--surface2, #141c2b);
+      border: 1px solid var(--border2, #263548);
+      color: var(--muted, #7a9ab8);
+      border-radius: 999px;
+      width: 26px; height: 26px;
+      cursor: pointer;
+      font-size: 0.75rem;
+      line-height: 1;
+    }
+    .who-resp-modal-close:hover { color: var(--text, #dce8f5); border-color: var(--blue, #3d94e0); }
+    .who-resp-modal-header { margin-bottom: 1rem; padding-right: 1.6rem; }
+    .who-resp-modal-code {
+      font-family: 'IBM Plex Mono', monospace;
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: var(--blue, #3d94e0);
+      margin-bottom: 0.2rem;
+    }
+    .who-resp-modal-desc { font-size: 0.82rem; color: var(--text, #dce8f5); }
+    .who-resp-modal-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.7rem;
+      margin-bottom: 1.1rem;
+    }
+    .who-resp-stat {
+      background: var(--surface2, #141c2b);
+      border: 1px solid var(--border, #1f2e44);
+      border-radius: var(--radius-md, 10px);
+      padding: 0.6rem 0.7rem;
+    }
+    .who-resp-stat-label {
+      font-size: 0.58rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: var(--dim, #4a6275);
+      margin-bottom: 0.35rem;
+    }
+    .who-resp-stat-value {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text, #dce8f5);
+    }
+    .who-resp-view-all { width: 100%; text-align: center; }
   </style>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -167,6 +310,20 @@
       <span class="nav-icon">🗂️</span> National Stock &amp; MOS
     </button>
   </nav>
+
+  <div class="sidebar-divider"></div>
+  <div class="upload-label">🔎 Who's Responsible?</div>
+  <div class="who-resp-wrap" id="who-resp-wrap">
+    <input
+      type="text"
+      id="who-resp-input"
+      class="who-resp-input"
+      placeholder="Material code or name…"
+      autocomplete="off"
+      spellcheck="false"
+    />
+    <div class="who-resp-suggestions" id="who-resp-suggestions"></div>
+  </div>
 
   <!-- Upload controls — visible to admins only; auth.js toggles this -->
   <div id="admin-upload-section" style="display:none">
@@ -638,6 +795,7 @@
 <script src="mos.js" defer></script>
 <script src="national-table.js" defer></script>
 <script src="expiry-risk.js" defer></script>
+<script src="who-responsible.js" defer></script>
 <script>
 // ── TAB SWITCHING (Transit + QC + Overstock & Expiry Risk) ──
 document.addEventListener("DOMContentLoaded", function() {
