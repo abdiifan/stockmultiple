@@ -2765,8 +2765,14 @@ function renderConcentration() {
   // ── 3. Concentration classification ──
   // For each material find the dominant plant
   const matConcentration = Object.entries(matPlantMap).map(([mat, info]) => {
-    const plantCount = Object.keys(info.plants).length;
-    const topPlant   = Object.entries(info.plants)
+    // Only count plants that actually hold positive Unrestricted Stock qty.
+    // A plant can have an inventory row for this material (e.g. a batch fully
+    // in QC/Blocked/Transit) with zero Unrestricted Stock — that shouldn't
+    // count as "stocked at this plant" for concentration purposes, or it
+    // inflates plantCount for materials that are really only at one plant.
+    const activePlants = Object.entries(info.plants).filter(([, v]) => v.qty > 0);
+    const plantCount = activePlants.length;
+    const topPlant   = [...activePlants]
       .sort((a, b) => b[1].qty - a[1].qty)[0];
     const topPlantName = topPlant ? topPlant[0] : "—";
     const topQty       = topPlant ? topPlant[1].qty : 0;
@@ -3399,8 +3405,14 @@ function renderConcentration() {
   // ── 3. Concentration classification ──
   // For each material find the dominant plant
   const matConcentration = Object.entries(matPlantMap).map(([mat, info]) => {
-    const plantCount = Object.keys(info.plants).length;
-    const topPlant   = Object.entries(info.plants)
+    // Only count plants that actually hold positive Unrestricted Stock qty.
+    // A plant can have an inventory row for this material (e.g. a batch fully
+    // in QC/Blocked/Transit) with zero Unrestricted Stock — that shouldn't
+    // count as "stocked at this plant" for concentration purposes, or it
+    // inflates plantCount for materials that are really only at one plant.
+    const activePlants = Object.entries(info.plants).filter(([, v]) => v.qty > 0);
+    const plantCount = activePlants.length;
+    const topPlant   = [...activePlants]
       .sort((a, b) => b[1].qty - a[1].qty)[0];
     const topPlantName = topPlant ? topPlant[0] : "—";
     const topQty       = topPlant ? topPlant[1].qty : 0;
@@ -3408,7 +3420,7 @@ function renderConcentration() {
     const pctQty       = info.totalQty > 0 ? (topQty / info.totalQty) * 100 : 0;
     const pctVal       = info.totalVal > 0 ? (topVal / info.totalVal) * 100 : 0;
     const origCodes    = [...info.origCodes].sort().join(", ");
-    return { mat, desc: info.desc, plantCount, topPlantName, topQty, topVal, pctQty, pctVal, totalQty: info.totalQty, totalVal: info.totalVal, origCodes, _plants: info.plants };
+    return { mat, desc: info.desc, plantCount, topPlantName, topQty, topVal, pctQty, pctVal, totalQty: info.totalQty, totalVal: info.totalVal, origCodes, _plants: Object.fromEntries(activePlants) };
   }).filter(r => r.totalQty > 0); // only materials with unrestricted stock
 
   // ── 3b. MOS-based exclusion for "Sole Branch" ────────────────────────────
