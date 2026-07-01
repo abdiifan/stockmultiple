@@ -3371,11 +3371,18 @@ function renderConcentration() {
     .map(([name, val]) => ({ name, val, pct: totalVal > 0 ? (val / totalVal) * 100 : 0 }))
     .sort((a, b) => b.val - a.val);
 
-  // ── 2. Per-material, per-plant aggregation (unrestricted qty + value) ──
+  // ── 2. Per-material, per-plant aggregation (Total Quantity + value) ──
   // FIX-CONC-MAP: key by _mappedMaterial only when mapping is active — this is
   // the single change that makes two SAP codes mapping to the same target drug
   // collapse into one row. Without useMapped guard they stayed separate because
   // unmapped rows' _mappedMaterial equals their original code (no merger).
+  // FIX-CONC-TOTALQTY: use the same "Total Quantity" definition as the rest of
+  // the app (Unrestricted + verified Transit + Stock in Quality Inspection) —
+  // see national-table.js header and the Branch Comparison material tab. This
+  // was previously Unrestricted-only here, which disagreed with the plant-level
+  // pie-chart aggregation just above (which already includes transit + QC) and
+  // undercounted/misclassified materials that carry meaningful transit or QC
+  // stock.
   const matPlantMap = {};
   df.forEach(r => {
     const mat   = useMapped ? (r._mappedMaterial || r["Material"]) : r["Material"];
@@ -3392,8 +3399,12 @@ function renderConcentration() {
         origCodes: new Set(),   // FIX-CONC-MAP: track all original SAP codes merged here
       };
     }
-    const qty = getMappedQty(r, "Unrestricted Stock");
-    const val = getMappedVal(r, "Value of Unrestricted Stock");
+    const qty = getMappedQty(r, "Unrestricted Stock")
+              + getVerifiedTransitQty(r)
+              + getMappedQty(r, "Stock in Quality Inspection");
+    const val = getMappedVal(r, "Value of Unrestricted Stock")
+              + getVerifiedTransitVal(r)
+              + getMappedVal(r, "Value of Stock in Quality Inspection");
     if (!matPlantMap[mat].plants[plant]) matPlantMap[mat].plants[plant] = { qty: 0, val: 0 };
     matPlantMap[mat].plants[plant].qty += qty;
     matPlantMap[mat].plants[plant].val += val;
@@ -3405,11 +3416,11 @@ function renderConcentration() {
   // ── 3. Concentration classification ──
   // For each material find the dominant plant
   const matConcentration = Object.entries(matPlantMap).map(([mat, info]) => {
-    // Only count plants that actually hold positive Unrestricted Stock qty.
-    // A plant can have an inventory row for this material (e.g. a batch fully
-    // in QC/Blocked/Transit) with zero Unrestricted Stock — that shouldn't
-    // count as "stocked at this plant" for concentration purposes, or it
-    // inflates plantCount for materials that are really only at one plant.
+    // Only count plants that actually hold positive Total Quantity for this
+    // material. A plant can have an inventory row for this material (e.g. a
+    // batch fully Blocked) with zero Total Quantity — that shouldn't count as
+    // "stocked at this plant" for concentration purposes, or it inflates
+    // plantCount for materials that are really only at one plant.
     const activePlants = Object.entries(info.plants).filter(([, v]) => v.qty > 0);
     const plantCount = activePlants.length;
     const topPlant   = [...activePlants]
@@ -3421,7 +3432,7 @@ function renderConcentration() {
     const pctVal       = info.totalVal > 0 ? (topVal / info.totalVal) * 100 : 0;
     const origCodes    = [...info.origCodes].sort().join(", ");
     return { mat, desc: info.desc, plantCount, topPlantName, topQty, topVal, pctQty, pctVal, totalQty: info.totalQty, totalVal: info.totalVal, origCodes, _plants: Object.fromEntries(activePlants) };
-  }).filter(r => r.totalQty > 0); // only materials with unrestricted stock
+  }).filter(r => r.totalQty > 0); // only materials with stock (Total Quantity basis)
 
   // ── 3b. MOS-based exclusion for "Sole Branch" ────────────────────────────
   // A material sitting >80% in one plant only counts as a genuine sole-branch
@@ -3483,11 +3494,11 @@ function renderConcentration() {
     ? new Set(df.map(r => r._mappedMaterial || r["Material"])).size
     : new Set(df.map(r => r["Material"])).size;
   setKpis("conc-kpis", [
-    ["Total Unique Plants",      new Set(df.map(r => r["Plant Name"])).size.toLocaleString(),        "With unrestricted stock",       "blue"],
+    ["Total Unique Plants",      new Set(df.map(r => r["Plant Name"])).size.toLocaleString(),        "With stock (Total Qty)",       "blue"],
     ["Sole-Branch Materials",    sole.length.toLocaleString(),   `${totalMats > 0 ? ((sole.length/totalMats)*100).toFixed(0) : 0}% of materials${soleExcludedCount ? ` · ${soleExcludedCount} excluded (MOS&lt;1mo)` : ""}`,  "red"],
     ["Few-Branch Materials",     few.length.toLocaleString(),    "Held in 2–4 plants",               "amber"],
     ["Top Plant Share",          topPlantPct.toFixed(1) + "%",   plantValArr[0]?.name || "—",        "purple"],
-    ["Unique Materials Tracked", uniqueMatCount.toLocaleString(), useMapped ? "Standardized (merged)" : "Unrestricted stock only", "green"],
+    ["Unique Materials Tracked", uniqueMatCount.toLocaleString(), useMapped ? "Standardized (merged)" : "Total Quantity basis", "green"],
   ]);
 
   // ── Pie chart: value by plant ──
@@ -3527,7 +3538,7 @@ function renderConcentration() {
       ${bandCard("wide",   "🟢", wide.length,   "Wide Spread",   "Across 9+ plants — well distributed")}
     </div>
     <div style="margin-top:0.85rem;font-size:0.7rem;color:var(--dim);line-height:1.5">
-      Classification based on <b>% of total unrestricted quantity</b> held by the top plant per material.
+      Classification based on <b>% of Total Quantity</b> (Unrestricted + verified Transit + QC) held by the top plant per material.
       <br>Sole Branch threshold: ≥80% in one plant. Items with MOS &lt; 1 month at any holding plant are excluded (fast-moving, not a real concentration risk).
     </div>`;
 
