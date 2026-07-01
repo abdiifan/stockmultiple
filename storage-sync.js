@@ -101,87 +101,10 @@ async function pushFileToSupabase(slot, file) {
 }
 
 // ── Pull: called on app load for every signed-in user ──
-// Speed optimization, two layers:
-//  1) INSTANT PAINT: if we have any previously-cached copy of this file on
-//     this device (from a prior login), load it into the app immediately —
-//     zero network wait. This is what makes a viewer's *second* login feel
-//     instant even on a bad connection.
-//  2) BACKGROUND REFRESH: while that's rendering, we check the small
-//     metadata row for a newer timestamp. Only if the data actually changed
-//     do we download the real file and swap it in — silently, no re-download
-//     of unchanged files, and no blocking the UI while we check.
-const SYNC_CACHE_NAME = "inventory-files-v1";
-
-function lastKeyStorageName(slot) { return `sync-last-key-${slot}`; }
-
-function cacheKeyFor(slot, ts) {
-  return `https://sync-cache.local/${slot}/${encodeURIComponent(ts)}`;
-}
-
-// Push a blob into the real <input type=file> so script.js's existing
-// (unmodified) parsing/rendering pipeline picks it up, exactly as if the
-// user had selected the file themselves.
-function dispatchFileToInput(slot, blob, path) {
-  const { inputId } = FILE_SLOTS[slot];
-  const input = document.getElementById(inputId);
-  if (!input) { console.warn(`[storage-sync] No input #${inputId} found for ${slot}`); return; }
-
-  const filename = path.split("/").pop();
-  const file = new File([blob], filename, { type: blob.type });
-
-  input.dataset.fromSupabase = "1";
-  const dt = new DataTransfer();
-  dt.items.add(file);
-  input.files = dt.files;
-  input.dispatchEvent(new Event("change", { bubbles: true }));
-  input.dataset.fromSupabase = "";
-}
-
 async function pullFileFromSupabase(slot) {
-  const { path } = FILE_SLOTS[slot];
+  const { path, inputId } = FILE_SLOTS[slot];
   const sc = window.supabaseClient;
 
-  let cache = null;
-  if ("caches" in window) {
-    try { cache = await caches.open(SYNC_CACHE_NAME); } catch (e) { /* Cache API unavailable — fine, we just skip caching */ }
-  }
-
-  // 1) INSTANT PAINT from whatever we last had on this device, if anything.
-  let servedFromCache = false;
-  let servedKey = null;
-  if (cache) {
-    try {
-      servedKey = localStorage.getItem(lastKeyStorageName(slot));
-      if (servedKey) {
-        const cachedResp = await cache.match(servedKey);
-        if (cachedResp) {
-          const blob = await cachedResp.blob();
-          dispatchFileToInput(slot, blob, path);
-          servedFromCache = true;
-        }
-      }
-    } catch (e) {
-      console.warn(`[storage-sync] Instant-cache load failed (${slot}):`, e);
-    }
-  }
-
-  // 2) Check (small) metadata for freshness in the background.
-  let ts = null;
-  try {
-    const { data: meta } = await sc.from("app_files").select("uploaded_at").eq("slot", slot).maybeSingle();
-    ts = meta && meta.uploaded_at ? meta.uploaded_at : null;
-  } catch (e) {
-    // Metadata check failed — if we already served from cache, that's fine,
-    // the user still has data on screen. Otherwise fall through and try a
-    // direct download below.
-  }
-
-  const freshKey = ts ? cacheKeyFor(slot, ts) : null;
-  if (servedFromCache && freshKey && freshKey === servedKey) {
-    return; // already showing the latest version, nothing more to do
-  }
-
-  // 3) Data is missing or stale — fetch the real file and swap it in.
   const { data: blob, error } = await sc.storage.from(BUCKET).download(path);
   if (error) {
     // statusCode 404 / "Object not found" just means nothing uploaded yet — fine.
@@ -192,15 +115,23 @@ async function pullFileFromSupabase(slot) {
     return;
   }
 
-  if (cache && freshKey) {
-    try {
-      await cache.put(freshKey, new Response(blob));
-      localStorage.setItem(lastKeyStorageName(slot), freshKey);
-      if (servedKey && servedKey !== freshKey) await cache.delete(servedKey); // drop the stale copy
-    } catch (e) { /* non-fatal */ }
-  }
+  const filename = path.split("/").pop();
+  const file = new File([blob], filename, { type: blob.type });
 
-  dispatchFileToInput(slot, blob, path);
+  const input = document.getElementById(inputId);
+  if (!input) { console.warn(`[storage-sync] No input #${inputId} found for ${slot}`); return; }
+
+  // Populate the real <input type=file> so existing handlers work unmodified.
+  // Mark + unmark fromSupabase tightly around the synchronous dispatch so the
+  // flag can never get stuck (previously it was set earlier in the caller and
+  // only cleared by the listener — if the pull failed/returned early above,
+  // it stayed stuck "on" forever and silently blocked all future real uploads).
+  input.dataset.fromSupabase = "1";
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  input.files = dt.files;
+  input.dispatchEvent(new Event("change", { bubbles: true })); // capture-phase listener consumes the flag synchronously here
+  input.dataset.fromSupabase = "";
 }
 
 // ── Wire up: intercept admin's own file picks to also push to Supabase ──
@@ -271,7 +202,7 @@ document.addEventListener("epss-auth-ready", async () => {
   attachAdminUploadSync();
   attachRealtimeSync();
 
-  // Run all three pulls concurrently instead of one-at-a-time — on a slow
-  // connection this turns 3 sequential round-trips into 1.
-  await Promise.all(Object.keys(FILE_SLOTS).map(slot => pullFileFromSupabase(slot)));
+  for (const slot of Object.keys(FILE_SLOTS)) {
+    await pullFileFromSupabase(slot);
+  }
 });
