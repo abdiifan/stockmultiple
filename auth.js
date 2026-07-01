@@ -68,7 +68,7 @@ function injectAuthOverlay() {
           <div class="auth-login-card" id="auth-login-card">
             <div class="auth-login-header">
               <span class="auth-login-icon">🔒</span>
-              <h2>Login to EPSS</h2>
+              <h2>Login to EPSS Stock-Multiple Track</h2>
             </div>
 
             <form id="auth-form">
