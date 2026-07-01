@@ -99,9 +99,26 @@ let rawDf  = [];
 let filtDf = [];
 let currentPage = "dashboard";
 
-// Stock-in-Transit verification state — driven entirely by the optional
-// Transit Detail File (see transit-detail.js). No hardcoded list; see
-// rebuildUnverifiedLookup() / stampUnverifiedTransit() below for the rules.
+// Stock-in-Transit separate file state (detail file removed; phantom/verified logic retained)
+// ── HARDCODED UNVERIFIED TRANSIT LIST ─────────────────────────────────────
+// Source: unverified_transit_items.csv — specific qty/value per material+plant
+// These amounts are subtracted from transit figures across ALL pages.
+const UNVERIFIED_TRANSIT_LIST = [{"materialCode":"303-GLSU-0704-02","plantCode":"AA02","qty":5000.0,"val":5550947.6},{"materialCode":"104-CEFR-0303","plantCode":"AA02","qty":95985.0,"val":3957729.79},{"materialCode":"104-CEFR-0303","plantCode":"HA01","qty":115990.0,"val":3493156.24},{"materialCode":"104-CEFR-0303","plantCode":"JI01","qty":80964.0,"val":2427668.18},{"materialCode":"208-VETB-1601","plantCode":"JI01","qty":3500.0,"val":1858141.89},{"materialCode":"303-GLEX-0702","plantCode":"AA01","qty":2629.0,"val":1807184.28},{"materialCode":"105-PARA-0102-01","plantCode":"DE01","qty":3097.0,"val":1049387.48},{"materialCode":"402-VENM-0101","plantCode":"AA01","qty":1.0,"val":1042735.42},{"materialCode":"202-GLUC-0502","plantCode":"AA01","qty":1500.0,"val":739384.83},{"materialCode":"208-VETB-1601","plantCode":"AD01","qty":850.0,"val":560008.86},{"materialCode":"204-SYPH-0401-01","plantCode":"DE01","qty":810.0,"val":545309.8},{"materialCode":"103-SALB-2401","plantCode":"DE01","qty":2600.0,"val":410349.11},{"materialCode":"113-DEXT-0304-02","plantCode":"DI01","qty":3756.0,"val":301827.46},{"materialCode":"101-OMEP-0202","plantCode":"SE01","qty":2080.0,"val":283032.5},{"materialCode":"206-LIOD-0101-01","plantCode":"JJ01","qty":20.0,"val":232860.8},{"materialCode":"104-CLOT-0101","plantCode":"AA02","qty":5700.0,"val":208486.93},{"materialCode":"104-GRIS-0102","plantCode":"AD01","qty":400.0,"val":178784.0},{"materialCode":"104-AMOX-0602","plantCode":"AA02","qty":2000.0,"val":162781.67},{"materialCode":"203-SNFL-0701","plantCode":"NK01","qty":2.0,"val":156592.96},{"materialCode":"202-CHNC-0721","plantCode":"AA02","qty":5.0,"val":148165.7},{"materialCode":"115-PACL-0302","plantCode":"DE01","qty":200.0,"val":146614.42},{"materialCode":"207-ADWL-0801","plantCode":"NK01","qty":6.0,"val":132136.92},{"materialCode":"115-CYPH-0303","plantCode":"DE01","qty":100.0,"val":129565.95},{"materialCode":"105-BENZ-0102-02","plantCode":"AA01","qty":400.0,"val":120019.05},{"materialCode":"105-SODI-0101","plantCode":"AA02","qty":200.0,"val":119364.0},{"materialCode":"206-ULGE-1001","plantCode":"DE01","qty":91.0,"val":100100.0},{"materialCode":"105-BENZ-0101-02","plantCode":"AA01","qty":400.0,"val":96034.11},{"materialCode":"115-RITU-0302","plantCode":"BD01","qty":10.0,"val":87318.1},{"materialCode":"203-SNCP-0701","plantCode":"NK01","qty":15.0,"val":78187.8},{"materialCode":"203-SNLY-0701","plantCode":"NK01","qty":3.0,"val":63896.46},{"materialCode":"203-SNLY-0701","plantCode":"HA01","qty":3.0,"val":60270.42},{"materialCode":"115-DACA-0303","plantCode":"AA01","qty":50.0,"val":56804.13},{"materialCode":"303-GLGY-0701","plantCode":"AD01","qty":2578.0,"val":52797.44},{"materialCode":"202-CMAG-0701","plantCode":"AA02","qty":5.0,"val":43096.83},{"materialCode":"203-SNSL-0701","plantCode":"NK01","qty":2.0,"val":25171.16},{"materialCode":"115-ETOP-0303","plantCode":"DE01","qty":50.0,"val":24800.0},{"materialCode":"203-SNSL-0701","plantCode":"HA01","qty":2.0,"val":23880.92},{"materialCode":"202-CIDL-0801","plantCode":"AA02","qty":90.0,"val":23280.35},{"materialCode":"202-UDIP-0501","plantCode":"AD01","qty":50.0,"val":20354.36},{"materialCode":"115-FOLI-0301-03","plantCode":"GO01","qty":104.0,"val":19000.8},{"materialCode":"117-TIMO-1202","plantCode":"AA01","qty":574.0,"val":18368.0},{"materialCode":"115-FOLI-0301-03","plantCode":"AA01","qty":100.0,"val":18270.0},{"materialCode":"110-METF-0101-02","plantCode":"AA02","qty":96.0,"val":15112.65},{"materialCode":"102-ENAL-0102-02","plantCode":"AS01","qty":100.0,"val":14700.0},{"materialCode":"209-HPER-0102","plantCode":"AA02","qty":100.0,"val":14398.61},{"materialCode":"209-HPER-0102","plantCode":"JJ01","qty":96.0,"val":12770.7},{"materialCode":"115-ONDA-0102","plantCode":"DE01","qty":100.0,"val":9330.0},{"materialCode":"202-CECO-0801","plantCode":"AA02","qty":3.0,"val":8980.1},{"materialCode":"203-SNCL-0701","plantCode":"NK01","qty":1.0,"val":8014.84},{"materialCode":"105-AMIT-0101-01","plantCode":"AS01","qty":100.0,"val":7879.82},{"materialCode":"402-DIAS-0101","plantCode":"HA01","qty":2.0,"val":6420.0},{"materialCode":"201-METH-0102","plantCode":"JJ01","qty":10.0,"val":2150.0},{"materialCode":"201-PKOH-0102","plantCode":"JJ01","qty":4.0,"val":562.0},{"materialCode":"401-POTC-0101","plantCode":"HA01","qty":1.0,"val":488.82},{"materialCode":"202-CIIN-0801","plantCode":"BD01","qty":1.0,"val":363.92},{"materialCode":"208-FUNG-1702","plantCode":"HA01","qty":3.0,"val":245.04},{"materialCode":"202-CACT-0801","plantCode":"BD01","qty":1.0,"val":171.04},{"materialCode":"202-CIDL-0801","plantCode":"BD01","qty":1.0,"val":109.53},{"materialCode":"202-CSCL-0801","plantCode":"BD01","qty":1.0,"val":73.24}];
+
+// Build a fast lookup Map keyed by "materialCode|plantCode"
+const _unverifiedLookup = new Map();
+UNVERIFIED_TRANSIT_LIST.forEach(e => {
+  const key = e.materialCode + "|" + e.plantCode;
+  _unverifiedLookup.set(key, { qty: e.qty, val: e.val });
+});
+
+// Returns {qty, val} of unverified transit for a given row, or {qty:0,val:0}
+function getUnverifiedTransit(row) {
+  const mat = String(row["Material"] || "").trim();
+  const plt = String(row["Plant"]    || "").trim().toUpperCase();
+  const hit = _unverifiedLookup.get(mat + "|" + plt);
+  return hit || { qty: 0, val: 0 };
+}
 
 // Incoming Shelf Life state (feature removed)
 
@@ -400,10 +417,8 @@ function loadFile(file) {
         // FIX-STFILTER: also reset transit-section filter state on new main file load
         // so stale PO/supplying-plant selections from the previous dataset don't persist
 
-        // If a Transit Detail File was already loaded, rebuild the lookup against
-        // the new dataset and re-stamp phantom flags
-        rebuildUnverifiedLookup();
-        stampUnverifiedTransit();
+        // If transit file was already loaded, stamp phantom flags on the new dataset
+        stampUnverifiedTransit(); // stamp unverified amounts from hardcoded list
 
         showSuccess(file.name, df.length);
         clearError();
@@ -1271,8 +1286,7 @@ function getMappedVal(row, field) {
  * getVerifiedTransitVal(row, field)
  *   Return transit qty/value MINUS any phantom (unverified) portion.
  *   A transit row is "phantom" when it has Stock in Transit > 0 but no
- *   matching PO line in the uploaded Transit Detail File.
- *   Unverified amounts (per _unverifiedLookup) are subtracted from every
+ *   Unverified amounts (from hardcoded list) are subtracted from every
  *   aggregate shown to the user across all pages.
  */
 function getVerifiedTransitQty(row) {
@@ -1371,70 +1385,22 @@ function getTransitInfo(material, plantCode) {
 // ─── Phantom Transit Detection ────────────────────────────────────────────
 // A transit row is "phantom" (not physically available / unverifiable) when:
 //   • The main data has Stock in Transit > 0, AND
-//   • That material+plant combination has no matching PO line in the
-//     uploaded Transit Detail File (see transit-detail.js).
+//   • The hardcoded unverified transit list has a non-zero qty for this material+plant.
 //
 // Phantom rows are EXCLUDED from all aggregate values (Total Value, Total Qty,
 // Value of Stock in Transit, Stock in Transit) on Dashboard, Branch Comparison,
 // and Inventory Flow. They are flagged with a warning badge on the Transit page.
-//
-// _unverifiedLookup: Set of "material|plant" keys flagged unverified.
-// UNVERIFIED_TRANSIT_LIST: the Detail File rows themselves, in the shape the
-// Global Search "In Transit (Transit File)" section expects.
-// Both are (re)built by rebuildUnverifiedLookup() — called on main file load
-// and again by transit-detail.js whenever the Detail File is (re)loaded.
-// transit-detail.js also reads _unverifiedLookup directly (shared global).
-let _unverifiedLookup = new Set();
-let UNVERIFIED_TRANSIT_LIST = [];
-
-function rebuildUnverifiedLookup() {
-  _unverifiedLookup = new Set();
-  UNVERIFIED_TRANSIT_LIST = [];
-
-  const detailRows = (typeof window !== "undefined" && window.transitDetailRaw) || [];
-  UNVERIFIED_TRANSIT_LIST = detailRows.map(r => ({
-    ...r,
-    materialCode: r.material,
-    _st_material: r.material,
-    _st_desc:     r.materialDesc,
-    _st_qty:      r.qty,
-    _st_uom:      r.unit,
-  }));
-
-  if (!detailRows.length) return; // no Detail File uploaded yet — nothing can be verified against it
-
-  const verifiedKeys = new Set(detailRows.map(r => r.material + "|" + r.plant));
-
-  (rawDf || []).forEach(row => {
-    if (!(row["Stock in Transit"] > 0)) return;
-    const key = String(row["Material"] || "").trim() + "|" + String(row["Plant"] || "").trim().toUpperCase();
-    if (!verifiedKeys.has(key)) _unverifiedLookup.add(key);
-  });
-}
-if (typeof window !== "undefined") window.rebuildUnverifiedLookup = rebuildUnverifiedLookup;
-
-// Returns { qty, val } — the unverified (phantom) portion of this row's
-// Stock in Transit, per _unverifiedLookup above.
-function getUnverifiedTransit(row) {
-  const key = String(row["Material"] || "").trim() + "|" + String(row["Plant"] || "").trim().toUpperCase();
-  if (!_unverifiedLookup.has(key)) return { qty: 0, val: 0 };
-  return {
-    qty: row["Stock in Transit"] || 0,
-    val: row["Value of Stock in Transit"] || 0,
-  };
-}
 
 function isPhantomTransit(row) {
-  // A row is (partially) phantom when the lookup flags this material+plant
-  // combination as unverified.
+  // A row is (partially) phantom when the hardcoded unverified list has
+  // a non-zero qty for this material+plant combination.
   const { qty } = getUnverifiedTransit(row);
   return qty > 0 && (row["Stock in Transit"] > 0);
 }
 
 // Stamps each rawDf row with _phantomTransitQty / _phantomTransitVal using
-// _unverifiedLookup, then recomputes Total Value / Total Qty.
+// the hardcoded unverified transit list, then recomputes Total Value / Total Qty.
 function stampUnverifiedTransit() {
-
   rawDf.forEach(row => {
     const { qty: uqty, val: uval } = getUnverifiedTransit(row);
     // Clamp to actual transit so we never go negative
