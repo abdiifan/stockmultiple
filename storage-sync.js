@@ -101,18 +101,53 @@ async function pushFileToSupabase(slot, file) {
 }
 
 // ── Pull: called on app load for every signed-in user ──
+// Speed optimization: before downloading the (potentially large) Excel file,
+// check the lightweight app_files metadata row for its uploaded_at timestamp.
+// If we've already cached a blob for that exact timestamp (via the Cache API),
+// reuse it instead of re-downloading — this is the difference between a few
+// KB metadata check and a multi-MB file transfer on a slow connection.
+const SYNC_CACHE_NAME = "inventory-files-v1";
+
 async function pullFileFromSupabase(slot) {
   const { path, inputId } = FILE_SLOTS[slot];
   const sc = window.supabaseClient;
 
-  const { data: blob, error } = await sc.storage.from(BUCKET).download(path);
-  if (error) {
-    // statusCode 404 / "Object not found" just means nothing uploaded yet — fine.
-    // Anything else (permission denied, etc.) is worth knowing about.
-    if (error.statusCode !== "404" && !/not.?found/i.test(error.message || "")) {
-      console.error(`[storage-sync] Pull failed (${slot}):`, error);
+  let ts = null;
+  try {
+    const { data: meta } = await sc.from("app_files").select("uploaded_at").eq("slot", slot).maybeSingle();
+    ts = meta && meta.uploaded_at ? meta.uploaded_at : null;
+  } catch (e) {
+    // Metadata check failed — fall through to a normal download below.
+  }
+
+  let blob = null;
+  let cache = null;
+  const cacheKey = ts ? `https://sync-cache.local/${slot}/${encodeURIComponent(ts)}` : null;
+
+  if ("caches" in window && cacheKey) {
+    try {
+      cache = await caches.open(SYNC_CACHE_NAME);
+      const cached = await cache.match(cacheKey);
+      if (cached) blob = await cached.blob();
+    } catch (e) {
+      console.warn(`[storage-sync] Cache read failed (${slot}):`, e);
     }
-    return;
+  }
+
+  if (!blob) {
+    const { data, error } = await sc.storage.from(BUCKET).download(path);
+    if (error) {
+      // statusCode 404 / "Object not found" just means nothing uploaded yet — fine.
+      // Anything else (permission denied, etc.) is worth knowing about.
+      if (error.statusCode !== "404" && !/not.?found/i.test(error.message || "")) {
+        console.error(`[storage-sync] Pull failed (${slot}):`, error);
+      }
+      return;
+    }
+    blob = data;
+    if (cache && cacheKey) {
+      try { await cache.put(cacheKey, new Response(blob)); } catch (e) { /* non-fatal */ }
+    }
   }
 
   const filename = path.split("/").pop();
@@ -202,7 +237,7 @@ document.addEventListener("epss-auth-ready", async () => {
   attachAdminUploadSync();
   attachRealtimeSync();
 
-  for (const slot of Object.keys(FILE_SLOTS)) {
-    await pullFileFromSupabase(slot);
-  }
+  // Run all three pulls concurrently instead of one-at-a-time — on a slow
+  // connection this turns 3 sequential round-trips into 1.
+  await Promise.all(Object.keys(FILE_SLOTS).map(slot => pullFileFromSupabase(slot)));
 });
