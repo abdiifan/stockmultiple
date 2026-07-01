@@ -638,12 +638,6 @@
     </div>
     <div id="exprisk-no-data" class="alert-info" style="margin-bottom:1rem">Upload the <b>main inventory Excel</b> and <b>AMC.xlsx</b> (📐 AMC upload in the sidebar) to enable this analysis.</div>
     <div id="exprisk-content" style="display:none">
-      <div class="alert-info" style="margin-bottom:1rem;font-size:0.8rem">
-        <b>ℹ️ How risk is measured:</b> for each plant + item, <b>Months of Stock (MOS)</b> = stock-on-hand ÷ AMC (HO01 uses total branch demand — see National Stock &amp; MOS).
-        <b>Shelf-life remaining</b> = months until the earliest-expiring batch at that plant expires.
-        An item is <b>at risk</b> when MOS &gt; shelf-life-remaining — there's more stock than can be sold/used before it goes out of date.
-        The <b>at-risk quantity</b> is only the excess: stock-on-hand minus what could realistically be consumed in time (shelf-life-remaining × AMC).
-      </div>
       <div class="filter-bar" style="gap:0.6rem;flex-wrap:wrap;align-items:center">
         <input
           type="text"
@@ -707,11 +701,6 @@
     </div>
     <div id="natl-no-amc" class="alert-info" style="margin-bottom:1rem">Upload <b>AMC.xlsx</b> using the <b>📐 Upload AMC.xlsx</b> button in the sidebar to enable this table.</div>
     <div id="natl-content" style="display:none">
-      <div class="alert-info" style="margin-bottom:1rem;font-size:0.8rem">
-        <b>ℹ️ How these numbers are calculated:</b> <b>SOH</b> and <b>MOS</b> are network-wide (sum of every plant incl. HO01 for stock; AMC = sum of every branch plant's own AMC, HO01 excluded). HO01 is the distribution hub and has no consumption of its own — its MOS reflects how long it can keep supplying the whole network at current demand, not its own usage.
-        <b>Shelf life in Month</b> is the quantity-weighted average months-to-expiry across every batch of this material, at every plant.
-        <b>Adjusted SOH/MOS for Expiry</b> cap stock-on-hand at what can realistically be consumed before that average shelf life runs out.
-      </div>
       <div class="filter-bar" style="gap:0.6rem;flex-wrap:wrap;align-items:center">
         <input
           type="text"
