@@ -12,10 +12,9 @@
 // ════════════════════════════════════════════════════════════════
 
 const FILE_SLOTS = {
-  inventory: { inputId: "fileInput",              path: "inventory/latest.xlsx" },
-  mapping:   { inputId: "mappingFileInput",       path: "mapping/latest.xlsx" },
-  amc:       { inputId: "mosAmcFileInput",        path: "amc/latest.xlsx" },
-  transit:   { inputId: "transitDetailFileInput", path: "transit/latest.xlsx" },
+  inventory: { inputId: "fileInput",        path: "inventory/latest.xlsx" },
+  mapping:   { inputId: "mappingFileInput", path: "mapping/latest.xlsx" },
+  amc:       { inputId: "mosAmcFileInput",  path: "amc/latest.xlsx" },
 };
 
 const BUCKET = "inventory-files";
