@@ -101,7 +101,7 @@ let currentPage = "dashboard";
 
 // Stock-in-Transit verification state — driven entirely by the optional
 // Transit Detail File (see transit-detail.js). No hardcoded list; see
-// stampUnverifiedTransit() below for the rules.
+// rebuildUnverifiedLookup() / stampUnverifiedTransit() below for the rules.
 
 // Incoming Shelf Life state (feature removed)
 
@@ -400,8 +400,10 @@ function loadFile(file) {
         // FIX-STFILTER: also reset transit-section filter state on new main file load
         // so stale PO/supplying-plant selections from the previous dataset don't persist
 
-        // If transit file was already loaded, stamp phantom flags on the new dataset
-        stampUnverifiedTransit(); // stamp unverified amounts from hardcoded list
+        // If a Transit Detail File was already loaded, rebuild the lookup against
+        // the new dataset and re-stamp phantom flags
+        rebuildUnverifiedLookup();
+        stampUnverifiedTransit();
 
         showSuccess(file.name, df.length);
         clearError();
@@ -1269,7 +1271,8 @@ function getMappedVal(row, field) {
  * getVerifiedTransitVal(row, field)
  *   Return transit qty/value MINUS any phantom (unverified) portion.
  *   A transit row is "phantom" when it has Stock in Transit > 0 but no
- *   Unverified amounts (from hardcoded list) are subtracted from every
+ *   matching PO line in the uploaded Transit Detail File.
+ *   Unverified amounts (per _unverifiedLookup) are subtracted from every
  *   aggregate shown to the user across all pages.
  */
 function getVerifiedTransitQty(row) {
@@ -1368,22 +1371,70 @@ function getTransitInfo(material, plantCode) {
 // ─── Phantom Transit Detection ────────────────────────────────────────────
 // A transit row is "phantom" (not physically available / unverifiable) when:
 //   • The main data has Stock in Transit > 0, AND
-//   • The hardcoded unverified transit list has a non-zero qty for this material+plant.
+//   • That material+plant combination has no matching PO line in the
+//     uploaded Transit Detail File (see transit-detail.js).
 //
 // Phantom rows are EXCLUDED from all aggregate values (Total Value, Total Qty,
 // Value of Stock in Transit, Stock in Transit) on Dashboard, Branch Comparison,
 // and Inventory Flow. They are flagged with a warning badge on the Transit page.
+//
+// _unverifiedLookup: Set of "material|plant" keys flagged unverified.
+// UNVERIFIED_TRANSIT_LIST: the Detail File rows themselves, in the shape the
+// Global Search "In Transit (Transit File)" section expects.
+// Both are (re)built by rebuildUnverifiedLookup() — called on main file load
+// and again by transit-detail.js whenever the Detail File is (re)loaded.
+// transit-detail.js also reads _unverifiedLookup directly (shared global).
+let _unverifiedLookup = new Set();
+let UNVERIFIED_TRANSIT_LIST = [];
+
+function rebuildUnverifiedLookup() {
+  _unverifiedLookup = new Set();
+  UNVERIFIED_TRANSIT_LIST = [];
+
+  const detailRows = (typeof window !== "undefined" && window.transitDetailRaw) || [];
+  UNVERIFIED_TRANSIT_LIST = detailRows.map(r => ({
+    ...r,
+    materialCode: r.material,
+    _st_material: r.material,
+    _st_desc:     r.materialDesc,
+    _st_qty:      r.qty,
+    _st_uom:      r.unit,
+  }));
+
+  if (!detailRows.length) return; // no Detail File uploaded yet — nothing can be verified against it
+
+  const verifiedKeys = new Set(detailRows.map(r => r.material + "|" + r.plant));
+
+  (rawDf || []).forEach(row => {
+    if (!(row["Stock in Transit"] > 0)) return;
+    const key = String(row["Material"] || "").trim() + "|" + String(row["Plant"] || "").trim().toUpperCase();
+    if (!verifiedKeys.has(key)) _unverifiedLookup.add(key);
+  });
+}
+if (typeof window !== "undefined") window.rebuildUnverifiedLookup = rebuildUnverifiedLookup;
+
+// Returns { qty, val } — the unverified (phantom) portion of this row's
+// Stock in Transit, per _unverifiedLookup above.
+function getUnverifiedTransit(row) {
+  const key = String(row["Material"] || "").trim() + "|" + String(row["Plant"] || "").trim().toUpperCase();
+  if (!_unverifiedLookup.has(key)) return { qty: 0, val: 0 };
+  return {
+    qty: row["Stock in Transit"] || 0,
+    val: row["Value of Stock in Transit"] || 0,
+  };
+}
 
 function isPhantomTransit(row) {
-  // A row is (partially) phantom when the hardcoded unverified list has
-  // a non-zero qty for this material+plant combination.
+  // A row is (partially) phantom when the lookup flags this material+plant
+  // combination as unverified.
   const { qty } = getUnverifiedTransit(row);
   return qty > 0 && (row["Stock in Transit"] > 0);
 }
 
 // Stamps each rawDf row with _phantomTransitQty / _phantomTransitVal using
-// the hardcoded unverified transit list, then recomputes Total Value / Total Qty.
+// _unverifiedLookup, then recomputes Total Value / Total Qty.
 function stampUnverifiedTransit() {
+
   rawDf.forEach(row => {
     const { qty: uqty, val: uval } = getUnverifiedTransit(row);
     // Clamp to actual transit so we never go negative
