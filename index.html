@@ -350,14 +350,6 @@
       <input type="file" id="mosAmcFileInput" accept=".xlsx,.xls" />
     </label>
     <div id="mosAmcFileStatus"></div>
-
-    <div class="sidebar-divider"></div>
-    <div class="upload-label">🚚 Transit Detail (PO / Supplying Plant)</div>
-    <label class="upload-btn" style="background:var(--card-bg);border:1.5px solid var(--amber, #d29922)" for="transitDetailFileInput">
-      <span id="transitDetailUploadBtnText">🚚 Upload Transit Detail.xlsx</span>
-      <input type="file" id="transitDetailFileInput" accept=".xlsx,.xls" />
-    </label>
-    <div id="transitDetailFileStatus"></div>
   </div>
 
 </aside>
@@ -460,8 +452,6 @@
     <div class="transit-tab-bar" style="display:flex;gap:0.5rem;margin-top:1.5rem;margin-bottom:0;border-bottom:2px solid var(--border2);overflow-x:auto;-webkit-overflow-scrolling:touch">
       <button class="transit-tab-btn active" data-tab="verified"    style="padding:0.5rem 1.1rem;border:none;border-bottom:2px solid var(--blue);background:transparent;color:var(--blue);font-weight:700;font-size:0.82rem;cursor:pointer;margin-bottom:-2px;font-family:inherit;white-space:nowrap;flex-shrink:0">✅ Verified Transit</button>
       <button class="transit-tab-btn"        data-tab="unverified"  style="padding:0.5rem 1.1rem;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);font-weight:500;font-size:0.82rem;cursor:pointer;margin-bottom:-2px;font-family:inherit;white-space:nowrap;flex-shrink:0">⚠️ Unverified</button>
-      <button class="transit-tab-btn"        data-tab="detail"      style="padding:0.5rem 1.1rem;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);font-weight:500;font-size:0.82rem;cursor:pointer;margin-bottom:-2px;font-family:inherit;white-space:nowrap;flex-shrink:0">📄 Detail File</button>
-      <button class="transit-tab-btn"        data-tab="within"      style="padding:0.5rem 1.1rem;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);font-weight:500;font-size:0.82rem;cursor:pointer;margin-bottom:-2px;font-family:inherit;white-space:nowrap;flex-shrink:0">🏭 Within Plant</button>
 
     </div>
 
@@ -471,22 +461,6 @@
     </div>
     <div id="transit-tab-unverified" class="transit-tab-panel" style="display:none;padding-top:1rem">
       <div id="transit-phantom-section" style="display:none;margin-top:0"></div>
-    </div>
-    <div id="transit-tab-detail" class="transit-tab-panel" style="display:none;padding-top:1rem">
-      <div id="transit-detail-no-file" class="alert-info">Upload <b>Transit Detail.xlsx</b> (PO #, Supplying Plant, Order Qty/Value) using the <b>🚚 Upload Transit Detail.xlsx</b> button in the sidebar to enable this tab.</div>
-      <div id="transit-detail-content" style="display:none">
-        <div class="kpi-row" id="transit-detail-kpis"></div>
-        <div id="transit-detail-dl-row" style="display:flex;gap:0.6rem;justify-content:flex-end;margin-bottom:0.5rem"></div>
-        <div id="transit-detail-table-wrap"></div>
-      </div>
-    </div>
-    <div id="transit-tab-within" class="transit-tab-panel" style="display:none;padding-top:1rem">
-      <div id="transit-within-no-file" class="alert-info">Upload <b>Transit Detail.xlsx</b> using the <b>🚚 Upload Transit Detail.xlsx</b> button in the sidebar to enable this tab. This view shows transit lines where the <b>Supplying Plant</b> is the <b>same</b> plant as the receiving plant — i.e. an intra-plant transfer (e.g. between storage locations), rather than a normal inter-plant shipment.</div>
-      <div id="transit-within-content" style="display:none">
-        <div class="kpi-row" id="transit-within-kpis"></div>
-        <div id="transit-within-dl-row" style="display:flex;gap:0.6rem;justify-content:flex-end;margin-bottom:0.5rem"></div>
-        <div id="transit-within-table-wrap"></div>
-      </div>
     </div>
 
   </section>
@@ -827,7 +801,6 @@
 <script src="national-table.js" defer></script>
 <script src="expiry-risk.js" defer></script>
 <script src="who-responsible.js" defer></script>
-<script src="transit-detail.js" defer></script>
 <script>
 // ── TAB SWITCHING (Transit + QC + Overstock & Expiry Risk) ──
 document.addEventListener("DOMContentLoaded", function() {
