@@ -38,6 +38,17 @@
 
   // ── STATE ──────────────────────────────────────────────────────────────
   let transitDetailRaw = []; // parsed rows, one per PO line — see COLS above
+  let transitDetailExcludedCount = 0; // rows dropped because they're on the
+
+  // Same "unverified transit" exclusion list script.js already applies to
+  // rawDf everywhere else (Dashboard, main Transit page, Branch Comparison,
+  // etc.) — _unverifiedLookup is built there, keyed "materialCode|plantCode".
+  // We reuse it here so a material/plant flagged as unverified never shows
+  // up in the Detail File / Within Plant tabs either.
+  function isUnverifiedTransitRow(row) {
+    if (typeof _unverifiedLookup === "undefined") return false;
+    return _unverifiedLookup.has(row.material + "|" + row.plant);
+  }
 
   // ── FILE LOADER ────────────────────────────────────────────────────────
   function loadTransitDetailFile(file) {
@@ -81,13 +92,20 @@
           return row;
         }).filter(r => r.material && r.plant);
 
+        // Drop rows that are on the hardcoded unverified-transit list — same
+        // exclusion applied to every other transit figure in the app.
+        const preExclusionCount = transitDetailRaw.length;
+        transitDetailRaw = transitDetailRaw.filter(r => !isUnverifiedTransitRow(r));
+        transitDetailExcludedCount = preExclusionCount - transitDetailRaw.length;
+
         const count = transitDetailRaw.length;
         const withinCount = transitDetailRaw.filter(r => r._withinPlant).length;
 
         if (statusEl) statusEl.innerHTML =
           `<div class="status-ok">✓ LOADED</div><div class="status-name">${escHtml(file.name)}</div>` +
           `<div class="status-name" style="color:var(--green)">${count} PO line${count === 1 ? "" : "s"}` +
-          (withinCount ? ` · ${withinCount} within-plant` : "") + `</div>` +
+          (withinCount ? ` · ${withinCount} within-plant` : "") +
+          (transitDetailExcludedCount ? ` · ${transitDetailExcludedCount} excluded (unverified)` : "") + `</div>` +
           (mismatch ? `<div class="status-name" style="color:var(--amber)">⚠️ Column headers differ from the expected layout — check the data lines up correctly.</div>` : "");
         if (btnEl) btnEl.textContent = "✓ " + file.name;
 
