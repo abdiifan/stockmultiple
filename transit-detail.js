@@ -11,8 +11,12 @@
 // a normal inter-plant shipment between two different plants.
 //
 // Requires: script.js (escHtml, fmtQty, fmtETB, buildTable, downloadCSV,
-//           downloadExcel, wireTableExport, setKpis, currentPage, renderPage)
-// Must be loaded AFTER script.js. Does not touch renderTransit() itself —
+//           downloadExcel, wireTableExport, setKpis, currentPage, renderPage,
+//           rawDf). Must be loaded AFTER script.js. Note: for the non-medical
+// exclusion to work, the main inventory file should be uploaded (rawDf
+// populated) before the Detail File workbook — otherwise Detail File rows
+// are kept unfiltered on that first upload since there's nothing to check
+// them against yet. Does not touch renderTransit() itself —
 // wraps window.renderPage so it re-renders alongside the rest of the Transit
 // page, the same pattern mos.js / national-table.js / expiry-risk.js use.
 // =============================================================================
@@ -58,6 +62,29 @@
     return s === "Q" || s === "W";
   }
 
+  // Non-medical exclusion — the Detail File workbook has no "Material Group
+  // Name" column, so isNonMedicalCode/isNonMedicalGroup (filters.js) can't be
+  // applied directly here, and the code-prefix check alone isn't reliable:
+  // non-pharma items (car batteries, tyres, vehicle filters, grease guns…)
+  // often carry plain numeric SAP codes that also start with 1-4, so they'd
+  // slip past isNonMedicalCode.
+  //
+  // Instead we cross-reference against rawDf — script.js already builds that
+  // as the clean, pharma-only dataset (it applies isNonMedicalCode AND
+  // isNonMedicalGroup at parse time). If a material code from the Detail File
+  // isn't present in rawDf, it isn't a pharmaceutical item and must be
+  // excluded here too, the same as it already is everywhere else in the app.
+  let _pharmaMaterialSet = null;
+  let _pharmaMaterialSetSize = -1;
+  function isKnownPharmaMaterial(code) {
+    if (typeof rawDf === "undefined" || !rawDf.length) return true; // main data not loaded yet — don't blindly drop rows
+    if (_pharmaMaterialSetSize !== rawDf.length) {
+      _pharmaMaterialSet = new Set(rawDf.map(r => String(r["Material"] || "").trim()));
+      _pharmaMaterialSetSize = rawDf.length;
+    }
+    return _pharmaMaterialSet.has(code);
+  }
+
   // ── FILE LOADER ────────────────────────────────────────────────────────
   function loadTransitDetailFile(file) {
     const statusEl = document.getElementById("transitDetailFileStatus");
@@ -100,15 +127,19 @@
           return row;
         }).filter(r => r.material && r.plant);
 
-        // Drop rows that are on the hardcoded unverified-transit list, or that
-        // carry an excluded Special Stock Type (Q/W) — same exclusions
-        // applied to every other transit figure in the app.
+        // Drop rows that are on the hardcoded unverified-transit list, that
+        // carry an excluded Special Stock Type (Q/W), or that aren't a known
+        // pharmaceutical material (rawDf) — same exclusions applied to every
+        // other transit figure in the app.
         const preExclusionCount = transitDetailRaw.length;
         transitDetailRaw = transitDetailRaw.filter(r => !isUnverifiedTransitRow(r));
         const afterUnverifiedCount = transitDetailRaw.length;
         transitDetailRaw = transitDetailRaw.filter(r => !isExcludedSpecialStock(r));
+        const afterSpecialStockCount = transitDetailRaw.length;
+        transitDetailRaw = transitDetailRaw.filter(r => isKnownPharmaMaterial(r.material));
         transitDetailExcludedCount = preExclusionCount - afterUnverifiedCount;
-        const specialStockExcludedCount = afterUnverifiedCount - transitDetailRaw.length;
+        const specialStockExcludedCount = afterUnverifiedCount - afterSpecialStockCount;
+        const nonMedicalExcludedCount = afterSpecialStockCount - transitDetailRaw.length;
 
         const count = transitDetailRaw.length;
         const withinCount = transitDetailRaw.filter(r => r._withinPlant).length;
@@ -118,7 +149,8 @@
           `<div class="status-name" style="color:var(--green)">${count} PO line${count === 1 ? "" : "s"}` +
           (withinCount ? ` · ${withinCount} within-plant` : "") +
           (transitDetailExcludedCount ? ` · ${transitDetailExcludedCount} excluded (unverified)` : "") +
-          (specialStockExcludedCount ? ` · ${specialStockExcludedCount} excluded (Q/W stock)` : "") + `</div>` +
+          (specialStockExcludedCount ? ` · ${specialStockExcludedCount} excluded (Q/W stock)` : "") +
+          (nonMedicalExcludedCount ? ` · ${nonMedicalExcludedCount} excluded (non-medical)` : "") + `</div>` +
           (mismatch ? `<div class="status-name" style="color:var(--amber)">⚠️ Column headers differ from the expected layout — check the data lines up correctly.</div>` : "");
         if (btnEl) btnEl.textContent = "✓ " + file.name;
 
