@@ -275,6 +275,15 @@ function renderNatlTable() {
       if (fn) { e.stopPropagation(); fn(); }
     }, true);
 
+    // Pressing Enter in the material search box applies the filter immediately,
+    // same UX pattern as the global sidebar search.
+    const searchInput = document.getElementById("natl-search");
+    if (searchInput) {
+      searchInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") renderNatlTable();
+      });
+    }
+
     // Re-render whenever the main inventory file finishes loading and the user
     // is already on this page (mirrors mos.js's fileInput listener).
     const fileInput = document.getElementById("fileInput");
