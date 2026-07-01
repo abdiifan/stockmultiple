@@ -157,8 +157,18 @@ function buildMosMerged() {
 // so the two pages agree on the same number for the same material.
 function buildMosSohMap() {
   const map = new Map();
-  if (typeof rawDf === "undefined" || !rawDf.length) return map;
-  for (const row of rawDf) {
+  // Use the mapping-reconciled base (mappedDf when a mapping file is loaded)
+  // so materials that consolidate multiple source SAP codes into one target
+  // code — via applyMaterialMapping() — are looked up under their canonical/
+  // target code, same as Branch Comparison, National Table, and Expiry Risk.
+  // rawDf rows never carry _mappedMaterial (that field only exists on
+  // mappedDf's copies), so reading rawDf directly silently drops all stock
+  // recorded under pre-mapping source codes.
+  const base = (typeof getReconciledBase === "function")
+    ? getReconciledBase()
+    : (typeof rawDf !== "undefined" ? rawDf : []);
+  if (!base.length) return map;
+  for (const row of base) {
     const mat = String(row._mappedMaterial || row["Material"] || "").trim();
     const plt = String(row["Plant"] || "").trim().toUpperCase();
     if (!mat || !plt) continue;
