@@ -1,255 +1,322 @@
 // =============================================================================
-// PharmaTrack v2 — expiry-risk.js
-// Overstock & Expiry Risk Analysis.
+// PharmaTrack v2 — mos.js
+// MOS by Plant: Months of Stock = Stock-on-Hand ÷ Average Monthly Consumption.
 //
-// CORE IDEA
-// ---------
-// For every plant + item, we know:
-//   - SOH            stock-on-hand right now (Unrestricted Stock)
-//   - AMC            average monthly consumption at that plant
-//                     (HO01 uses total branch demand — see mos.js HUB rule)
-//   - MOS            = SOH ÷ AMC   → months of stock at current pace
-//   - shelfLeftMo    months remaining until the earliest-expiring batch
-//                     at that plant expires
+// HO01 SPECIAL CASE
+// -----------------
+// HO01 is the central distribution hub. It does not consume stock itself —
+// it only holds and ships it out to the 18 branch plants. So HO01 has no
+// "AMC" of its own in any meaningful sense (its AMC column, if present in
+// AMC.xlsx, is null/blank for every item).
 //
-// An item is AT RISK at a plant when:  MOS > shelfLeftMo
-//   (there's more stock than can possibly be consumed before it expires)
+// Using HO01's own (non-existent) consumption would make its MOS undefined
+// or infinite, which tells a planner nothing useful. What actually matters
+// operationally is: "how long can HO01 keep the whole network supplied at
+// current demand?" So for HO01 specifically:
 //
-// AT-RISK QUANTITY is only the part that can't be saved by normal consumption:
-//   atRiskQty = max(0, SOH - shelfLeftMo * AMC)
-//   atRiskVal = atRiskQty * unitValue   (unitValue = Value of Unrestricted
-//               Stock ÷ Unrestricted Stock, from the inventory file)
+//     HO01 MOS = HO01 stock-on-hand ÷ SUM of every branch plant's AMC
 //
-// REDISTRIBUTION (per item, independently — see design discussion):
-//   Source  = any plant (including HO01) with atRiskQty > 0.
-//   Recipient = any OTHER plant (HO01 excluded — it never receives) that is
-//               NOT itself at risk (its own MOS <= its own shelfLeftMo).
-//   Recipient headroom = max(0, shelfLeftMo_recipient * AMC_recipient - SOH_recipient)
-//               → the most that plant could absorb without becoming at-risk.
-//   Source's atRiskQty is split across eligible recipients PROPORTIONALLY by
-//   recipient AMC, each allocation capped at that recipient's headroom.
-//   Whatever can't be placed (no eligible recipients, or headroom exhausted)
-//   becomes RESIDUAL RISK — the number that goes to the marketing director.
+// For every other (branch) plant, MOS uses the normal formula:
 //
-// Requires: script.js (rawDf, mappingTable, fmtETB, fmtQty, escHtml, buildTable,
-//           downloadCSV, downloadExcel, PLOTLY_LAYOUT, PLOTLY_CONFIG, waitForPlotly,
+//     Plant MOS = Plant stock-on-hand ÷ that plant's own AMC
+//
+// Requires: script.js (fmtQty, escHtml, buildTable, downloadCSV, downloadExcel,
+//           mappingTable, PLOTLY_LAYOUT, PLOTLY_CONFIG, waitForPlotly, rawDf,
 //           PAGE_RENDERERS, renderPage, currentPage)
-//           mos.js (HUB_PLANT, mosMerged, mosPlants, buildMosSohMap)
-// Must be loaded AFTER both script.js and mos.js.
+// Must be loaded AFTER script.js.
 // =============================================================================
 
-const MS_PER_DAY   = 24 * 60 * 60 * 1000;
-const DAYS_PER_MO  = 30.44; // average month length, consistent with rest of app's date math
+const HUB_PLANT = "HO01"; // the distribution hub — never has its own consumption
 
-// ── BUILD EXPIRY LOOKUP (earliest batch expiry per material+plant) ───────────
-// materialCode → plantCode → { expiry: Date|null, unitVal: number }
-function buildExpiryMap() {
+// ── MOS STATE ────────────────────────────────────────────────────────────────
+let mosAmcRaw    = [];          // parsed rows from AMC.xlsx: { code, desc, type, person, amcs:{plant:val} }
+let mosPlants    = [];          // ordered plant code list detected from AMC.xlsx
+let mosMerged    = [];          // deduplicated AMC rows (mapping-aware), one per canonical material
+let mosPersons   = [];          // sorted unique PERSON values from AMC.xlsx
+
+// ── AMC FILE LOADER ───────────────────────────────────────────────────────────
+function loadMosAmcFile(file) {
+  const statusEl = document.getElementById("mosAmcFileStatus");
+  const btnEl    = document.getElementById("mosAmcUploadBtnText");
+  if (statusEl) statusEl.innerHTML = '<div class="status-loading">⏳ Parsing…</div>';
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const wb   = XLSX.read(e.target.result, { type: "array" });
+      const ws   = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: null });
+
+      if (!rows.length) throw new Error("AMC file is empty.");
+
+      const META = ["Material Code", "Description", "Material Type Code", "PERSON"];
+      const firstRow = rows[0];
+      const detectedPlants = Object.keys(firstRow).filter(k => !META.includes(k));
+      if (!detectedPlants.length) throw new Error("No plant columns found in AMC file.");
+
+      // Normalize plant codes the SAME way buildMosSohMap() normalizes the
+      // inventory file's "Plant" column (trim + uppercase). Without this,
+      // any AMC column header that isn't already exact-case (e.g. "Ho01"
+      // instead of "HO01", or with stray whitespace) silently fails to
+      // match the SOH map's keys, and that plant's stock is dropped to 0
+      // everywhere it's looked up — including in National SOH/MOS.
+      mosPlants  = detectedPlants.map(p => String(p).trim().toUpperCase());
+      mosAmcRaw  = rows.map(r => ({
+        code:   String(r["Material Code"] || "").trim(),
+        desc:   String(r["Description"]   || "").trim(),
+        type:   String(r["Material Type Code"] || "").trim().toUpperCase(),
+        person: String(r["PERSON"] || "").trim(),
+        amcs: Object.fromEntries(
+          detectedPlants.map(p => [String(p).trim().toUpperCase(), (r[p] == null || r[p] === "" || typeof r[p] === "string") ? null : Number(r[p])])
+        ),
+      }));
+
+      // Expose sorted unique person list for the global person filter dropdown
+      mosPersons = [...new Set(mosAmcRaw.map(r => r.person).filter(Boolean))].sort();
+      if (typeof populatePersonFilter === "function") populatePersonFilter(mosPersons);
+
+      mosMerged = buildMosMerged();
+
+      const count = mosMerged.length;
+      const hasHub = mosPlants.includes(HUB_PLANT);
+      if (statusEl) statusEl.innerHTML =
+        `<div class="status-ok">✓ LOADED</div><div class="status-name">${escHtml(file.name)}</div>` +
+        `<div class="status-name" style="color:var(--green)">${count} items · ${detectedPlants.length} plants</div>` +
+        (hasHub ? "" : `<div class="status-name" style="color:var(--amber)">⚠️ "${HUB_PLANT}" column not found — hub MOS rule won't apply</div>`);
+      if (btnEl) btnEl.textContent = "✓ " + file.name;
+
+      document.getElementById("mos-no-amc").style.display  = "none";
+      document.getElementById("mos-content").style.display = "block";
+
+      if (currentPage === "mos-plant") renderMosPlant();
+
+    } catch (err) {
+      console.error("MOS AMC load error:", err);
+      if (statusEl) statusEl.innerHTML = `<div class="status-error">⚠️ ${escHtml(err.message)}</div>`;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ── DEDUPLICATION (mapping-aware) ─────────────────────────────────────────────
+// Collapses multiple AMC source codes onto the same canonical target code when
+// a mapping file is loaded, summing AMC per plant across duplicates — same
+// approach used elsewhere in the app for inventory rows.
+function buildMosMerged() {
+  if (!mosAmcRaw.length) return [];
+
+  const merged = new Map(); // canonicalCode → mergedRow
+
+  for (const row of mosAmcRaw) {
+    let canonical = row.code;
+    let canonDesc = row.desc;
+
+    if (mappingTable && mappingTable.size > 0) {
+      const entry = mappingTable.get(row.code);
+      if (entry) {
+        canonical = entry.targetCode;
+        canonDesc = entry.targetDesc || row.desc;
+      }
+    }
+
+    if (!merged.has(canonical)) {
+      merged.set(canonical, {
+        code: canonical,
+        origCodes: new Set([row.code]),
+        desc: canonDesc,
+        type: row.type,
+        person: row.person || "",
+        amcs: Object.fromEntries(mosPlants.map(p => [p, null])),
+        isMerged: false,
+      });
+    }
+    const m = merged.get(canonical);
+    m.origCodes.add(row.code);
+    if (m.origCodes.size > 1) m.isMerged = true;
+
+    for (const p of mosPlants) {
+      const v = row.amcs[p];
+      if (v !== null && v !== undefined) {
+        m.amcs[p] = (m.amcs[p] || 0) + v;
+      }
+    }
+  }
+
+  return Array.from(merged.values()).map(m => ({
+    ...m,
+    origCodes: [...m.origCodes].join(", "),
+  }));
+}
+
+// ── SOH LOOKUP (from main inventory file) ─────────────────────────────────────
+// materialCode → plantCode → Total Quantity on hand.
+// Total Quantity = Unrestricted Stock + verified Stock in Transit (phantom/
+// unverified transit excluded) + Stock in Quality Inspection — same definition
+// and same getMappedQty/getVerifiedTransitQty helpers Branch Comparison's
+// "Total Quantity" metric uses (see script.js matPlantMap[mat][pln].TotalQty),
+// so the two pages agree on the same number for the same material.
+function buildMosSohMap() {
   const map = new Map();
-  // Use getReconciledBase() so the person filter (and mapping) applies here too
-  const base = (typeof getReconciledBase === "function") ? getReconciledBase() : (typeof rawDf !== "undefined" ? rawDf : []);
+  // Use the mapping-reconciled base (mappedDf when a mapping file is loaded)
+  // so materials that consolidate multiple source SAP codes into one target
+  // code — via applyMaterialMapping() — are looked up under their canonical/
+  // target code, same as Branch Comparison, National Table, and Expiry Risk.
+  // rawDf rows never carry _mappedMaterial (that field only exists on
+  // mappedDf's copies), so reading rawDf directly silently drops all stock
+  // recorded under pre-mapping source codes.
+  const base = (typeof getReconciledBase === "function")
+    ? getReconciledBase()
+    : (typeof rawDf !== "undefined" ? rawDf : []);
   if (!base.length) return map;
-
   for (const row of base) {
     const mat = String(row._mappedMaterial || row["Material"] || "").trim();
     const plt = String(row["Plant"] || "").trim().toUpperCase();
-    const qty = Number(row["Unrestricted Stock"] || 0);
-    const val = Number(row["Value of Unrestricted Stock"] || 0);
-    if (!mat || !plt || qty <= 0) continue;
+    if (!mat || !plt) continue;
+
+    const unrestricted = (typeof getMappedQty === "function") ? getMappedQty(row, "Unrestricted Stock") : Number(row["Unrestricted Stock"] || 0);
+    const transit       = (typeof getVerifiedTransitQty === "function") ? getVerifiedTransitQty(row) : Number(row["Stock in Transit"] || 0);
+    const qc            = (typeof getMappedQty === "function") ? getMappedQty(row, "Stock in Quality Inspection") : Number(row["Stock in Quality Inspection"] || 0);
+    const qty = (Number(unrestricted) || 0) + (Number(transit) || 0) + (Number(qc) || 0);
 
     if (!map.has(mat)) map.set(mat, {});
-    const plantMap = map.get(mat);
-    if (!plantMap[plt]) plantMap[plt] = { expiry: null, valSum: 0, qtySum: 0 };
-
-    const entry = plantMap[plt];
-    entry.valSum += val;
-    entry.qtySum += qty;
-
-    // Earliest-expiring batch wins (pharma best practice, same rule used
-    // elsewhere in this app when collapsing batches).
-    const exp = row._expiry instanceof Date && !isNaN(row._expiry) ? row._expiry : null;
-    if (exp && (!entry.expiry || exp < entry.expiry)) entry.expiry = exp;
+    map.get(mat)[plt] = (map.get(mat)[plt] || 0) + qty;
   }
-
   return map;
 }
 
-function monthsUntil(date, today) {
-  if (!(date instanceof Date) || isNaN(date)) return null;
-  const days = (date.getTime() - today.getTime()) / MS_PER_DAY;
-  return days / DAYS_PER_MO; // can be negative if already expired
+function mosSohFor(sohMap, row, plant) {
+  return sohMap.get(row.code)?.[plant] ?? 0;
 }
 
-function unitValueFor(entry) {
-  if (!entry || !entry.qtySum) return 0;
-  return entry.valSum / entry.qtySum;
-}
+/**
+ * Computes MOS for every plant, for one AMC row.
+ * Returns an array of { plant, soh, amc, mos, isHub }.
+ *
+ * - For the hub plant (HO01): amc = sum of every branch plant's AMC for this
+ *   item (nulls treated as 0 — a branch with no commitment contributes no
+ *   demand). mos = HO01's SOH ÷ that total branch demand.
+ * - For every other plant: amc = that plant's own AMC column value.
+ *   mos = that plant's SOH ÷ its own AMC.
+ *
+ * mos is null when there's no basis to compute it (no AMC commitment at all,
+ * i.e. the plant isn't expected to carry this item). mos is Infinity when
+ * there IS stock but zero demand (can't run out, but also isn't moving).
+ */
+function computeRowMOS(row, sohMap) {
+  const branchPlants = mosPlants.filter(p => p !== HUB_PLANT);
+  const totalBranchAmc = branchPlants.reduce((s, p) => s + (row.amcs[p] || 0), 0);
+  const anyBranchCommitted = branchPlants.some(p => row.amcs[p] !== null);
 
-// ── BUILD THE FULL PLANT × ITEM RISK SNAPSHOT ─────────────────────────────────
-// Returns an array of { code, desc, type, plant, isHub, soh, amc, mos,
-//                        shelfLeftMo, unitVal, atRisk, atRiskQty, atRiskVal }
-function buildRiskSnapshot(typeFilter, searchQ, plantFilter) {
-  if (typeof mosMerged === "undefined" || !mosMerged.length) return [];
+  return mosPlants.map(p => {
+    const soh = mosSohFor(sohMap, row, p);
+    const isHub = p === HUB_PLANT;
 
-  const sohMap    = buildMosSohMap();   // from mos.js — materialCode → plant → SOH
-  const expiryMap = buildExpiryMap();
-  const today     = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  // getMosFilteredRows already applies the global personFilter before type/search
-  let rows = (typeof getMosFilteredRows === "function")
-    ? getMosFilteredRows(typeFilter || "", searchQ || "")
-    : mosMerged.filter(r => (!typeFilter || r.type === typeFilter));
-
-  const out = [];
-  for (const r of rows) {
-    const plantMos = computeRowMOS(r, sohMap); // from mos.js — per-plant {plant,soh,amc,mos,isHub}
-
-    for (const pm of plantMos) {
-      if (plantFilter && pm.plant !== plantFilter) continue;
-      if (pm.amc === null) continue; // not committed at this plant — no basis for risk
-      if (!pm.soh || pm.soh <= 0) continue; // nothing on hand, nothing to risk
-
-      const expEntry    = expiryMap.get(r.code)?.[pm.plant] || null;
-      const shelfLeftMo  = expEntry ? monthsUntil(expEntry.expiry, today) : null;
-      const unitVal      = unitValueFor(expEntry);
-
-      // Need both a real MOS and a real shelf-life date to judge risk.
-      if (shelfLeftMo === null || pm.mos === null || pm.mos === Infinity) continue;
-
-      const atRisk    = pm.mos > shelfLeftMo;
-      const safeQty    = Math.max(0, shelfLeftMo) * pm.amc; // qty consumable before expiry
-      const atRiskQty  = atRisk ? Math.max(0, pm.soh - safeQty) : 0;
-      const atRiskVal  = atRiskQty * unitVal;
-
-      out.push({
-        code: r.code, desc: r.desc, type: r.type,
-        isMerged: r.isMerged, origCodes: r.origCodes,
-        plant: pm.plant, isHub: pm.isHub,
-        soh: pm.soh, amc: pm.amc, mos: pm.mos,
-        shelfLeftMo, unitVal,
-        atRisk, atRiskQty, atRiskVal,
-        // headroom = how much MORE this plant could safely receive without
-        // becoming at-risk itself (used as a recipient in redistribution)
-        headroom: atRisk ? 0 : Math.max(0, safeQty - pm.soh),
-      });
+    if (isHub) {
+      // Hub's own AMC column (if present) is ignored on purpose — HO01 doesn't
+      // consume. Its "demand" is the total of what it has to ship out.
+      if (!anyBranchCommitted) return { plant: p, soh, amc: null, mos: null, isHub };
+      const mos = totalBranchAmc > 0 ? soh / totalBranchAmc : (soh > 0 ? Infinity : null);
+      return { plant: p, soh, amc: totalBranchAmc, mos, isHub };
     }
-  }
-  return out;
+
+    const amc = row.amcs[p];
+    if (amc === null || amc === undefined) return { plant: p, soh, amc: null, mos: null, isHub };
+    const mos = amc > 0 ? soh / amc : (soh > 0 ? Infinity : null);
+    return { plant: p, soh, amc, mos, isHub };
+  });
 }
 
-// ── REDISTRIBUTION ENGINE ─────────────────────────────────────────────────────
-// Works per material code: sources = at-risk rows (any plant incl. HO01),
-// recipients = non-at-risk rows at OTHER plants for the SAME material,
-// excluding HO01 as a recipient.
-function computeRedistribution(snapshot) {
-  const byCode = new Map();
-  for (const row of snapshot) {
-    if (!byCode.has(row.code)) byCode.set(row.code, []);
-    byCode.get(row.code).push(row);
-  }
+/**
+ * National MOS — one network-wide number per item:
+ *
+ *     National MOS = (SOH at every plant, INCLUDING HO01)
+ *                   ÷ (AMC at every BRANCH plant, EXCLUDING HO01)
+ *
+ * HO01 holds stock but doesn't consume it, so its warehouse stock is counted
+ * as part of the network's total supply cushion (numerator), while its own
+ * AMC column (which doesn't represent real demand) is excluded from the
+ * denominator — only the branches' actual consumption represents real demand.
+ *
+ * Returns { totalSoh, totalAmc, mos, hasHo01 } where mos is:
+ *   - null if no branch is committed to this item at all (no real demand to measure against)
+ *   - Infinity if there's stock but zero branch demand
+ *   - a number otherwise
+ */
+function computeNationalMOS(row, sohMap) {
+  const branchPlants = mosPlants.filter(p => p !== HUB_PLANT);
+  const totalBranchAmc = branchPlants.reduce((s, p) => s + (row.amcs[p] || 0), 0);
+  const anyBranchCommitted = branchPlants.some(p => row.amcs[p] !== null);
 
-  const transfers = [];          // individual source→recipient moves
-  const residualByKey = new Map(); // `${code}|${plant}` → remaining unplaced qty/val
+  // FIX-NATL-SOH: SOH must cover ALL plants holding this material in the
+  // inventory file — not just plants that happen to have a column in the
+  // uploaded AMC file. Previously this summed mosPlants only, which silently
+  // dropped stock sitting at any plant absent from the AMC upload (or whose
+  // plant code didn't match an AMC column), undercounting national SOH.
+  const allPlantsForRow = sohMap.get(row.code) || {};
+  const totalSoh = Object.values(allPlantsForRow).reduce((s, v) => s + (Number(v) || 0), 0);
+  const hasHo01  = mosPlants.includes(HUB_PLANT);
 
-  for (const [code, rows] of byCode) {
-    const sources    = rows.filter(r => r.atRisk && r.atRiskQty > 0)
-                            .sort((a, b) => b.atRiskVal - a.atRiskVal); // highest ETB exposure claims headroom first
-    const recipients = rows.filter(r => !r.isHub && !r.atRisk && r.headroom > 0);
-
-    for (const src of sources) {
-      // Recipients must be a DIFFERENT plant than the source (can't redistribute to self)
-      const eligible = recipients.filter(rc => rc.plant !== src.plant);
-      let remaining = src.atRiskQty;
-
-      if (eligible.length && remaining > 0) {
-        // Iterative proportional-by-AMC allocation, capped at each recipient's
-        // remaining headroom. A single pass can strand usable headroom when one
-        // recipient's cap is hit early (its unused share doesn't automatically
-        // flow to recipients who still have room) — so we keep re-allocating
-        // the leftover among recipients that still have headroom until either
-        // the source's excess is fully placed or no recipient has room left.
-        let pool = eligible.filter(rc => rc.headroom > 0);
-        let toPlace = remaining;
-
-        while (pool.length && toPlace > 1e-9) {
-          const totalAmc = pool.reduce((s, rc) => s + rc.amc, 0);
-          let placedThisRound = 0;
-
-          for (const rc of pool) {
-            const share = totalAmc > 0 ? (rc.amc / totalAmc) * toPlace : toPlace / pool.length;
-            const alloc = Math.min(share, rc.headroom);
-            if (alloc <= 0) continue;
-
-            transfers.push({
-              code, desc: src.desc, type: src.type,
-              fromPlant: src.plant, fromIsHub: src.isHub,
-              toPlant: rc.plant,
-              qty: alloc, val: alloc * src.unitVal,
-              toMosAfter: rc.amc > 0 ? (rc.soh + alloc) / rc.amc : null,
-              toShelfLeftMo: rc.shelfLeftMo,
-            });
-            rc.headroom -= alloc;
-            placedThisRound += alloc;
-          }
-
-          toPlace -= placedThisRound;
-          pool = pool.filter(rc => rc.headroom > 1e-9);
-          // Safety valve: if a round places nothing (shouldn't happen given the
-          // headroom>0 filter, but guards against float edge cases), stop.
-          if (placedThisRound <= 1e-9) break;
-        }
-
-        remaining = Math.max(0, toPlace);
-      }
-
-      remaining = Math.max(0, remaining);
-      if (remaining > 0) {
-        const key = `${code}|${src.plant}`;
-        residualByKey.set(key, {
-          code, desc: src.desc, type: src.type,
-          plant: src.plant, isHub: src.isHub,
-          qty: remaining, val: remaining * src.unitVal,
-          unitVal: src.unitVal,
-        });
-      }
-    }
-  }
-
-  return { transfers, residual: [...residualByKey.values()] };
+  if (!anyBranchCommitted) return { totalSoh, totalAmc: null, mos: null, hasHo01 };
+  const mos = totalBranchAmc > 0 ? totalSoh / totalBranchAmc : (totalSoh > 0 ? Infinity : null);
+  return { totalSoh, totalAmc: totalBranchAmc, mos, hasHo01 };
 }
 
-// ── FORMATTING / FILTER HELPERS ────────────────────────────────────────────────
-function exprKpiCard(label, value, sub, color) {
+// ── FORMATTING HELPERS ────────────────────────────────────────────────────────
+function mosNABadge() {
+  return '<span class="amc-na-badge" title="Not committed — item not required at this plant">Not Committed</span>';
+}
+
+function fmtMosVal(mos) {
+  if (mos === null || mos === undefined) return mosNABadge();
+  if (mos === Infinity) return '<span style="color:var(--amber)">∞</span>';
+  return `<b>${Number(mos).toFixed(1)}</b> mo`;
+}
+
+// Only rule requested: flag critical (< 1 month). Everything else is neutral.
+function isMosCritical(mos) {
+  return mos !== null && mos !== undefined && mos !== Infinity && mos < 1;
+}
+
+function mosCellStyle(mos) {
+  return isMosCritical(mos) ? "color:var(--red);font-weight:700" : "color:var(--text)";
+}
+
+function getMosFilteredRows(typeFilter, searchQ) {
+  if (!mosMerged.length) return [];
+  let rows = mosMerged;
+  // Global person filter — applied before any per-page filters
+  if (typeof personFilter !== "undefined" && personFilter.size > 0) {
+    rows = rows.filter(r => r.person && personFilter.has(r.person));
+  }
+  if (typeFilter) rows = rows.filter(r => r.type === typeFilter);
+  if (searchQ) {
+    const q = searchQ.toLowerCase();
+    rows = rows.filter(r => r.code.toLowerCase().includes(q) || r.desc.toLowerCase().includes(q));
+  }
+  return rows;
+}
+
+function mosKpiCard(label, value, sub, color) {
   return `<div class="kpi-card"><div class="kpi-label">${escHtml(label)}</div><div class="kpi-value" style="color:var(--${color||'blue'})">${value}</div>${sub ? `<div class="kpi-sub">${sub}</div>` : ""}</div>`;
-}
-function exprKpiRow(id, cards) {
-  const el = document.getElementById(id);
-  if (el) el.innerHTML = cards.join("");
 }
 
 // ── MAIN RENDER ────────────────────────────────────────────────────────────────
-async function renderExpiryRisk() {
+async function renderMosPlant() {
   await waitForPlotly();
+  if (!mosMerged.length) return;
 
-  const hasInventory = typeof rawDf !== "undefined" && rawDf.length > 0;
-  const hasAmc        = typeof mosMerged !== "undefined" && mosMerged.length > 0;
+  const searchEl    = document.getElementById("mos-search");
+  const plantEl     = document.getElementById("mos-plant-filter");
+  const typeEl      = document.getElementById("mos-type");
+  const criticalEl  = document.getElementById("mos-critical-only");
 
-  if (!hasInventory || !hasAmc) {
-    document.getElementById("exprisk-no-data").style.display = "block";
-    document.getElementById("exprisk-content").style.display = "none";
-    return;
-  }
-  document.getElementById("exprisk-no-data").style.display  = "none";
-  document.getElementById("exprisk-content").style.display = "block";
+  const searchQ     = searchEl   ? searchEl.value.trim()  : "";
+  const plantVal    = plantEl    ? plantEl.value.trim()   : "";
+  const typeVal     = typeEl     ? typeEl.value.trim()    : "";
+  const criticalOnly= criticalEl ? criticalEl.checked     : false;
 
-  const searchEl = document.getElementById("exprisk-search");
-  const plantEl  = document.getElementById("exprisk-plant");
-  const typeEl   = document.getElementById("exprisk-type");
-  const searchQ  = searchEl ? searchEl.value.trim() : "";
-  const plantVal = plantEl  ? plantEl.value.trim()  : "";
-  const typeVal  = typeEl   ? typeEl.value.trim()   : "";
-
-  if (plantEl && plantEl.options.length <= 1 && typeof mosPlants !== "undefined") {
+  // Populate plant dropdown once
+  if (plantEl && plantEl.options.length <= 1) {
     mosPlants.forEach(p => {
       const opt = document.createElement("option");
       opt.value = p; opt.text = p === HUB_PLANT ? `${p} (Hub)` : p;
@@ -257,260 +324,246 @@ async function renderExpiryRisk() {
     });
   }
 
-  // ── Build snapshot (unfiltered by plant, so redistribution can see all plants
-  // for each item) then apply plant filter only to the BEFORE view ──────────────
-  const fullSnapshot = buildRiskSnapshot(typeVal, searchQ, "");
-  const beforeRows   = plantVal ? fullSnapshot.filter(r => r.plant === plantVal) : fullSnapshot;
-  const atRiskBefore = beforeRows.filter(r => r.atRisk && r.atRiskQty > 0);
+  const sohMap = buildMosSohMap();
+  const hasSoh = sohMap.size > 0;
 
-  // ── KPIs: BEFORE ──────────────────────────────────────────────────────────────
-  const totalAtRiskQtyBefore = atRiskBefore.reduce((s, r) => s + r.atRiskQty, 0);
-  const totalAtRiskValBefore = atRiskBefore.reduce((s, r) => s + r.atRiskVal, 0);
-  const hubAtRiskBefore      = atRiskBefore.filter(r => r.isHub);
-  exprKpiRow("exprisk-kpis-before", [
-    exprKpiCard("Plant-Item Pairs At Risk", atRiskBefore.length.toLocaleString(), `MOS > shelf-life remaining`, "red"),
-    exprKpiCard("At-Risk Quantity", fmtQty(totalAtRiskQtyBefore), "units that may expire unused", "orange"),
-    exprKpiCard("At-Risk Value", fmtETB(totalAtRiskValBefore), "Ethiopian Birr exposure", "red"),
-    exprKpiCard(`${HUB_PLANT} Share`, fmtQty(hubAtRiskBefore.reduce((s,r)=>s+r.atRiskQty,0)), `${hubAtRiskBefore.length} hub item(s) at risk`, "purple"),
+  let rows = getMosFilteredRows(typeVal, searchQ);
+
+  // Compute per-plant MOS for every row, plus one network-wide National MOS
+  let scored = rows.map(r => ({
+    ...r,
+    _plantMos: computeRowMOS(r, sohMap),
+    _national: computeNationalMOS(r, sohMap),
+  }));
+
+  // Plant-specific filter: only keep rows where that plant has a commitment
+  if (plantVal) {
+    scored = scored.filter(r => r._plantMos.find(m => m.plant === plantVal)?.amc !== null);
+  }
+
+  // Critical-only filter: at least one plant (or the selected plant) under 1mo
+  if (criticalOnly) {
+    scored = scored.filter(r => {
+      const relevant = plantVal ? r._plantMos.filter(m => m.plant === plantVal) : r._plantMos;
+      return relevant.some(m => isMosCritical(m.mos));
+    });
+  }
+
+  // ── KPIs ────────────────────────────────────────────────────────────────────
+  const allEntries = scored.flatMap(r => plantVal ? r._plantMos.filter(m => m.plant === plantVal) : r._plantMos);
+  const committedEntries = allEntries.filter(e => e.amc !== null);
+  const criticalCount = committedEntries.filter(e => isMosCritical(e.mos)).length;
+  const hubEntries = scored.map(r => r._plantMos.find(m => m.isHub)).filter(e => e && e.amc !== null);
+  const hubCriticalCount = hubEntries.filter(e => isMosCritical(e.mos)).length;
+  const nationalEntries = scored.map(r => r._national).filter(n => n.mos !== null);
+  const nationalCriticalCount = nationalEntries.filter(n => isMosCritical(n.mos)).length;
+
+  mosKpiRow([
+    mosKpiCard("Items Screened", scored.length.toLocaleString(), typeVal || "All types", "blue"),
+    mosKpiCard("National MOS Critical (<1mo)", nationalCriticalCount.toLocaleString(), `of ${nationalEntries.length.toLocaleString()} items with national MOS`, "red"),
+    mosKpiCard("Plant-Item Pairs Critical (<1mo)", criticalCount.toLocaleString(), `of ${committedEntries.length.toLocaleString()} committed pairs`, "amber"),
+    mosKpiCard(`${HUB_PLANT} Critical (<1mo)`, hubCriticalCount.toLocaleString(), "vs. total branch demand", "purple"),
+    mosKpiCard("SOH Data Loaded", hasSoh ? "Yes" : "No", hasSoh ? "From inventory file" : "Upload inventory Excel for SOH", hasSoh ? "green" : "amber"),
   ]);
 
-  // ── CHART: BEFORE — items at risk aggregated across all plants (line chart) ──
-  // Collapse plant-level rows into one entry per material (sum qty & val, keep
-  // earliest shelf-life and worst MOS so the line reflects the true item-level risk).
-  const itemRiskMap = new Map();
-  for (const r of atRiskBefore) {
-    if (!itemRiskMap.has(r.code)) {
-      itemRiskMap.set(r.code, { code: r.code, desc: r.desc, atRiskQty: 0, atRiskVal: 0,
-        shelfLeftMo: r.shelfLeftMo, mos: r.mos });
-    }
-    const e = itemRiskMap.get(r.code);
-    e.atRiskQty  += r.atRiskQty;
-    e.atRiskVal  += r.atRiskVal;
-    // Worst-case shelf life (minimum across plants)
-    if (r.shelfLeftMo !== null && (e.shelfLeftMo === null || r.shelfLeftMo < e.shelfLeftMo))
-      e.shelfLeftMo = r.shelfLeftMo;
-    // Highest MOS (most overstocked plant drives the risk score)
-    if (r.mos !== null && (e.mos === null || r.mos > e.mos)) e.mos = r.mos;
-  }
-  const itemRiskArr = [...itemRiskMap.values()]
-    .sort((a, b) => b.atRiskVal - a.atRiskVal)
-    .slice(0, 30);
-
-  if (itemRiskArr.length) {
-    const labels = itemRiskArr.map(r => r.desc.length > 36 ? r.desc.slice(0, 36) + "…" : r.desc);
-    Plotly.newPlot("chart-exprisk-before", [
-      {
-        // At-risk VALUE line (primary axis)
-        type: "scatter", mode: "lines+markers",
-        name: "At-Risk Value (ETB)",
-        x: labels,
-        y: itemRiskArr.map(r => r.atRiskVal),
-        line: { color: "#f85149", width: 2.5 },
-        marker: { color: "#f85149", size: 7 },
-        hovertemplate: "<b>%{x}</b><br>At-risk value: ETB %{y:,.0f}<extra></extra>",
-        yaxis: "y",
-      },
-      {
-        // At-risk QTY line (secondary axis)
-        type: "scatter", mode: "lines+markers",
-        name: "At-Risk Qty (units)",
-        x: labels,
-        y: itemRiskArr.map(r => r.atRiskQty),
-        line: { color: "#ffa657", width: 2, dash: "dot" },
-        marker: { color: "#ffa657", size: 6 },
-        hovertemplate: "<b>%{x}</b><br>At-risk qty: %{y:,.0f} units<extra></extra>",
-        yaxis: "y2",
-      },
-    ], {
-      ...PLOTLY_LAYOUT,
-      height: 360,
-      margin: { l: 60, r: 70, t: 24, b: 130 },
-      xaxis: {
-        tickangle: -38,
-        tickfont: { size: 9.5 },
-        showgrid: false,
-      },
-      yaxis:  { title: "At-Risk Value (ETB)", titlefont: { color: "#f85149" }, tickfont: { color: "#f85149" } },
-      yaxis2: { title: "At-Risk Qty", titlefont: { color: "#ffa657" }, tickfont: { color: "#ffa657" },
-                overlaying: "y", side: "right", showgrid: false },
-      legend: { orientation: "h", y: 1.12, x: 0 },
-      paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
-    }, PLOTLY_CONFIG);
-  } else {
-    document.getElementById("chart-exprisk-before").innerHTML = "";
+  if (!hasSoh) {
+    document.getElementById("chart-mos-plant").innerHTML =
+      '<div class="alert-info" style="margin:1rem 0">⚠️ Upload the main inventory Excel (sidebar) to provide stock-on-hand — MOS can\'t be computed from AMC alone.</div>';
+    document.getElementById("mos-table").innerHTML = "";
+    return;
   }
 
-  // ── TABLE: BEFORE ──────────────────────────────────────────────────────────────
-  const beforeCols = [
+  // ── CHART: avg MOS per plant across screened items (capped for display) ──
+  const displayPlants = plantVal ? [plantVal] : mosPlants;
+  const plantAverages = displayPlants.map(p => {
+    const vals = scored
+      .map(r => r._plantMos.find(m => m.plant === p))
+      .filter(e => e && e.amc !== null && e.mos !== null && e.mos !== Infinity);
+    const avg = vals.length ? vals.reduce((s, e) => s + e.mos, 0) / vals.length : null;
+    return { plant: p, avg, n: vals.length, isHub: p === HUB_PLANT };
+  });
+
+  Plotly.newPlot("chart-mos-plant", [{
+    type: "bar",
+    x: plantAverages.map(p => p.isHub ? `${p.plant} ★` : p.plant),
+    y: plantAverages.map(p => p.avg ?? 0),
+    marker: {
+      color: plantAverages.map(p => p.avg !== null && p.avg < 1 ? "#f85149" : p.isHub ? "#8763cc" : "#3a8fd4"),
+    },
+    text: plantAverages.map(p => p.avg !== null ? `${p.avg.toFixed(1)}mo` : "—"),
+    textposition: "outside",
+    textfont: { size: 10 },
+    hovertemplate: "<b>%{x}</b><br>Avg MOS: %{y:.1f} months<extra></extra>",
+  }], {
+    ...PLOTLY_LAYOUT,
+    height: 360,
+    margin: { l: 60, r: 30, t: 30, b: 80 },
+    xaxis: { title: "Plant (★ = hub, MOS vs. total branch demand)", tickfont: { size: 10 } },
+    yaxis: { title: "Average MOS (months)" },
+    shapes: [{
+      type: "line", x0: -0.5, x1: displayPlants.length - 0.5, y0: 1, y1: 1,
+      line: { color: "#f85149", width: 1.5, dash: "dot" },
+    }],
+    annotations: [{
+      x: displayPlants.length - 0.5, y: 1, xanchor: "right", yanchor: "bottom",
+      text: "1mo critical line", showarrow: false, font: { color: "#f85149", size: 9 },
+    }],
+    paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+  }, PLOTLY_CONFIG);
+
+  // ── TABLE ────────────────────────────────────────────────────────────────────
+  const cols = [
     { key: "code", label: "Material Code",
       fmt: (v, r) => r.isMerged
-        ? `<span class="col-mat-code">${escHtml(v)}</span><span class="mat-mapped-badge" title="Merged: ${escHtml(r.origCodes)}">MERGED</span>`
+        ? `<span class="col-mat-code">${escHtml(v)}</span><span class="mat-mapped-badge" title="Merged from: ${escHtml(r.origCodes)}">MERGED</span>`
         : `<span class="col-mat-code">${escHtml(v)}</span>`,
       raw: true, cellClass: "col-mat-code-wrap" },
     { key: "desc", label: "Description", cellClass: "col-mat-desc-wrap" },
     { key: "type", label: "Type" },
-    { key: "plant", label: "Plant", fmt: (v, r) => r.isHub ? `<b>${escHtml(v)}</b> <span style="font-size:0.75em;color:var(--purple)">(Hub)</span>` : escHtml(v), raw: true },
-    { key: "soh", label: "SOH", fmt: fmtQty },
-    { key: "amc", label: r => "AMC", fmt: (v, r) => `${fmtQty(v)}${r.isHub ? ' <span style="font-size:0.7em;color:var(--muted)">(Σ branch)</span>' : ""}`, raw: true },
-    { key: "mos", label: "MOS", fmt: v => `<b>${v.toFixed(1)}</b> mo` , raw:true },
-    { key: "shelfLeftMo", label: "Shelf Life Left", fmt: v => v < 0 ? `<b style="color:var(--red)">EXPIRED</b>` : `<b>${v.toFixed(1)}</b> mo`, raw: true },
-    { key: "atRiskQty", label: "At-Risk Qty", fmt: v => `<b style="color:var(--red)">${fmtQty(v)}</b>`, raw: true },
-    { key: "atRiskVal", label: "At-Risk Value", fmt: v => `<b style="color:var(--red)">${fmtETB(v)}</b>`, raw: true },
+    { key: "_national", label: "National MOS",
+      fmt: (v) => {
+        if (!v || v.mos === null) return mosNABadge();
+        const sohStr = `<span style="font-size:0.72em;color:var(--muted)"> · SOH ${fmtQty(v.totalSoh)}${v.hasHo01 ? ' (incl. ' + HUB_PLANT + ')' : ''}</span>`;
+        const amcStr = `<span style="font-size:0.72em;color:var(--muted)"> · AMC ${fmtQty(v.totalAmc)} (branches)</span>`;
+        return `<span style="${mosCellStyle(v.mos)}">${fmtMosVal(v.mos)}</span>${sohStr}${amcStr}`;
+      },
+      raw: true, cellClass: "col-mat-desc-wrap" },
+    ...displayPlants.map(p => ({
+      key: `_m_${p}`, label: p === HUB_PLANT ? `${p} (Hub)` : p,
+      fmt: (v) => {
+        if (!v || v.amc === null) return mosNABadge();
+        const sohStr = `<span style="font-size:0.72em;color:var(--muted)"> · SOH ${fmtQty(v.soh)}</span>`;
+        const amcLabel = v.isHub ? "Σ branch AMC" : "AMC";
+        const amcStr = `<span style="font-size:0.72em;color:var(--muted)"> · ${amcLabel} ${fmtQty(v.amc)}</span>`;
+        return `<span style="${mosCellStyle(v.mos)}">${fmtMosVal(v.mos)}</span>${sohStr}${amcStr}`;
+      },
+      raw: true,
+    })),
   ];
-  const sortedAtRiskBefore = [...atRiskBefore].sort((a,b)=>b.atRiskVal-a.atRiskVal);
-  document.getElementById("exprisk-table-before").innerHTML = buildTable(
-    sortedAtRiskBefore, beforeCols, () => "",
-    "", {id:"exprisk-before-export", title:""}
+
+  const tableRows = scored.map(r => ({
+    ...r,
+    ...Object.fromEntries(displayPlants.map(p => [`_m_${p}`, r._plantMos.find(m => m.plant === p)])),
+  }));
+
+  document.getElementById("mos-table").innerHTML = buildTable(
+    tableRows, cols,
+    (row) => {
+      const relevant = plantVal ? [row[`_m_${plantVal}`]] : displayPlants.map(p => row[`_m_${p}`]);
+      const nationalCritical = row._national && isMosCritical(row._national.mos);
+      return (relevant.some(v => v && isMosCritical(v.mos)) || nationalCritical) ? "row-critical" : "";
+    }
   );
 
-  // ── EXPORT (At-Risk Detail before redistribution) ───────────────────────────
-  const beforeExportCols = [
-    { key: "code", label: "Material Code" }, { key: "desc", label: "Description" }, { key: "type", label: "Type" },
-    { key: "plant", label: "Plant" }, { key: "isHub", label: "Hub Plant?", fmt: v => v ? "Yes" : "No" },
-    { key: "soh", label: "SOH (units)", fmt: v => Number(v).toFixed(2) },
-    { key: "amc", label: "AMC (units/mo)", fmt: v => Number(v).toFixed(2) },
-    { key: "mos", label: "MOS (months)", fmt: v => Number(v).toFixed(2) },
-    { key: "shelfLeftMo", label: "Shelf Life Left (months)", fmt: v => Number(v).toFixed(2) },
-    { key: "atRiskQty", label: "At-Risk Qty (units)", fmt: v => Number(v).toFixed(2) },
-    { key: "atRiskVal", label: "At-Risk Value (ETB)", fmt: v => Number(v).toFixed(2) },
-  ];
-  if (sortedAtRiskBefore.length) wireTableExport("exprisk-before-export", sortedAtRiskBefore, beforeExportCols, "expiry_risk_at_risk_before");
-
-  // ── REDISTRIBUTION (always computed on the FULL unfiltered snapshot, so the
-  //    plan is correct regardless of the plant filter applied to the view) ──────
-  const { transfers, residual } = computeRedistribution(fullSnapshot);
-  const visTransfers = plantVal ? transfers.filter(t => t.fromPlant === plantVal || t.toPlant === plantVal) : transfers;
-
-  const redistCols = [
-    { key: "code", label: "Material Code", cellClass: "col-mat-code-wrap" },
-    { key: "desc", label: "Description", cellClass: "col-mat-desc-wrap" },
-    { key: "fromPlant", label: "From",
-      fmt: (v, r) => r.fromIsHub ? `<b style="color:var(--purple)">${escHtml(v)} (Hub)</b>` : `<b style="color:var(--amber)">${escHtml(v)}</b>`,
-      raw: true },
-    { key: "toPlant", label: "To", fmt: v => `<b style="color:var(--blue)">${escHtml(v)}</b>`, raw: true },
-    { key: "qty", label: "Transfer Qty", fmt: fmtQty },
-    { key: "val", label: "Transfer Value", fmt: fmtETB },
-    { key: "toMosAfter", label: "Recipient MOS After", fmt: v => v===null ? "—" : `${v.toFixed(1)} mo`, raw: true },
-    { key: "toShelfLeftMo", label: "Recipient Shelf Life", fmt: v => `${v.toFixed(1)} mo`, raw: true },
-  ];
-  const sortedTransfers = [...visTransfers].sort((a,b)=>b.val-a.val);
-  document.getElementById("exprisk-redist-table").innerHTML = visTransfers.length
-    ? buildTable(sortedTransfers, redistCols, () => "",
-        "", {id:"exprisk-redist-export", title:""})
-    : '<div class="alert-info" style="margin:0.5rem 0">No eligible transfers found — either nothing is at risk, or no recipient plant has safe headroom for the at-risk items.</div>';
-
-  // ── EXPORT (Suggested Redistribution Plan) ──────────────────────────────────
-  const redistExportCols = [
-    { key: "code", label: "Material Code" }, { key: "desc", label: "Description" },
-    { key: "fromPlant", label: "From Plant" }, { key: "fromIsHub", label: "From Is Hub?", fmt: v => v ? "Yes" : "No" },
-    { key: "toPlant", label: "To Plant" },
-    { key: "qty", label: "Transfer Qty (units)", fmt: v => Number(v).toFixed(2) },
-    { key: "val", label: "Transfer Value (ETB)", fmt: v => Number(v).toFixed(2) },
-    { key: "toMosAfter", label: "Recipient MOS After (months)", fmt: v => v===null ? "" : Number(v).toFixed(2) },
-    { key: "toShelfLeftMo", label: "Recipient Shelf Life (months)", fmt: v => Number(v).toFixed(2) },
-  ];
-  if (sortedTransfers.length) wireTableExport("exprisk-redist-export", sortedTransfers, redistExportCols, "expiry_risk_redistribution_plan");
-
-  // ── RESIDUAL (AFTER redistribution) — for marketing director ──────────────────
-  const visResidual = plantVal ? residual.filter(r => r.plant === plantVal) : residual;
-  const totalResidualQty = visResidual.reduce((s, r) => s + r.qty, 0);
-  const totalResidualVal = visResidual.reduce((s, r) => s + r.val, 0);
-  const hubResidual = visResidual.filter(r => r.isHub);
-
-  const recoveredQty = totalAtRiskQtyBefore - residual.reduce((s,r)=>s+r.qty,0); // network-wide, for context
-  const recoveredPct = totalAtRiskQtyBefore > 0
-    ? (((totalAtRiskQtyBefore - residual.reduce((s,r)=>s+r.qty,0)) / totalAtRiskQtyBefore) * 100).toFixed(1)
-    : "0.0";
-
-  exprKpiRow("exprisk-kpis-after", [
-    exprKpiCard("Residual At-Risk Qty", fmtQty(totalResidualQty), "Could not be placed anywhere safely", "red"),
-    exprKpiCard("Residual At-Risk Value", fmtETB(totalResidualVal), "Recommend for private sale / discount channel", "red"),
-    exprKpiCard("Recovered by Redistribution", `${recoveredPct}%`, "of network-wide at-risk qty resolved by transfer", "green"),
-    exprKpiCard(`From ${HUB_PLANT}`, fmtQty(hubResidual.reduce((s,r)=>s+r.qty,0)), `${hubResidual.length} item(s) from the hub`, "purple"),
-  ]);
-
-  const afterCols = [
-    { key: "code", label: "Material Code", cellClass: "col-mat-code-wrap" },
-    { key: "desc", label: "Description", cellClass: "col-mat-desc-wrap" },
-    { key: "type", label: "Type" },
-    { key: "plant", label: "Plant", fmt: (v, r) => r.isHub ? `<b>${escHtml(v)}</b> <span style="font-size:0.75em;color:var(--purple)">(Hub)</span>` : escHtml(v), raw: true },
-    { key: "qty", label: "Residual Qty", fmt: v => `<b style="color:var(--red)">${fmtQty(v)}</b>`, raw: true },
-    { key: "val", label: "Residual Value", fmt: v => `<b style="color:var(--red)">${fmtETB(v)}</b>`, raw: true },
-    { key: "unitVal", label: "Unit Value", fmt: v => fmtETB(v) },
-  ];
-  const sortedResidual = [...visResidual].sort((a,b)=>b.val-a.val);
-  document.getElementById("exprisk-table-after").innerHTML = visResidual.length
-    ? buildTable(sortedResidual, afterCols, () => "", "", {id:"exprisk-export", title:""})
-    : '<div class="alert-info" style="margin:0.5rem 0">✓ Nothing left over — redistribution fully resolves the at-risk stock for the current filters.</div>';
-
-  // ── EXPORT (export the marketing-director residual list, the most actionable one) ──
+  // ── EXPORT ────────────────────────────────────────────────────────────────────
+  const exportRows = scored.flatMap(r =>
+    r._plantMos.filter(m => !plantVal || m.plant === plantVal).map(m => ({
+      code: r.code, desc: r.desc, type: r.type,
+      nationalMos: r._national.mos, nationalSoh: r._national.totalSoh, nationalAmc: r._national.totalAmc,
+      plant: m.plant, isHub: m.isHub ? "Yes (vs. total branch demand)" : "No",
+      soh: m.soh, amc: m.amc, mos: m.mos,
+    }))
+  );
   const exportCols = [
     { key: "code", label: "Material Code" }, { key: "desc", label: "Description" }, { key: "type", label: "Type" },
-    { key: "plant", label: "Plant" }, { key: "isHub", label: "Hub Plant?", fmt: v => v ? "Yes" : "No" },
-    { key: "qty", label: "Residual Qty (units)", fmt: v => Number(v).toFixed(2) },
-    { key: "val", label: "Residual Value (ETB)", fmt: v => Number(v).toFixed(2) },
-    { key: "unitVal", label: "Unit Value (ETB)", fmt: v => Number(v).toFixed(2) },
+    { key: "nationalMos", label: "National MOS (months)", fmt: v => v === null ? "N/A" : v === Infinity ? "Infinite" : Number(v).toFixed(2) },
+    { key: "nationalSoh", label: "National SOH (all plants incl. " + HUB_PLANT + ")", fmt: v => Number(v || 0).toFixed(2) },
+    { key: "nationalAmc", label: "National AMC (branches only)", fmt: v => v === null ? "N/A" : Number(v).toFixed(2) },
+    { key: "plant", label: "Plant" }, { key: "isHub", label: "Hub Plant?" },
+    { key: "soh", label: "Stock on Hand", fmt: v => Number(v || 0).toFixed(2) },
+    { key: "amc", label: "AMC Used", fmt: v => v === null ? "Not Committed" : Number(v).toFixed(2) },
+    { key: "mos", label: "MOS (months)", fmt: v => v === null ? "N/A" : v === Infinity ? "Infinite" : Number(v).toFixed(2) },
   ];
-  if (sortedResidual.length) wireTableExport("exprisk-export", sortedResidual, exportCols, "expiry_risk_residual_for_marketing");
+  const dlRow = document.getElementById("mos-dl-row");
+  if (dlRow) {
+    dlRow.innerHTML = '<button class="dl-btn">⬇ CSV</button><button class="dl-btn">⬇ Excel</button>';
+    dlRow.querySelectorAll(".dl-btn")[0].onclick = () => downloadCSV(exportRows,   exportCols, "mos_by_plant.csv");
+    dlRow.querySelectorAll(".dl-btn")[1].onclick = () => downloadExcel(exportRows, exportCols, "mos_by_plant.xlsx");
+  }
+}
+
+function mosKpiRow(cards) {
+  const el = document.getElementById("mos-kpis");
+  if (el) el.innerHTML = cards.join("");
 }
 
 // ── WIRE INTO PAGE_RENDERERS AND EVENT LISTENERS ──────────────────────────────
-(function wireExpiryRiskModule() {
+(function wireMosModule() {
   function extend() {
     if (typeof PAGE_RENDERERS !== "undefined") {
-      PAGE_RENDERERS["expiry-risk"] = renderExpiryRisk;
+      PAGE_RENDERERS["mos-plant"] = renderMosPlant;
     }
 
+    // Allow this page to render even before the main inventory file is loaded,
+    // same pattern used by the old AMC module — renderPage() normally bails
+    // out early when rawDf is empty.
     const _origRenderPage = window.renderPage;
     window.renderPage = function (id) {
-      if (id === "expiry-risk") {
+      if (id === "mos-plant") {
         currentPage = id;
         document.getElementById("landingView").style.display = "none";
         document.querySelectorAll(".page").forEach(el => { el.style.display = "none"; });
-        const pg = document.getElementById("page-expiry-risk");
+        const pg = document.getElementById("page-mos-plant");
         if (pg) pg.style.display = "block";
         document.querySelectorAll(".nav-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.page === id));
-        try { renderExpiryRisk(); } catch (e) { console.error(e); }
+        if (mosMerged.length) {
+          try { renderMosPlant(); } catch (e) { console.error(e); }
+        }
         return;
       }
       _origRenderPage(id);
     };
 
+    const amcInput = document.getElementById("mosAmcFileInput");
+    if (amcInput) {
+      amcInput.addEventListener("change", e => {
+        const f = e.target.files[0]; if (f) loadMosAmcFile(f);
+        e.target.value = "";
+      });
+    }
+
     const filterMap = {
-      "exprisk-apply": renderExpiryRisk,
-      "exprisk-clear": () => {
-        const s = document.getElementById("exprisk-search"); if (s) s.value = "";
-        const p = document.getElementById("exprisk-plant");  if (p) p.value = "";
-        const t = document.getElementById("exprisk-type");   if (t) t.value = "";
-        renderExpiryRisk();
+      "mos-apply": renderMosPlant,
+      "mos-clear": () => {
+        const s = document.getElementById("mos-search");         if (s) s.value = "";
+        const p = document.getElementById("mos-plant-filter");   if (p) p.value = "";
+        const t = document.getElementById("mos-type");           if (t) t.value = "";
+        const c = document.getElementById("mos-critical-only");  if (c) c.checked = false;
+        renderMosPlant();
       },
     };
 
     document.body.addEventListener("click", (e) => {
       const btn = e.target.closest("button[id]");
-      if (!btn) return;
+      if (!btn || !mosMerged.length) return;
       const fn = filterMap[btn.id];
       if (fn) { e.stopPropagation(); fn(); }
     }, true);
 
-    // Pressing Enter in the material search box applies the filter immediately,
-    // same UX pattern as the global sidebar search.
-    const searchInput = document.getElementById("exprisk-search");
-    if (searchInput) {
-      searchInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") renderExpiryRisk();
+    // Recompute SOH-driven values whenever the main inventory file finishes
+    // loading (rawDf changes) and the user is already on this page.
+    const fileInput = document.getElementById("fileInput");
+    if (fileInput) {
+      fileInput.addEventListener("change", () => {
+        setTimeout(() => {
+          if (currentPage === "mos-plant" && mosMerged.length) renderMosPlant();
+        }, 300);
       });
     }
 
-    // Re-render if currently on this page and either source file changes
-    const fileInput    = document.getElementById("fileInput");
-    const mosAmcInput   = document.getElementById("mosAmcFileInput");
-    [fileInput, mosAmcInput].forEach(inp => {
-      if (!inp) return;
-      inp.addEventListener("change", () => {
-        setTimeout(() => { if (currentPage === "expiry-risk") renderExpiryRisk(); }, 350);
-      });
-    });
+    // Rebuild mosMerged when the mapping file changes, like the old AMC module did.
+    const _origApplyMapping = window.applyMaterialMapping;
+    if (_origApplyMapping) {
+      window.applyMaterialMapping = function () {
+        _origApplyMapping.apply(this, arguments);
+        if (mosAmcRaw.length) {
+          mosMerged = buildMosMerged();
+          if (currentPage === "mos-plant") {
+            try { renderMosPlant(); } catch (e) {}
+          }
+        }
+      };
+    }
   }
 
   if (document.readyState === "loading") {
