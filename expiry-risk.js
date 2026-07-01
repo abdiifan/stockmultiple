@@ -494,6 +494,15 @@ async function renderExpiryRisk() {
       if (fn) { e.stopPropagation(); fn(); }
     }, true);
 
+    // Pressing Enter in the material search box applies the filter immediately,
+    // same UX pattern as the global sidebar search.
+    const searchInput = document.getElementById("exprisk-search");
+    if (searchInput) {
+      searchInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") renderExpiryRisk();
+      });
+    }
+
     // Re-render if currently on this page and either source file changes
     const fileInput    = document.getElementById("fileInput");
     const mosAmcInput   = document.getElementById("mosAmcFileInput");
