@@ -50,6 +50,14 @@
     return _unverifiedLookup.has(row.material + "|" + row.plant);
   }
 
+  // Same Special Stock Type exclusion script.js applies to rawDf everywhere
+  // else (Dashboard, main Transit page, Concentration, Branch) — Q and W are
+  // never real on-hand/in-transit stock and must not surface anywhere.
+  function isExcludedSpecialStock(row) {
+    const s = String(row.specialStock || "").trim().toUpperCase();
+    return s === "Q" || s === "W";
+  }
+
   // ── FILE LOADER ────────────────────────────────────────────────────────
   function loadTransitDetailFile(file) {
     const statusEl = document.getElementById("transitDetailFileStatus");
@@ -92,11 +100,15 @@
           return row;
         }).filter(r => r.material && r.plant);
 
-        // Drop rows that are on the hardcoded unverified-transit list — same
-        // exclusion applied to every other transit figure in the app.
+        // Drop rows that are on the hardcoded unverified-transit list, or that
+        // carry an excluded Special Stock Type (Q/W) — same exclusions
+        // applied to every other transit figure in the app.
         const preExclusionCount = transitDetailRaw.length;
         transitDetailRaw = transitDetailRaw.filter(r => !isUnverifiedTransitRow(r));
-        transitDetailExcludedCount = preExclusionCount - transitDetailRaw.length;
+        const afterUnverifiedCount = transitDetailRaw.length;
+        transitDetailRaw = transitDetailRaw.filter(r => !isExcludedSpecialStock(r));
+        transitDetailExcludedCount = preExclusionCount - afterUnverifiedCount;
+        const specialStockExcludedCount = afterUnverifiedCount - transitDetailRaw.length;
 
         const count = transitDetailRaw.length;
         const withinCount = transitDetailRaw.filter(r => r._withinPlant).length;
@@ -105,7 +117,8 @@
           `<div class="status-ok">✓ LOADED</div><div class="status-name">${escHtml(file.name)}</div>` +
           `<div class="status-name" style="color:var(--green)">${count} PO line${count === 1 ? "" : "s"}` +
           (withinCount ? ` · ${withinCount} within-plant` : "") +
-          (transitDetailExcludedCount ? ` · ${transitDetailExcludedCount} excluded (unverified)` : "") + `</div>` +
+          (transitDetailExcludedCount ? ` · ${transitDetailExcludedCount} excluded (unverified)` : "") +
+          (specialStockExcludedCount ? ` · ${specialStockExcludedCount} excluded (Q/W stock)` : "") + `</div>` +
           (mismatch ? `<div class="status-name" style="color:var(--amber)">⚠️ Column headers differ from the expected layout — check the data lines up correctly.</div>` : "");
         if (btnEl) btnEl.textContent = "✓ " + file.name;
 
