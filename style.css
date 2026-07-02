@@ -284,6 +284,85 @@ body { display: flex; }
 }
 .nav-btn .nav-icon { font-size: 0.95rem; width: 18px; text-align: center; flex-shrink: 0; }
 
+.nav-group { margin-bottom: 0.25rem; }
+.nav-group:last-child { margin-bottom: 0; }
+.nav-group-title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.4rem 0.45rem;
+  margin: 0.1rem 0 0;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  user-select: none;
+  border-radius: var(--radius-sm);
+  transition: background 0.14s, color 0.14s;
+}
+.nav-group-title:hover { background: var(--surface2); }
+.nav-group-title::after {
+  content: "▸";
+  margin-left: auto;
+  font-size: 0.65rem;
+  color: var(--dim);
+  transition: transform 0.16s ease;
+  flex-shrink: 0;
+}
+.nav-group.expanded .nav-group-title::after { transform: rotate(90deg); }
+.nav-group-icon { font-size: 0.85rem; flex-shrink: 0; }
+.nav-group .nav-btn { padding-left: 1.05rem; }
+.nav-group .nav-btn.active { padding-left: calc(1.05rem - 3px); }
+
+/* Collapsed by default: items hidden until the group is expanded */
+.nav-group .nav-btn {
+  display: none;
+}
+.nav-group.expanded .nav-btn {
+  display: flex;
+}
+.nav-group.expanded { margin-bottom: 0.55rem; padding-bottom: 0.2rem; }
+.nav-group.expanded .nav-group-title { border-bottom-color: transparent; margin-bottom: 0.1rem; }
+
+/* Quick Lookup sidebar entry: acts as a single nav link (no chevron, no
+   inline expansion) — its tools now live on the main screen. */
+.quick-lookup-group .nav-group-title::after { content: none; }
+.nav-group-title.nav-group-title-active {
+  background: var(--accent-glow);
+  color: var(--blue);
+  border-bottom-color: transparent;
+}
+
+/* Quick Lookup tools on the main screen */
+.quick-lookup-main-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.1rem;
+}
+.quick-lookup-main-card {
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-md);
+  padding: 1.2rem 1.3rem 1.4rem;
+}
+.quick-lookup-main-title {
+  color: var(--text);
+  font-weight: 700;
+  font-size: 0.95rem;
+  margin-bottom: 0.4rem;
+}
+.quick-lookup-main-desc {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  margin-bottom: 0.9rem;
+}
+.quick-lookup-main-card .who-resp-wrap,
+.quick-lookup-main-card .incoming-new-wrap { margin: 0; }
+
 /* ══════════════════════════════════════════════
    SIDEBAR UPLOAD SECTIONS
    ══════════════════════════════════════════════ */
@@ -433,8 +512,87 @@ body { display: flex; }
   margin-bottom: 0.2rem;
   font-family: 'Plus Jakarta Sans', sans-serif;
 }
-.page-subtitle { color: var(--dim); font-size: 0.77rem; font-weight: 400; }
+.page-subtitle { color: var(--muted); font-size: 0.77rem; font-weight: 400; }
 .page-actions  { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+
+/* ══════════════════════════════════════════════
+   GROUP OVERVIEW PAGES (shown when a sidebar
+   section header is clicked, e.g. "Inventory Ops")
+   ══════════════════════════════════════════════ */
+.group-overview-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.9rem;
+  margin-bottom: 1.6rem;
+  padding-bottom: 1.1rem;
+  border-bottom: 1px solid var(--border);
+}
+.group-overview-icon {
+  font-size: 1.9rem;
+  line-height: 1;
+  flex-shrink: 0;
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-md);
+}
+.group-overview .page-title { margin-bottom: 0.35rem; }
+.group-overview .page-subtitle { font-size: 0.84rem; line-height: 1.5; max-width: 640px; }
+
+.overview-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 1rem;
+}
+.overview-card {
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-md);
+  padding: 1.1rem 1.15rem;
+  cursor: pointer;
+  transition: border-color 0.16s, transform 0.16s, box-shadow 0.16s;
+}
+.overview-card:hover {
+  border-color: var(--blue);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+}
+.overview-card-icon { font-size: 1.5rem; margin-bottom: 0.55rem; }
+.overview-card-title {
+  color: var(--text);
+  font-weight: 700;
+  font-size: 0.92rem;
+  margin-bottom: 0.4rem;
+}
+.overview-card-desc { color: var(--muted); font-size: 0.78rem; line-height: 1.5; }
+
+/* Branding shown as a soft watermark in the remaining blank space
+   below a group's cards — decorative, not a focal element, but still
+   showing its natural brand colors at low opacity. */
+.group-overview-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 38vh;
+  padding: 3rem 1rem 2rem;
+  opacity: 0.16;
+  pointer-events: none;
+  user-select: none;
+}
+.group-overview-brand .landing-logo { margin-bottom: 1rem; }
+.group-overview-brand .landing-logo img { height: clamp(90px, 11vw, 150px); width: auto; }
+.group-overview-brand-title {
+  font-size: clamp(1.8rem, 3.6vw, 2.8rem);
+  margin-bottom: 0;
+  white-space: nowrap;
+}
+.group-overview { display: flex; flex-direction: column; min-height: 78vh; }
 
 .section-header {
   color: var(--text);
