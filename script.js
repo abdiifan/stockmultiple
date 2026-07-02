@@ -99,6 +99,16 @@ let rawDf  = [];
 let filtDf = [];
 let currentPage = "dashboard";
 
+// Every material code seen with an excluded classification (Project Stock,
+// non-medical code/group, excluded storage location, or Q/W special stock
+// type) ANYWHERE in the raw uploaded file, captured BEFORE the parse-time
+// filter strips those rows out of rawDf. rawDf itself never contains these
+// rows, but other separately-uploaded files (e.g. Incoming GR.xlsx) don't
+// carry the same columns, so anything cross-referencing by Material code
+// against those files needs this set as a defence-in-depth guard — see
+// shelf-life.js's Look-up suggestions and "New Incoming Stock" table.
+let excludedMaterialCodes = new Set();
+
 // Stock-in-Transit separate file state (detail file removed; phantom/verified logic retained)
 // ── HARDCODED UNVERIFIED TRANSIT LIST ─────────────────────────────────────
 // Source: unverified_transit_items.csv — specific qty/value per material+plant
@@ -379,6 +389,26 @@ function loadFile(file) {
         const missing = REQUIRED_COLUMNS.filter(c => !colsLower.includes(c.toLowerCase()));
         if (missing.length) { showError(`Missing columns: ${missing.join(", ")}`); return; }
 
+        // Record every material code that carries an excluded classification
+        // BEFORE filtering rows out, so pages/features that cross-reference by
+        // Material code against OTHER files (which may lack these columns)
+        // can still recognize and hide them. See excludedMaterialCodes above.
+        // Reset first so re-uploading a fresh/corrected file doesn't keep
+        // codes around from a previous upload.
+        excludedMaterialCodes = new Set();
+        trimmed.forEach(r => {
+          const mat = String(r["Material"] || "").trim();
+          if (!mat) return;
+          const sst = String(r["Special Stock Type"]).trim().toUpperCase();
+          if (sst === "Q" || sst === "W" ||
+              isProjectStockDescription(r["Special Stock Type Description"]) ||
+              isNonMedicalCode(mat) ||
+              isNonMedicalGroup(r["Material Group Name"]) ||
+              isExcludedStorageLocation(r["Storage Location"])) {
+            excludedMaterialCodes.add(mat);
+          }
+        });
+
         let df = trimmed
           .filter(r => { const s = String(r["Special Stock Type"]).trim().toUpperCase(); return s !== "Q" && s !== "W"; })
           .filter(r => !isProjectStockDescription(r["Special Stock Type Description"]))
@@ -395,6 +425,12 @@ function loadFile(file) {
           numCols.forEach(c => { row[c] = parseFloat(row[c]) || 0; });
           // FIX BUG-8: use timezone-safe parser
           row._expiry = parseExpiryDate(row["Shelf Life Expiration Date"]);
+          // SHELF-LIFE LOOKUP: Production Date is an OPTIONAL column — most inventory
+          // exports won't have it, and most rows within it are blank (SAP rarely
+          // captures production date per batch). parseExpiryDate() returns null for
+          // blank/invalid values, so this is always safe even when the column is
+          // entirely absent from the uploaded file.
+          row._prodDate = parseExpiryDate(row["Production Date"]);
           row["Total Value"] = row["Value of Unrestricted Stock"] + row["Value of Stock in Transit"] + row["Value of Stock in Quality Inspection"];
           row["Total Qty"]   = row["Unrestricted Stock"] + row["Stock in Transit"] + row["Stock in Quality Inspection"];
         });
