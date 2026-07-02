@@ -1,0 +1,1341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EPSS Stock-Multiple — Inventory Management</title>
+  <style>
+    .brand-icon img { height: 38px; width: auto; display: block; }
+    .landing-logo img { height: 86px; width: auto; display: block; margin: 0 auto 0.5rem; }
+
+    /* ── Overstock & Expiry Risk tab bar (mirrors Transit / QC pattern) ── */
+    .exprisk-tab-bar {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1.5rem;
+      margin-bottom: 0;
+      border-bottom: 2px solid var(--border2);
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .exprisk-tab-btn {
+      padding: 0.5rem 1.1rem;
+      border: none;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      font-weight: 500;
+      font-size: 0.82rem;
+      cursor: pointer;
+      margin-bottom: -2px;
+      font-family: inherit;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: color 0.15s, border-color 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .exprisk-tab-btn.active {
+      color: var(--blue);
+      font-weight: 700;
+      border-bottom-color: var(--blue);
+    }
+    .exprisk-tab-sub {
+      font-size: 0.72rem;
+      font-weight: 400;
+      opacity: 0.75;
+    }
+
+    /* ── Global Person Assigned filter (in-page filter bars) ── */
+    .person-filter-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      position: relative;
+    }
+    .person-filter-select {
+      padding: 5px 28px 5px 10px;
+      border-radius: 7px;
+      border: 1.5px solid var(--border, #1e2e3d);
+      background: var(--card-bg, #0d1b2a);
+      color: var(--text, #cdd9e5);
+      font-family: inherit;
+      font-size: 0.82rem;
+      cursor: pointer;
+      outline: none;
+      transition: border-color 0.15s, color 0.15s;
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%237a97b0'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 8px center;
+      min-width: 155px;
+    }
+    .person-filter-select:focus { border-color: var(--blue, #3a8fd4); }
+    .person-filter-select.pf-active {
+      border-color: var(--blue, #3a8fd4);
+      color: var(--blue, #3a8fd4);
+      font-weight: 600;
+    }
+    .person-filter-clear {
+      background: none;
+      border: 1.5px solid var(--border, #1e2e3d);
+      border-radius: 6px;
+      color: var(--muted, #7a97b0);
+      cursor: pointer;
+      font-size: 0.72rem;
+      padding: 4px 7px;
+      line-height: 1;
+      transition: border-color 0.15s, color 0.15s;
+      display: none;
+    }
+    .pf-active ~ .person-filter-clear,
+    .person-filter-chip.pf-chip-active .person-filter-clear { display: inline-flex; align-items: center; }
+    .person-filter-clear:hover { border-color: var(--red, #f85149); color: var(--red, #f85149); }
+    .filter-bar-divider {
+      width: 1px;
+      height: 22px;
+      background: var(--border, #1e2e3d);
+      margin: 0 0.1rem;
+      flex-shrink: 0;
+    }
+
+    /* ── 🔎 Who's Responsible? sidebar search ── */
+    .who-resp-wrap {
+      position: relative;
+      margin: 0 0.75rem 0.9rem;
+    }
+    .who-resp-input {
+      width: 100%;
+      background: var(--surface2, #141c2b);
+      border: 1px solid var(--border2, #263548);
+      border-radius: var(--radius-md, 10px);
+      color: var(--text, #dce8f5);
+      font-family: inherit;
+      font-size: 0.78rem;
+      padding: 0.5rem 0.7rem;
+      outline: none;
+      transition: border-color 0.18s, box-shadow 0.18s;
+    }
+    .who-resp-input::placeholder { color: var(--muted, #7a9ab8); }
+    .who-resp-input:focus {
+      border-color: var(--blue, #3d94e0);
+      box-shadow: 0 0 0 3px var(--blue-glow, rgba(61,148,224,0.22));
+    }
+    .who-resp-suggestions {
+      position: fixed;
+      display: none;
+      background: var(--surface2, #141c2b);
+      border: 1px solid var(--border2, #263548);
+      border-radius: var(--radius-md, 10px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+      max-height: 300px;
+      overflow-y: auto;
+      z-index: 500;
+      padding: 0.3rem 0;
+    }
+    .who-resp-suggestions.open { display: block; }
+    .who-resp-item {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      padding: 0.4rem 0.75rem;
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+    .who-resp-item:hover,
+    .who-resp-item.who-resp-active { background: var(--accent-glow, rgba(61,148,224,0.14)); }
+    .who-resp-item-code {
+      font-size: 0.76rem;
+      font-weight: 700;
+      color: var(--text, #dce8f5);
+      font-family: 'IBM Plex Mono', monospace;
+    }
+    .who-resp-item-desc {
+      font-size: 0.68rem;
+      color: var(--muted, #7a9ab8);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .who-resp-item mark {
+      background: none;
+      color: var(--blue, #3d94e0);
+      font-weight: 800;
+    }
+    #shelf-suggestions .who-resp-item.shelf-item-selected {
+      background: rgba(48,168,95,0.08);
+    }
+    #shelf-suggestions .who-resp-item.shelf-item-selected .who-resp-item-code::after {
+      content: " ✓ added — click to remove";
+      font-family: 'Inter', sans-serif;
+      font-size: 0.62rem;
+      font-weight: 600;
+      color: var(--green, #30a85f);
+      margin-left: 0.4rem;
+    }
+    .who-resp-empty {
+      padding: 0.55rem 0.75rem;
+      font-size: 0.7rem;
+      color: var(--dim, #4a6275);
+    }
+
+    /* ── Result modal ── */
+    .who-resp-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.55);
+      backdrop-filter: blur(2px);
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+      animation: who-resp-fade-in 0.15s ease-out;
+    }
+    @keyframes who-resp-fade-in { from { opacity: 0; } to { opacity: 1; } }
+    .who-resp-modal {
+      position: relative;
+      width: 100%;
+      max-width: 440px;
+      background: var(--surface, #0e1420);
+      border: 1px solid var(--border2, #263548);
+      border-radius: var(--radius-lg, 14px);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      padding: 1.4rem 1.4rem 1.3rem;
+    }
+    .who-resp-modal-close {
+      position: absolute;
+      top: 0.7rem; right: 0.7rem;
+      background: var(--surface2, #141c2b);
+      border: 1px solid var(--border2, #263548);
+      color: var(--muted, #7a9ab8);
+      border-radius: 999px;
+      width: 26px; height: 26px;
+      cursor: pointer;
+      font-size: 0.75rem;
+      line-height: 1;
+    }
+    .who-resp-modal-close:hover { color: var(--text, #dce8f5); border-color: var(--blue, #3d94e0); }
+    .who-resp-modal-header { margin-bottom: 1rem; padding-right: 1.6rem; }
+    .who-resp-modal-code {
+      font-family: 'IBM Plex Mono', monospace;
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: var(--blue, #3d94e0);
+      margin-bottom: 0.2rem;
+    }
+    .who-resp-modal-desc { font-size: 0.82rem; color: var(--text, #dce8f5); }
+    .who-resp-modal-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.7rem;
+      margin-bottom: 1.1rem;
+    }
+    .who-resp-stat {
+      background: var(--surface2, #141c2b);
+      border: 1px solid var(--border, #1f2e44);
+      border-radius: var(--radius-md, 10px);
+      padding: 0.6rem 0.7rem;
+    }
+    .who-resp-stat-label {
+      font-size: 0.58rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: var(--dim, #4a6275);
+      margin-bottom: 0.35rem;
+    }
+    .who-resp-stat-value {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text, #dce8f5);
+    }
+    .who-resp-view-all { width: 100%; text-align: center; }
+
+    /* ── 🕐 Shelf Life Look-up — modal is wider than who-resp's (batch table) ── */
+    .shelf-modal {
+      position: relative;
+      width: 100%;
+      max-width: 920px;
+      max-height: 88vh;
+      overflow-y: auto;
+      background: var(--surface, #0e1420);
+      border: 1px solid var(--border2, #263548);
+      border-radius: var(--radius-lg, 14px);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      padding: 1.4rem 1.4rem 1.3rem;
+    }
+    .shelf-kpi-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 0.7rem;
+      margin-bottom: 1.1rem;
+    }
+    .shelf-note {
+      font-size: 0.7rem;
+      color: var(--dim, #4a6275);
+      margin-bottom: 0.9rem;
+      background: var(--surface2, #141c2b);
+      border: 1px solid var(--border, #1f2e44);
+      border-radius: var(--radius-md, 10px);
+      padding: 0.55rem 0.7rem;
+      line-height: 1.5;
+    }
+    .shelf-batch-wrap table { font-size: 0.74rem; }
+    .shelf-badge {
+      display: inline-block;
+      padding: 0.16rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.66rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .shelf-badge-green { background: rgba(48,168,95,0.14); color: var(--green, #30a85f); }
+    .shelf-badge-amber { background: rgba(196,127,23,0.14); color: var(--amber, #c47f17); }
+    .shelf-badge-red   { background: rgba(217,64,64,0.14);  color: var(--red, #d94040); }
+    .shelf-badge-grey  { background: rgba(122,151,176,0.14); color: var(--muted, #7a97b0); }
+    .who-resp-modal-desc-multi { white-space: normal; line-height: 1.5; opacity: 0.9; }
+
+    /* ── Multi-material selection: chips + "Show" button under the search box ── */
+    .shelf-chip-row {
+      display: none;
+      flex-direction: column;
+      gap: 0.35rem;
+      margin-top: 0.55rem;
+    }
+    .shelf-chip-row.open { display: flex; }
+    .shelf-chip {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      width: 100%;
+      background: var(--surface2, #141c2b);
+      border: 1px solid var(--border2, #263548);
+      border-radius: var(--radius-md, 10px);
+      padding: 0.3rem 0.3rem 0.3rem 0.6rem;
+      color: var(--text, #dce8f5);
+    }
+    .shelf-chip-text {
+      flex: 1;
+      min-width: 0;
+    }
+    .shelf-chip-code {
+      display: block;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.68rem;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .shelf-chip-desc {
+      display: block;
+      font-size: 0.63rem;
+      color: var(--dim, #4a6275);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 0.05rem;
+    }
+    .shelf-chip-x {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      border: none;
+      background: transparent;
+      color: var(--dim, #4a6275);
+      font-size: 0.62rem;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0;
+    }
+    .shelf-chip-x:hover { background: rgba(217,64,64,0.18); color: var(--red, #d94040); }
+    .shelf-chip-clear {
+      display: inline-flex;
+      align-items: center;
+      background: none;
+      border: none;
+      color: var(--dim, #4a6275);
+      font-size: 0.68rem;
+      font-weight: 600;
+      text-decoration: underline;
+      cursor: pointer;
+      padding: 0.22rem 0.2rem;
+    }
+    .shelf-chip-clear:hover { color: var(--red, #d94040); }
+    .shelf-show-btn {
+      display: none;
+      width: 100%;
+      margin-top: 0.55rem;
+      padding: 0.5rem 0.7rem;
+      background: var(--blue, #3d94e0);
+      border: 1px solid var(--blue, #3d94e0);
+      border-radius: var(--radius-md, 10px);
+      color: #fff;
+      font-size: 0.72rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .shelf-show-btn.open { display: block; }
+    .shelf-show-btn:hover { opacity: 0.88; }
+    .shelf-show-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .shelf-paste-note {
+      display: none;
+      margin-top: 0.5rem;
+      font-size: 0.66rem;
+      line-height: 1.5;
+      padding: 0.45rem 0.6rem;
+      border-radius: var(--radius-md, 10px);
+      background: var(--surface2, #141c2b);
+      border: 1px solid var(--border, #1f2e44);
+      color: var(--dim, #4a6275);
+    }
+    .shelf-paste-note.open { display: block; }
+    .shelf-paste-note.warn { color: var(--amber, #c47f17); border-color: rgba(196,127,23,0.3); }
+
+    /* ── 🆕 New Incoming Stock — days-back / explicit date-range controls ── */
+    .incoming-new-wrap { display: flex; flex-direction: column; gap: 0.5rem; }
+    .incoming-new-row {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .incoming-new-row-label {
+      font-size: 0.7rem;
+      color: var(--text, #dce8f5);
+      white-space: nowrap;
+    }
+    .incoming-new-days-input {
+      width: 56px;
+      background: var(--surface2, #141c2b);
+      border: 1px solid var(--border2, #263548);
+      border-radius: var(--radius-md, 10px);
+      color: var(--text, #dce8f5);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.76rem;
+      padding: 0.35rem 0.4rem;
+      text-align: center;
+    }
+    .incoming-new-date-input {
+      flex: 1;
+      min-width: 0;
+      background: var(--surface2, #141c2b);
+      border: 1px solid var(--border2, #263548);
+      border-radius: var(--radius-md, 10px);
+      color: var(--text, #dce8f5);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.72rem;
+      padding: 0.35rem 0.4rem;
+      color-scheme: dark;
+    }
+    .incoming-new-or {
+      font-size: 0.64rem;
+      color: var(--muted, #7a9ab8);
+      text-align: center;
+      letter-spacing: 0.02em;
+    }
+    .incoming-new-badge-new {
+      display: inline-block;
+      padding: 0.1rem 0.4rem;
+      border-radius: 999px;
+      font-size: 0.6rem;
+      font-weight: 700;
+      background: rgba(48,168,95,0.14);
+      color: var(--green, #30a85f);
+      margin-left: 0.35rem;
+    }
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" />
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.26.0/plotly.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<!-- Mobile overlay -->
+<div id="sidebar-overlay"></div>
+
+<!-- Mobile menu button -->
+<button id="mobile-menu-btn" aria-label="Open navigation menu" title="Open menu">☰</button>
+
+<!-- ═══════════════════════════ SIDEBAR ═══════════════════════════ -->
+<aside id="sidebar">
+  <div class="brand">
+    <span class="brand-icon"><img src="epss-logo.png" alt="EPSS Logo" /></span>
+    <div>
+      <div class="brand-name">Stock-Multiple</div>
+      <div class="brand-sub">Inventory Management</div>
+    </div>
+  </div>
+
+  <div class="sidebar-divider"></div>
+  <div class="upload-label">👤 Person Assigned</div>
+  <div class="sidebar-person-filter">
+    <span class="person-filter-chip" id="pf-chip-global">
+      <select id="global-person-filter" class="person-filter-select" title="Filter by person assigned">
+        <option value="">👤 All Persons</option>
+      </select>
+      <button type="button" class="person-filter-clear" id="pf-clear-global" title="Clear person filter">✕</button>
+    </span>
+  </div>
+
+  <nav id="nav">
+    <div class="nav-group" data-group="dashboard">
+      <div class="nav-group-title"><span class="nav-group-icon">📊</span> Dashboard</div>
+      <button class="nav-btn active" data-page="dashboard">
+        <span class="nav-icon">📊</span> Dashboard
+      </button>
+    </div>
+
+    <div class="nav-group" data-group="inventory-ops">
+      <div class="nav-group-title"><span class="nav-group-icon">📦</span> Inventory Ops</div>
+      <button class="nav-btn" data-page="transit">
+        <span class="nav-icon">🚚</span> Stock in Transit
+      </button>
+      <button class="nav-btn" data-page="branch">
+        <span class="nav-icon">🏢</span> Branch Comparison
+      </button>
+    </div>
+
+    <div class="nav-group" data-group="quality-risk">
+      <div class="nav-group-title"><span class="nav-group-icon">⚠️</span> Quality &amp; Risk</div>
+      <button class="nav-btn" data-page="expiry">
+        <span class="nav-icon">⏰</span> Expiry Watchlist
+      </button>
+      <button class="nav-btn" data-page="qc">
+        <span class="nav-icon">🔬</span> Quality Inspection
+      </button>
+      <button class="nav-btn" data-page="expiry-risk">
+        <span class="nav-icon">🧯</span> Overstock &amp; Expiry Risk
+      </button>
+    </div>
+
+    <div class="nav-group" data-group="analytics">
+      <div class="nav-group-title"><span class="nav-group-icon">📈</span> Analytics</div>
+      <button class="nav-btn" data-page="natl-table">
+        <span class="nav-icon">🗂️</span> National Stock &amp; MOS
+      </button>
+      <button class="nav-btn" data-page="concentration">
+        <span class="nav-icon">🎯</span> Stock Concentration
+      </button>
+    </div>
+  </nav>
+
+  <div class="sidebar-divider"></div>
+  <div class="nav-group quick-lookup-group" id="quick-lookup-group" data-group="quick-lookup">
+    <div class="nav-group-title"><span class="nav-group-icon">🔍</span> Quick Lookup</div>
+  </div>
+
+  <!-- Upload controls — always visible -->
+  <div id="admin-upload-section">
+    <div class="sidebar-divider"></div>
+    <div class="upload-label">Data Source</div>
+    <label class="upload-btn" for="fileInput">
+      <span id="uploadBtnText">📂 Upload Inventory Excel</span>
+      <input type="file" id="fileInput" accept=".xlsx,.xls" />
+    </label>
+    <div id="fileStatus"></div>
+
+    <div class="sidebar-divider"></div>
+    <div class="upload-label">⚗️ Material Standardization</div>
+    <label class="upload-btn mapping-upload-btn" for="mappingFileInput">
+      <span id="mappingUploadBtnText">🗺️ Upload Mapping Excel</span>
+      <input type="file" id="mappingFileInput" accept=".xlsx,.xls" />
+    </label>
+    <div id="mappingFileStatus"></div>
+
+    <div class="sidebar-divider"></div>
+    <div class="upload-label">📐 AMC (for MOS)</div>
+    <label class="upload-btn" style="background:var(--card-bg);border:1.5px solid var(--blue)" for="mosAmcFileInput">
+      <span id="mosAmcUploadBtnText">📐 Upload AMC.xlsx</span>
+      <input type="file" id="mosAmcFileInput" accept=".xlsx,.xls" />
+    </label>
+    <div id="mosAmcFileStatus"></div>
+
+    <div class="sidebar-divider"></div>
+    <div class="upload-label">🚚 Goods Receipt Log</div>
+    <label class="upload-btn incoming-upload-btn" for="incomingFileInput">
+      <span id="incomingUploadBtnText">🚚 Upload Incoming GR.xlsx</span>
+      <input type="file" id="incomingFileInput" accept=".xlsx,.xls" />
+    </label>
+    <div id="incomingFileStatus"></div>
+  </div>
+
+</aside>
+
+<!-- Theme Toggle -->
+<button id="theme-toggle" title="Toggle dark / light mode">
+  <span class="theme-toggle-icon" id="theme-icon">🌙</span>
+  <span class="theme-toggle-label" id="theme-label">Dark</span>
+  <div class="theme-toggle-track">
+    <div class="theme-toggle-thumb"></div>
+  </div>
+</button>
+
+<!-- ═══════════════════════════ MAIN ═══════════════════════════ -->
+<main id="main">
+
+  <!-- LANDING -->
+  <div id="landingView">
+    <div class="landing-logo"><img src="epss-logo.png" alt="EPSS Logo" /></div>
+    <h1 class="landing-title">Stock-MultipleTrack</h1>
+  </div>
+
+  <div id="errorBanner" class="alert-danger" style="display:none"></div>
+
+  <!-- ── GROUP OVERVIEW: INVENTORY OPS ── -->
+  <section id="page-group-inventory-ops" class="page group-overview" style="display:none">
+    <div class="group-overview-header">
+      <div class="group-overview-icon">📦</div>
+      <div>
+        <div class="page-title">Inventory Ops</div>
+        <div class="page-subtitle">Track where physical stock actually is — goods still moving, and how each branch's holdings compare to the rest.</div>
+      </div>
+    </div>
+    <div class="overview-card-grid">
+      <div class="overview-card" data-goto="transit">
+        <div class="overview-card-icon">🚚</div>
+        <div class="overview-card-title">Stock in Transit</div>
+        <div class="overview-card-desc">Goods that have left the hub but haven't yet arrived at destination branches, with aging and status.</div>
+      </div>
+      <div class="overview-card" data-goto="branch">
+        <div class="overview-card-icon">🏢</div>
+        <div class="overview-card-title">Branch Comparison</div>
+        <div class="overview-card-desc">Compare stock levels, coverage, and MOS side-by-side across every branch plant.</div>
+      </div>
+    </div>
+  
+    <div class="group-overview-brand">
+      <div class="landing-logo"><img src="epss-logo.png" alt="EPSS Logo" /></div>
+      <div class="landing-title group-overview-brand-title">Stock-MultipleTrack</div>
+    </div>
+  </section>
+
+  <!-- ── GROUP OVERVIEW: QUALITY & RISK ── -->
+  <section id="page-group-quality-risk" class="page group-overview" style="display:none">
+    <div class="group-overview-header">
+      <div class="group-overview-icon">⚠️</div>
+      <div>
+        <div class="page-title">Quality &amp; Risk</div>
+        <div class="page-subtitle">Flag stock that needs attention before it turns into a loss — expiring batches, items awaiting QC, and overstock exposed to expiry.</div>
+      </div>
+    </div>
+    <div class="overview-card-grid">
+      <div class="overview-card" data-goto="expiry">
+        <div class="overview-card-icon">⏰</div>
+        <div class="overview-card-title">Expiry Watchlist</div>
+        <div class="overview-card-desc">Materials approaching their expiry date, sorted by urgency so nothing lapses unnoticed.</div>
+      </div>
+      <div class="overview-card" data-goto="qc">
+        <div class="overview-card-icon">🔬</div>
+        <div class="overview-card-title">Quality Inspection</div>
+        <div class="overview-card-desc">Batches pending or currently in quality control review before they can be released to stock.</div>
+      </div>
+      <div class="overview-card" data-goto="expiry-risk">
+        <div class="overview-card-icon">🧯</div>
+        <div class="overview-card-title">Overstock &amp; Expiry Risk</div>
+        <div class="overview-card-desc">Cross-references overstocked materials against their expiry timeline to spot value at risk.</div>
+      </div>
+    </div>
+  
+    <div class="group-overview-brand">
+      <div class="landing-logo"><img src="epss-logo.png" alt="EPSS Logo" /></div>
+      <div class="landing-title group-overview-brand-title">Stock-MultipleTrack</div>
+    </div>
+  </section>
+
+  <!-- ── GROUP OVERVIEW: ANALYTICS ── -->
+  <section id="page-group-analytics" class="page group-overview" style="display:none">
+    <div class="group-overview-header">
+      <div class="group-overview-icon">📈</div>
+      <div>
+        <div class="page-title">Analytics</div>
+        <div class="page-subtitle">Deeper cuts of the data — national-level stock &amp; months of supply, and where inventory value concentrates.</div>
+      </div>
+    </div>
+    <div class="overview-card-grid">
+      <div class="overview-card" data-goto="natl-table">
+        <div class="overview-card-icon">🗂️</div>
+        <div class="overview-card-title">National Stock &amp; MOS</div>
+        <div class="overview-card-desc">Aggregated stock-on-hand and Months of Supply at the national level, per material.</div>
+      </div>
+      <div class="overview-card" data-goto="concentration">
+        <div class="overview-card-icon">🎯</div>
+        <div class="overview-card-title">Stock Concentration</div>
+        <div class="overview-card-desc">See which plants, material groups, or valuation types hold the largest share of inventory value.</div>
+      </div>
+    </div>
+  
+    <div class="group-overview-brand">
+      <div class="landing-logo"><img src="epss-logo.png" alt="EPSS Logo" /></div>
+      <div class="landing-title group-overview-brand-title">Stock-MultipleTrack</div>
+    </div>
+  </section>
+
+  <!-- ── GROUP OVERVIEW: QUICK LOOKUP (live tools, moved from sidebar) ── -->
+  <section id="page-group-quick-lookup" class="page group-overview" style="display:none">
+    <div class="group-overview-header">
+      <div class="group-overview-icon">🔍</div>
+      <div>
+        <div class="page-title">Quick Lookup</div>
+        <div class="page-subtitle">Fast, one-off searches you can run without digging through a full report — find who owns a material, check its shelf life, or see what's arrived recently.</div>
+      </div>
+    </div>
+
+    <div class="quick-lookup-main-grid">
+      <div class="quick-lookup-main-card">
+        <div class="quick-lookup-main-title">🔎 Who's Responsible?</div>
+        <div class="quick-lookup-main-desc">Used for: finding who owns a material, plus its hub stock, branch coverage, and National MOS at a glance.</div>
+        <div class="who-resp-wrap" id="who-resp-wrap">
+          <input
+            type="text"
+            id="who-resp-input"
+            class="who-resp-input"
+            placeholder="Material code or name…"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <div class="who-resp-suggestions" id="who-resp-suggestions"></div>
+        </div>
+      </div>
+
+      <div class="quick-lookup-main-card">
+        <div class="quick-lookup-main-title">🕐 Shelf Life Look-up</div>
+        <div class="quick-lookup-main-desc">Used for: checking remaining shelf life on one or more materials at once — pick multiple or paste a list.</div>
+        <div class="who-resp-wrap" id="shelf-wrap">
+          <input
+            type="text"
+            id="shelf-input"
+            class="who-resp-input"
+            placeholder="Material code or name… (pick multiple, or paste a list)"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <div class="who-resp-suggestions" id="shelf-suggestions"></div>
+          <div class="shelf-chip-row" id="shelf-chip-row"></div>
+          <div class="shelf-paste-note" id="shelf-paste-note"></div>
+          <button type="button" class="shelf-show-btn" id="shelf-show-btn" disabled>🔍 Show Shelf Life</button>
+        </div>
+      </div>
+
+      <div class="quick-lookup-main-card">
+        <div class="quick-lookup-main-title">🆕 New Incoming Stock</div>
+        <div class="quick-lookup-main-desc">Used for: seeing what's been received recently — filter by a rolling number of days or an exact date range.</div>
+        <div class="incoming-new-wrap" id="incoming-new-wrap">
+          <div class="incoming-new-row">
+            <span class="incoming-new-row-label">Received in the last</span>
+            <input type="number" id="incoming-new-days" class="incoming-new-days-input" min="1" max="365" value="5" />
+            <span class="incoming-new-row-label">day(s)</span>
+          </div>
+          <div class="incoming-new-or">— or pick an exact date range —</div>
+          <div class="incoming-new-row">
+            <input type="date" id="incoming-new-from" class="incoming-new-date-input" />
+            <span class="incoming-new-row-label">to</span>
+            <input type="date" id="incoming-new-to" class="incoming-new-date-input" />
+          </div>
+          <div class="shelf-note" id="incoming-new-note" style="display:none"></div>
+          <button type="button" class="shelf-show-btn open" id="incoming-new-show-btn">🆕 Show New Incoming</button>
+        </div>
+      </div>
+    </div>
+  
+    <div class="group-overview-brand">
+      <div class="landing-logo"><img src="epss-logo.png" alt="EPSS Logo" /></div>
+      <div class="landing-title group-overview-brand-title">Stock-MultipleTrack</div>
+    </div>
+  </section>
+
+  <!-- ── DASHBOARD ── -->
+  <section id="page-dashboard" class="page" style="display:none">
+    <div class="page-header-row">
+      <div>
+        <div class="page-title">📊 Dashboard Overview</div>
+        <div class="page-subtitle">Aggregated inventory metrics across all plants and material groups</div>
+      </div>
+    </div>
+    <div class="filter-bar">
+      <div class="ms-wrap" id="ms-dash-plant"><button class="ms-btn" type="button">All Plants <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-dash-plant-dd"></div></div>
+      <div class="ms-wrap" id="ms-dash-mg"><button class="ms-btn" type="button">All Material Groups <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-dash-mg-dd"></div></div>
+      <div class="ms-wrap" id="ms-dash-vt"><button class="ms-btn" type="button">All Material Types <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-dash-vt-dd"></div></div>
+      <button type="button" class="apply-btn small" id="dash-filter-apply">Apply</button>
+      <button type="button" class="apply-btn secondary small" id="dash-filter-clear">Clear</button>
+    </div>
+    <div class="kpi-row" id="dash-kpis"></div>
+    <div id="dash-phantom-alert"></div>
+    <div id="dash-mapping-banner"></div>
+    <div class="chart-box full">
+      <div class="section-header">Inventory Value &amp; Quantity by Plant</div>
+      <div id="chart-plant-val"></div>
+    </div>
+    <div class="chart-box full">
+      <div class="section-header" style="display:flex;align-items:center;gap:0.5rem;padding-bottom:0.25rem">
+        <span style="font-size:1.1em">⚠️</span>
+        <span>Near-Expiry Risk by Plant</span>
+        <span style="font-size:0.7rem;font-weight:400;color:var(--muted);margin-left:0.25rem">— Items expiring within 6 months · Value &amp; Quantity at risk</span>
+      </div>
+      <div style="display:flex;gap:1.2rem;margin-bottom:0.6rem;font-size:0.72rem;color:var(--muted);flex-wrap:wrap">
+        <span><span style="display:inline-block;width:10px;height:10px;background:var(--risk-critical);border-radius:2px;margin-right:4px"></span>Highest risk</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:var(--risk-high);border-radius:2px;margin-right:4px"></span>High risk</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:var(--risk-moderate);border-radius:2px;margin-right:4px"></span>Moderate risk</span>
+        <span style="margin-left:auto;color:var(--risk-critical);font-weight:600">Red labels = units at risk</span>
+      </div>
+      <div id="chart-mg-bar"></div>
+    </div>
+    <div class="chart-box full">
+      <div class="section-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.4rem">
+        <span>Material Groups with Expiry Risk</span>
+        <span style="font-size:0.62rem;font-weight:400;color:var(--muted)">next 6 months</span>
+      </div>
+      <div id="mg-expiry-risk-legend" style="display:flex;gap:0.7rem;flex-wrap:wrap;margin-bottom:0.65rem;font-size:0.68rem;color:var(--muted)">
+        <span><span class="mg-risk-dot" style="background:var(--risk-critical)"></span>Critical (&lt;3 mo)</span>
+        <span><span class="mg-risk-dot" style="background:var(--risk-high)"></span>High (3–6 mo)</span>
+      </div>
+      <div id="chart-mg-expiry-risk"></div>
+    </div>
+  </section>
+
+  <!-- ── TRANSIT ── -->
+  <section id="page-transit" class="page" style="display:none">
+    <div class="page-header-row">
+      <div>
+        <div class="page-title">🚚 Stock in Transit</div>
+        <div class="page-subtitle">Tracking pharmaceutical goods moving through the supply chain</div>
+      </div>
+    </div>
+    <div class="filter-bar">
+      <div class="ms-wrap" id="ms-transit-plant"><button class="ms-btn" type="button">All Plants <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-transit-plant-dd"></div></div>
+      <div class="ms-wrap" id="ms-transit-mg"><button class="ms-btn" type="button">All Material Groups <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-transit-mg-dd"></div></div>
+      <div class="ms-wrap" id="ms-transit-vt"><button class="ms-btn" type="button">All Material Types <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-transit-vt-dd"></div></div>
+      <div class="ms-wrap" id="ms-transit-mat"><button class="ms-btn" type="button">All Materials <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-transit-mat-dd"></div></div>
+      <button type="button" class="apply-btn small" id="transit-filter-apply">Apply</button>
+      <button type="button" class="apply-btn secondary small" id="transit-filter-clear">Clear</button>
+    </div>
+
+    <div id="transit-phantom-alert"></div>
+    <div class="kpi-row" id="transit-kpis"></div>
+    <div id="transit-mapping-banner"></div>
+    <div class="chart-box full">
+      <div class="section-header">Transit Quantity &amp; Value by Plant</div>
+      <div id="chart-transit-plant"></div>
+    </div>
+
+    <!-- Tab Bar -->
+    <div class="transit-tab-bar" style="display:flex;gap:0.5rem;margin-top:1.5rem;margin-bottom:0;border-bottom:2px solid var(--border2);overflow-x:auto;-webkit-overflow-scrolling:touch">
+      <button class="transit-tab-btn active" data-tab="verified"    style="padding:0.5rem 1.1rem;border:none;border-bottom:2px solid var(--blue);background:transparent;color:var(--blue);font-weight:700;font-size:0.82rem;cursor:pointer;margin-bottom:-2px;font-family:inherit;white-space:nowrap;flex-shrink:0">✅ Verified Transit</button>
+      <button class="transit-tab-btn"        data-tab="unverified"  style="padding:0.5rem 1.1rem;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);font-weight:500;font-size:0.82rem;cursor:pointer;margin-bottom:-2px;font-family:inherit;white-space:nowrap;flex-shrink:0">⚠️ Unverified</button>
+
+    </div>
+
+    <div id="transit-tab-verified" class="transit-tab-panel" style="display:block;padding-top:1rem">
+      <div id="transit-dl-row" style="display:flex;gap:0.6rem;justify-content:flex-end;margin-bottom:0.5rem"></div>
+      <div id="transit-table-wrap"></div>
+    </div>
+    <div id="transit-tab-unverified" class="transit-tab-panel" style="display:none;padding-top:1rem">
+      <div id="transit-phantom-section" style="display:none;margin-top:0"></div>
+    </div>
+
+  </section>
+
+  <!-- ── EXPIRY ── -->
+  <section id="page-expiry" class="page" style="display:none">
+    <div class="page-header-row">
+      <div>
+        <div class="page-title">⏰ Expiry Watchlist</div>
+        <div class="page-subtitle">Monitor shelf life expiration dates to prevent stock wastage</div>
+      </div>
+    </div>
+    <div class="filter-bar">
+      <div class="radio-group" id="expiry-window-group" style="margin:0">
+        <label><input type="radio" name="expWin" value="3" /> Next 3 Months</label>
+        <label><input type="radio" name="expWin" value="6" checked /> Next 6 Months</label>
+        <label><input type="radio" name="expWin" value="12" /> Next 12 Months</label>
+      </div>
+      <div class="ms-wrap" id="ms-expiry-plant"><button class="ms-btn" type="button">All Plants <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-expiry-plant-dd"></div></div>
+      <div class="ms-wrap" id="ms-expiry-mg"><button class="ms-btn" type="button">All Material Groups <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-expiry-mg-dd"></div></div>
+      <div class="ms-wrap" id="ms-expiry-vt"><button class="ms-btn" type="button">All Material Types <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-expiry-vt-dd"></div></div>
+      <div class="ms-wrap" id="ms-expiry-mat"><button class="ms-btn" type="button">All Materials <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-expiry-mat-dd"></div></div>
+      <button type="button" class="apply-btn small" id="expiry-filter-apply">Apply</button>
+      <button type="button" class="apply-btn secondary small" id="expiry-filter-clear">Clear</button>
+    </div>
+    <div class="kpi-row" id="expiry-kpis"></div>
+    <div id="expiry-mapping-banner"></div>
+    <div class="chart-box full">
+      <div class="section-header" style="display:flex;align-items:center;gap:0.5rem">
+        <span>Expiry Timeline — Items &amp; Value at Risk by Month</span>
+        <span style="font-size:0.7rem;font-weight:400;color:var(--muted);margin-left:0.25rem">— Click a bar to drill into that month's items</span>
+      </div>
+      <div id="chart-expiry-timeline"></div>
+      <div id="expiry-drilldown" style="display:none;margin-top:1rem;border-top:1px solid var(--border2);padding-top:1rem">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;flex-wrap:wrap;gap:0.5rem">
+          <div>
+            <span id="expiry-drill-title" style="font-weight:700;color:var(--text);font-size:0.95rem"></span>
+            <span id="expiry-drill-meta" style="font-size:0.78rem;color:var(--muted);margin-left:0.75rem"></span>
+          </div>
+          <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
+            <button id="expiry-drill-dl-csv" class="dl-btn" style="font-size:0.72rem;padding:4px 10px">⬇ CSV</button>
+            <button id="expiry-drill-dl-xlsx" class="dl-btn" style="font-size:0.72rem;padding:4px 10px">⬇ Excel</button>
+            <button id="expiry-drill-close" class="apply-btn secondary" style="font-size:0.72rem;padding:4px 12px">✕ Close</button>
+          </div>
+        </div>
+        <div id="expiry-drill-table"></div>
+      </div>
+    </div>
+    <div id="expiry-table-wrap"></div>
+    <div id="expired-section" style="margin-top:1.5rem">
+      <div class="section-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem">
+        <span id="expired-header"></span>
+        <div style="display:flex;gap:0.6rem">
+          <button class="dl-btn" id="btn-dl-expired-csv">⬇ CSV</button>
+          <button class="dl-btn" id="btn-dl-expired-xlsx">⬇ Excel</button>
+        </div>
+      </div>
+      <div id="expired-table-wrap"></div>
+    </div>
+  </section>
+
+  <!-- ── QC ── -->
+  <section id="page-qc" class="page" style="display:none">
+    <div class="page-header-row">
+      <div>
+        <div class="page-title">🔬 Quality Inspection</div>
+        <div class="page-subtitle">Inventory currently held in quality control and pending release</div>
+      </div>
+    </div>
+    <div class="filter-bar">
+      <div class="ms-wrap" id="ms-qc-plant"><button class="ms-btn" type="button">All Plants <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-qc-plant-dd"></div></div>
+      <div class="ms-wrap" id="ms-qc-mg"><button class="ms-btn" type="button">All Material Groups <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-qc-mg-dd"></div></div>
+      <div class="ms-wrap" id="ms-qc-vt"><button class="ms-btn" type="button">All Material Types <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-qc-vt-dd"></div></div>
+      <div class="ms-wrap" id="ms-qc-mat"><button class="ms-btn" type="button">All Materials <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-qc-mat-dd"></div></div>
+      <button type="button" class="apply-btn small" id="qc-filter-apply">Apply</button>
+      <button type="button" class="apply-btn secondary small" id="qc-filter-clear">Clear</button>
+    </div>
+    <div class="kpi-row" id="qc-kpis"></div>
+    <div id="qc-mapping-banner"></div>
+    <div class="chart-box full">
+      <div class="section-header">QC Quantity &amp; Value by Plant</div>
+      <div id="chart-qc-plant"></div>
+    </div>
+    <!-- QC Tab Bar -->
+    <div class="qc-tab-bar" style="display:flex;gap:0.5rem;margin-top:1.5rem;margin-bottom:0;border-bottom:2px solid var(--border2);overflow-x:auto;-webkit-overflow-scrolling:touch">
+      <button class="qc-tab-btn" data-tab="items" style="padding:0.5rem 1.1rem;border:none;border-bottom:2px solid var(--blue);background:transparent;color:var(--blue);font-weight:700;font-size:0.82rem;cursor:pointer;margin-bottom:-2px;font-family:inherit;white-space:nowrap;flex-shrink:0">📋 Detailed QC Items</button>
+      <button class="qc-tab-btn" data-tab="days"  style="padding:0.5rem 1.1rem;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);font-weight:500;font-size:0.82rem;cursor:pointer;margin-bottom:-2px;font-family:inherit;white-space:nowrap;flex-shrink:0">⏱ Days in Quality</button>
+    </div>
+    <div id="qc-tab-items" class="qc-tab-panel" style="display:block;padding-top:1rem">
+      <div id="qc-dl-row" style="display:flex;gap:0.6rem;justify-content:flex-end;margin-bottom:0.5rem"></div>
+      <div id="qc-table-wrap"></div>
+    </div>
+    <div id="qc-tab-days" class="qc-tab-panel" style="display:none;padding-top:1rem">
+      <div id="qc-days-dl-row" style="display:flex;gap:0.6rem;justify-content:flex-end;margin-bottom:0.5rem"></div>
+      <div id="qc-days-wrap"></div>
+    </div>
+  </section>
+
+  <!-- ── BRANCH ── -->
+  <section id="page-branch" class="page" style="display:none">
+    <div class="page-header-row">
+      <div>
+        <div class="page-title">🏢 Branch Comparison</div>
+        <div class="page-subtitle">Compare inventory across branches — total value or individual material</div>
+      </div>
+    </div>
+    <div id="branch-central-info" class="alert-info" style="margin-bottom:1rem;display:none"></div>
+    <div id="branch-mapping-banner"></div>
+    <div class="filter-row" id="branch-select-row" style="display:none">
+      <div class="ms-wrap" id="ms-branch-select" style="min-width:260px">
+        <button class="ms-btn" type="button">All Branches <span class="ms-arrow">▾</span></button>
+        <div class="ms-dropdown" id="ms-branch-select-dd"></div>
+      </div>
+      <button type="button" class="apply-btn small" id="branch-select-apply">Compare</button>
+      <button type="button" class="apply-btn secondary small" id="branch-select-clear">Clear</button>
+    </div>
+    <div id="branch-tabs-wrap" style="margin-top:1.2rem"></div>
+  </section>
+
+
+  <!-- ── STOCK CONCENTRATION ── -->
+  <section id="page-concentration" class="page" style="display:none">
+    <div class="page-header-row">
+      <div>
+        <div class="page-title">🎯 Stock Concentration</div>
+        <div class="page-subtitle">Distribution of inventory value and quantity across plants — identify branch monopolies and supply chain vulnerabilities</div>
+      </div>
+    </div>
+    <div class="filter-bar">
+      <div class="ms-wrap" id="ms-conc-mg"><button class="ms-btn" type="button">All Material Groups <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-conc-mg-dd"></div></div>
+      <div class="ms-wrap" id="ms-conc-vt"><button class="ms-btn" type="button">All Material Types <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-conc-vt-dd"></div></div>
+      <button type="button" class="apply-btn small" id="conc-filter-apply">Apply</button>
+      <button type="button" class="apply-btn secondary small" id="conc-filter-clear">Clear</button>
+    </div>
+    <div class="kpi-row" id="conc-kpis"></div>
+    <div class="conc-quad-grid">
+      <div class="chart-box conc-quad-cell">
+        <div class="section-header">📊 Overall Value Distribution by Plant</div>
+        <div class="conc-chart-sub">Percentage share of total inventory value held per plant</div>
+        <div id="chart-conc-pie" style="min-height:300px;flex:1"></div>
+      </div>
+      <div class="chart-box conc-quad-cell">
+        <div class="section-header">🔍 Concentration Analysis</div>
+        <div class="conc-chart-sub">How stock is spread across branches by material</div>
+        <div id="conc-analysis-cards" style="margin-top:0.9rem"></div>
+      </div>
+      <div class="chart-box conc-quad-cell conc-quad-scroll">
+        <div class="section-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.4rem">
+          <span>⚠️ Highly Concentrated Items — Sole Branch (&gt;80% in one plant)</span>
+          <span style="font-size:0.62rem;color:var(--muted)">Qty + Value basis</span>
+        </div>
+        <div class="conc-legend" style="margin-bottom:0.85rem">
+          <span class="conc-dot" style="background:var(--risk-critical)"></span><span>Critical &gt;95%</span>
+          <span class="conc-dot" style="background:var(--risk-high)"></span><span>High 80–95%</span>
+        </div>
+        <div id="conc-dl-row" style="display:flex;gap:0.6rem;justify-content:flex-end;margin-bottom:0.5rem"></div>
+        <div id="conc-table-wrap"></div>
+      </div>
+      <div class="chart-box conc-quad-cell">
+        <div class="section-header">🌐 Branch Spread Distribution — Number of Plants per Material</div>
+        <div class="conc-chart-sub" style="margin-bottom:0.9rem">How many distinct plants hold each material (unrestricted stock only)</div>
+        <div id="chart-conc-spread" style="min-height:260px;flex:1"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── OVERSTOCK & EXPIRY RISK ── -->
+  <section id="page-expiry-risk" class="page" style="display:none">
+    <div class="page-header-row">
+      <div>
+        <div class="page-title">🧯 Overstock &amp; Expiry Risk Analysis</div>
+        <div class="page-subtitle">Stock that will outlive its shelf life before it can be consumed — with a redistribution plan, and what's left for private sale afterward</div>
+      </div>
+      <div id="exprisk-dl-row" style="display:flex;gap:0.6rem"></div>
+    </div>
+    <div id="exprisk-no-data" class="alert-info" style="margin-bottom:1rem">Upload the <b>main inventory Excel</b> and <b>AMC.xlsx</b> (📐 AMC upload in the sidebar) to enable this analysis.</div>
+    <div id="exprisk-content" style="display:none">
+      <div class="filter-bar" style="gap:0.6rem;flex-wrap:wrap;align-items:center">
+        <input
+          type="text"
+          id="exprisk-search"
+          placeholder="Material code or name…"
+          autocomplete="off"
+          spellcheck="false"
+          style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:0.82rem;min-width:220px"
+        />
+        <select id="exprisk-plant" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:0.82rem">
+          <option value="">All Plants</option>
+        </select>
+        <select id="exprisk-type" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:0.82rem">
+          <option value="">All Types</option>
+          <option value="ZME">ZME (Medicines)</option>
+          <option value="ZMS">ZMS (Medical Supplies)</option>
+        </select>
+        <button class="apply-btn small" id="exprisk-apply">Apply</button>
+        <button class="apply-btn secondary small" id="exprisk-clear">Clear</button>
+      </div>
+      <div class="kpi-row" id="exprisk-kpis-before" style="margin:1rem 0"></div>
+
+      <div class="section-header">📉 Expiry Risk Before Redistribution</div>
+      <div class="chart-box full"><div id="chart-exprisk-before" style="min-height:320px"></div></div>
+
+      <!-- Tab bar — same pattern as Transit / QC -->
+      <div class="exprisk-tab-bar">
+        <button class="exprisk-tab-btn active" data-tab="before">📋 At-Risk Detail <span class="exprisk-tab-sub">Before Redistribution</span></button>
+        <button class="exprisk-tab-btn" data-tab="redist">🔄 Suggested Redistribution Plan</button>
+        <button class="exprisk-tab-btn" data-tab="after">🏷️ Residual Risk After Redistribution <span class="exprisk-tab-sub">For Marketing / Private Sale</span></button>
+      </div>
+
+      <!-- Tab: At-Risk Detail (Before) -->
+      <div class="exprisk-tab-panel" id="exprisk-tab-before" style="display:block;padding-top:1rem">
+        <div id="exprisk-table-before"></div>
+      </div>
+
+      <!-- Tab: Suggested Redistribution Plan -->
+      <div class="exprisk-tab-panel" id="exprisk-tab-redist" style="display:none;padding-top:1rem">
+        <div class="alert-warning" style="margin-bottom:0.8rem;font-size:0.78rem">⚠️ Stock is moved from at-risk plants (including HO01) to plants that can use it before their own shelf-life runs out. <b>HO01 never receives stock</b> in this plan — it's the source, never the destination.</div>
+        <div id="exprisk-redist-table"></div>
+      </div>
+
+      <!-- Tab: Residual Risk After Redistribution -->
+      <div class="exprisk-tab-panel" id="exprisk-tab-after" style="display:none;padding-top:1rem">
+        <div class="alert-danger" style="margin-bottom:0.8rem;font-size:0.78rem">Stock that has nowhere to go in the network before it expires — no plant could absorb it without becoming at-risk. Candidate for private sale, discount channels, or donation.</div>
+        <div class="kpi-row" id="exprisk-kpis-after" style="margin:1rem 0"></div>
+        <div id="exprisk-table-after"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── NATIONAL STOCK & MOS ── -->
+  <section id="page-natl-table" class="page" style="display:none">
+    <div class="page-header-row">
+      <div>
+        <div class="page-title">🗂️ National Stock &amp; MOS</div>
+        <div class="page-subtitle">One row per material, network-wide: stock-on-hand, Months of Stock, and an expiry-adjusted view based on each material's quantity-weighted average shelf life across all batches.</div>
+      </div>
+      <div id="natl-dl-row" style="display:flex;gap:0.6rem"></div>
+    </div>
+    <div id="natl-no-amc" class="alert-info" style="margin-bottom:1rem">Upload <b>AMC.xlsx</b> using the <b>📐 Upload AMC.xlsx</b> button in the sidebar to enable this table.</div>
+    <div id="natl-content" style="display:none">
+      <div class="filter-bar" style="gap:0.6rem;flex-wrap:wrap;align-items:center">
+        <input
+          type="text"
+          id="natl-search"
+          placeholder="Material code or name…"
+          autocomplete="off"
+          spellcheck="false"
+          style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:0.82rem;min-width:220px"
+        />
+        <select id="natl-type" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:0.82rem">
+          <option value="">All Types</option>
+          <option value="ZME">ZME (Medicines)</option>
+          <option value="ZMS">ZMS (Medical Supplies)</option>
+        </select>
+        <button class="apply-btn small" id="natl-apply">Apply</button>
+        <button class="apply-btn secondary small" id="natl-clear">Clear</button>
+      </div>
+      <div class="kpi-row" id="natl-kpis" style="margin:1rem 0"></div>
+      <div class="section-header">📋 National Stock &amp; MOS Table</div>
+      <div id="natl-table"></div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+// ── THEME TOGGLE ─────────────────────────────────────────────
+(function() {
+  const ROOT  = document.documentElement;
+  const btn   = document.getElementById('theme-toggle');
+  const icon  = document.getElementById('theme-icon');
+  const label = document.getElementById('theme-label');
+
+  function safeGet(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
+  function safeSet(k,v){ try { localStorage.setItem(k,v); } catch(e){} }
+
+  const saved = safeGet('epss-theme');
+  if (saved === 'light') {
+    ROOT.setAttribute('data-theme', 'light');
+    icon.textContent  = '☀️';
+    label.textContent = 'Light';
+  }
+
+  btn.addEventListener('click', () => {
+    const isLight = ROOT.getAttribute('data-theme') === 'light';
+    if (isLight) {
+      ROOT.removeAttribute('data-theme');
+      icon.textContent  = '🌙';
+      label.textContent = 'Dark';
+      safeSet('epss-theme', 'dark');
+    } else {
+      ROOT.setAttribute('data-theme', 'light');
+      icon.textContent  = '☀️';
+      label.textContent = 'Light';
+      safeSet('epss-theme', 'light');
+    }
+  });
+})();
+
+// ── MOBILE SIDEBAR TOGGLE ─────────────────────────────────────
+(function() {
+  const sidebar  = document.getElementById('sidebar');
+  const overlay  = document.getElementById('sidebar-overlay');
+  const menuBtn  = document.getElementById('mobile-menu-btn');
+
+  function openSidebar() {
+    sidebar.classList.add('open');
+    overlay.classList.add('open');
+    menuBtn.setAttribute('aria-expanded', 'true');
+    menuBtn.textContent = '✕';
+  }
+  function closeSidebar() {
+    sidebar.classList.remove('open');
+    overlay.classList.remove('open');
+    menuBtn.setAttribute('aria-expanded', 'false');
+    menuBtn.textContent = '☰';
+  }
+
+  menuBtn.addEventListener('click', () => {
+    sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+  });
+  overlay.addEventListener('click', closeSidebar);
+
+  // Close sidebar on nav button click (mobile UX)
+  document.querySelectorAll('.nav-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (window.innerWidth <= 640) closeSidebar();
+    });
+  });
+})();
+
+// ── GROUP OVERVIEW PAGES ────────────────────────────────────────
+// Clicking a nav-group title shows a description of that section in the
+// main content area (in addition to expanding its items in the sidebar).
+function showGroupOverview(groupKey) {
+  if (groupKey === 'dashboard') {
+    // Single-item group — just go straight to the Dashboard page.
+    const btn = document.querySelector('.nav-btn[data-page="dashboard"]');
+    if (btn) btn.click();
+    return;
+  }
+  const target = document.getElementById(`page-group-${groupKey}`);
+  if (!target) return;
+  const landing = document.getElementById('landingView');
+  if (landing) landing.style.display = 'none';
+  document.querySelectorAll('.page').forEach(el => { el.style.display = 'none'; });
+  target.style.display = target.classList.contains('group-overview') ? 'flex' : 'block';
+  document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+  if (groupKey !== 'quick-lookup') {
+    document.querySelectorAll('.nav-group-title').forEach(t => t.classList.remove('nav-group-title-active'));
+  }
+}
+
+// Overview cards navigate to their underlying page by triggering the
+// matching sidebar nav button, so highlighting / expansion stay in sync.
+document.querySelectorAll('.overview-card[data-goto]').forEach(card => {
+  card.setAttribute('role', 'button');
+  card.setAttribute('tabindex', '0');
+  function go() {
+    const btn = document.querySelector(`.nav-btn[data-page="${card.dataset.goto}"]`);
+    if (btn) btn.click();
+  }
+  card.addEventListener('click', go);
+  card.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); }
+  });
+});
+
+// ── COLLAPSIBLE NAV GROUPS ─────────────────────────────────────
+(function() {
+  const groups = Array.from(document.querySelectorAll('#nav .nav-group'));
+
+  function collapseAll() {
+    groups.forEach(g => g.classList.remove('expanded'));
+  }
+
+  // Expand whichever group contains the currently active page
+  const activeGroup = groups.find(g => g.querySelector('.nav-btn.active'));
+  if (activeGroup) activeGroup.classList.add('expanded');
+
+  groups.forEach(group => {
+    const title = group.querySelector('.nav-group-title');
+    if (!title) return;
+    title.setAttribute('role', 'button');
+    title.setAttribute('tabindex', '0');
+
+    function toggle() {
+      const isOpen = group.classList.contains('expanded');
+      collapseAll();
+      if (!isOpen) {
+        group.classList.add('expanded');
+        showGroupOverview(group.dataset.group);
+      }
+    }
+
+    title.addEventListener('click', toggle);
+    title.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    });
+  });
+
+  // Keep the right group expanded whenever a nav-btn is clicked
+  document.querySelectorAll('.nav-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const group = btn.closest('.nav-group');
+      if (group) { collapseAll(); group.classList.add('expanded'); }
+      document.querySelectorAll('.nav-group-title').forEach(t => t.classList.remove('nav-group-title-active'));
+    });
+  });
+})();
+
+// ── QUICK LOOKUP GROUP → shows its tools on the main screen ────
+(function() {
+  const group = document.getElementById('quick-lookup-group');
+  if (!group) return;
+  const title = group.querySelector('.nav-group-title');
+  if (!title) return;
+  title.setAttribute('role', 'button');
+  title.setAttribute('tabindex', '0');
+
+  function open() {
+    // Collapse any expanded page-nav group and clear its active highlight
+    document.querySelectorAll('#nav .nav-group').forEach(g => g.classList.remove('expanded'));
+    document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.nav-group-title').forEach(t => t.classList.remove('nav-group-title-active'));
+    title.classList.add('nav-group-title-active');
+    showGroupOverview('quick-lookup');
+  }
+
+  title.addEventListener('click', open);
+  title.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+  });
+})();
+
+</script>
+<!-- filters + script deferred: run after DOM is ready -->
+<script src="auth.js" defer></script>
+<script src="storage-sync.js" defer></script>
+<script src="filters.js" defer></script>
+<script src="script.js" defer></script>
+<script src="mos.js" defer></script>
+<script src="national-table.js" defer></script>
+<script src="expiry-risk.js" defer></script>
+<script src="who-responsible.js" defer></script>
+<script src="shelf-life.js" defer></script>
+<script>
+// ── TAB SWITCHING (Transit + QC + Overstock & Expiry Risk) ──
+document.addEventListener("DOMContentLoaded", function() {
+  // Generic tab switcher — handles both .transit-tab-btn and .qc-tab-btn
+  document.addEventListener("click", function(e) {
+    const transitBtn = e.target.closest(".transit-tab-btn");
+    if (transitBtn) {
+      const tab = transitBtn.dataset.tab;
+      document.querySelectorAll(".transit-tab-btn").forEach(b => {
+        const active = b.dataset.tab === tab;
+        b.style.color       = active ? "var(--blue)" : "var(--muted)";
+        b.style.fontWeight  = active ? "700" : "500";
+        b.style.borderBottom= active ? "2px solid var(--blue)" : "2px solid transparent";
+      });
+      document.querySelectorAll(".transit-tab-panel").forEach(p => {
+        p.style.display = p.id === "transit-tab-" + tab ? "block" : "none";
+      });
+      return;
+    }
+
+    const qcBtn = e.target.closest(".qc-tab-btn");
+    if (qcBtn) {
+      const tab = qcBtn.dataset.tab;
+      document.querySelectorAll(".qc-tab-btn").forEach(b => {
+        const active = b.dataset.tab === tab;
+        b.style.color       = active ? "var(--blue)" : "var(--muted)";
+        b.style.fontWeight  = active ? "700" : "500";
+        b.style.borderBottom= active ? "2px solid var(--blue)" : "2px solid transparent";
+      });
+      document.querySelectorAll(".qc-tab-panel").forEach(p => {
+        p.style.display = p.id === "qc-tab-" + tab ? "block" : "none";
+      });
+      return;
+    }
+
+    const expriskBtn = e.target.closest(".exprisk-tab-btn");
+    if (expriskBtn) {
+      const tab = expriskBtn.dataset.tab;
+      document.querySelectorAll(".exprisk-tab-btn").forEach(b => {
+        const active = b.dataset.tab === tab;
+        b.classList.toggle("active", active);
+      });
+      document.querySelectorAll(".exprisk-tab-panel").forEach(p => {
+        p.style.display = p.id === "exprisk-tab-" + tab ? "block" : "none";
+      });
+    }
+  });
+});
+</script>
+</body>
+</html>
