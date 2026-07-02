@@ -1,9 +1,10 @@
 // ════════════════════════════════════════════════════════════════
 // storage-sync.js — syncs uploaded Excel files through Supabase
-// Slots map to your three existing file inputs:
-//   inventory -> #fileInput        -> bucket path inventory/latest.xlsx
-//   mapping   -> #mappingFileInput -> bucket path mapping/latest.xlsx
-//   amc       -> #mosAmcFileInput  -> bucket path amc/latest.xlsx
+// Slots map to your existing file inputs:
+//   inventory -> #fileInput         -> bucket path inventory/latest.xlsx
+//   mapping   -> #mappingFileInput  -> bucket path mapping/latest.xlsx
+//   amc       -> #mosAmcFileInput   -> bucket path amc/latest.xlsx
+//   incoming  -> #incomingFileInput -> bucket path incoming/latest.xlsx
 //
 // Runs AFTER auth.js, BEFORE/alongside script.js. Does not touch your
 // existing parsing code — it reuses it by reading the file into the
@@ -12,9 +13,10 @@
 // ════════════════════════════════════════════════════════════════
 
 const FILE_SLOTS = {
-  inventory: { inputId: "fileInput",        path: "inventory/latest.xlsx" },
-  mapping:   { inputId: "mappingFileInput", path: "mapping/latest.xlsx" },
-  amc:       { inputId: "mosAmcFileInput",  path: "amc/latest.xlsx" },
+  inventory: { inputId: "fileInput",         path: "inventory/latest.xlsx" },
+  mapping:   { inputId: "mappingFileInput",  path: "mapping/latest.xlsx" },
+  amc:       { inputId: "mosAmcFileInput",   path: "amc/latest.xlsx" },
+  incoming:  { inputId: "incomingFileInput", path: "incoming/latest.xlsx" },
 };
 
 const BUCKET = "inventory-files";
