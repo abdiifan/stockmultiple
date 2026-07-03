@@ -2125,7 +2125,10 @@ function renderQC() {
 
 /**
  * Builds the "Days in Quality — HO01" side panel.
- * Shows HO01 QC items. Days in QC calculation requires received goods data (not available).
+ * Shows HO01 QC items. Days in QC is calculated from the Incoming GR.xlsx
+ * data uploaded via shelf-life.js (window.getIncomingGrPostingDate), when
+ * available. Deliberately HO01-only — the GR log isn't a reliable receipt
+ * source for other plants, so this panel doesn't attempt it for them.
  */
 function _renderQCDaysPanel(qcRows) {
   const wrap = document.getElementById("qc-days-wrap");
@@ -2152,8 +2155,15 @@ function _renderQCDaysPanel(qcRows) {
     return;
   }
 
-  // ── Step 1: posting-date lookup (received goods upload removed) ─────────
-  const postingMap = new Map(); // always empty — received goods feature removed
+  // ── Step 1: posting-date lookup, sourced from shelf-life.js's Incoming GR
+  // data. shelf-life.js keeps its GR map private (keyed on trimmed,
+  // original-case Material + Batch) and exposes window.getIncomingGrPostingDate()
+  // for exactly this kind of lookup — see shelf-life.js for details.
+  const grAvailable = typeof window.isIncomingGrLoaded === "function" && window.isIncomingGrLoaded();
+  const lookupPostingDate = (mat, batch) =>
+    (grAvailable && typeof window.getIncomingGrPostingDate === "function" && batch)
+      ? (window.getIncomingGrPostingDate(mat, batch) || null)
+      : null;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -2163,31 +2173,23 @@ function _renderQCDaysPanel(qcRows) {
   // Use raw HO01 rows directly — each row has its own Batch field so the
   // posting-date lookup is accurate per batch, not per aggregated material.
   const daysRows = ho01QCRaw.map(r => {
-    const mat   = String(r["Material"] || r._mappedMaterial || "").trim().toUpperCase();
-    const batch = String(r["Batch"]    || "").trim().toUpperCase();
-
-    let postingDate = null;
+    const mat   = String(r["Material"] || r._mappedMaterial || "").trim();
+    const batch = String(r["Batch"]    || "").trim();
 
     // Direct match on material + batch
-    if (batch) {
-      const key = `${mat}||${batch}`;
-      postingDate = postingMap.get(key) || null;
-    }
+    let postingDate = lookupPostingDate(mat, batch);
 
     // If no direct batch hit, try every source batch in _sourceBatches (mapped rows)
     if (!postingDate && Array.isArray(r._sourceBatches)) {
       for (const sb of r._sourceBatches) {
-        const sbKey = `${mat}||${String(sb || "").trim().toUpperCase()}`;
-        const d = postingMap.get(sbKey);
+        const d = lookupPostingDate(mat, String(sb || "").trim());
         if (d) { postingDate = d; break; }
       }
     }
 
     // Also try original material code if the row was standardized
     if (!postingDate && r._origMaterial) {
-      const origMat = String(r._origMaterial).trim().toUpperCase();
-      const key2 = `${origMat}||${batch}`;
-      postingDate = postingMap.get(key2) || null;
+      postingDate = lookupPostingDate(String(r._origMaterial).trim(), batch);
     }
 
     let daysInQC = null;
@@ -2220,10 +2222,16 @@ function _renderQCDaysPanel(qcRows) {
     return;
   }
 
-  const hasAnyMatch = daysRows.some(r => r._daysInQC !== null);
-  if (!hasAnyMatch) {
+  // Only bail out to a blanket message when there's no GR data loaded at
+  // all — that's the one case where showing a table full of "—" wouldn't
+  // tell the user anything they could act on. If GR data IS loaded but a
+  // particular HO01 batch just has no matching receipt (e.g. it predates
+  // the uploaded GR log, or a data-entry mismatch), still render the table
+  // below with "—" for that row — that's more informative than hiding it.
+  if (!grAvailable) {
     wrap.innerHTML = `<div class="alert-info" style="font-size:0.78rem">
-      ℹ️ Days in Quality Inspection calculation requires a Received Goods data source (feature not available in this version).
+      ℹ️ Days in Quality Inspection needs the <strong>Incoming GR.xlsx</strong> file to calculate receipt dates.
+      Upload it via <strong>🚚 Upload Incoming GR.xlsx</strong> in the sidebar to enable this panel.
     </div>`;
     const dlRow = document.getElementById("qc-days-dl-row");
     if (dlRow) dlRow.innerHTML = "";
