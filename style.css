@@ -35,6 +35,16 @@
   --accent-glow: rgba(61,148,224,0.14);
   --kpi-hover-shadow: 0 12px 36px rgba(0,0,0,0.6);
 
+  /* Opaque equivalents of --blue-glow / --accent-glow, used only behind
+     sticky/frozen cells. Those glows are translucent (rgba), which is fine
+     for a normal cell sitting on one background — but on a position:sticky
+     cell, a translucent background lets the columns scrolling underneath
+     show through and visually "overlap" with the frozen cell's own text.
+     These pre-blended, fully-opaque colors give the same visual tint with
+     nothing showing through. */
+  --blue-glow-solid:   #18304a;
+  --accent-glow-solid: #15263b;
+
   --sidebar-w: 248px;
   --sidebar-stripe: linear-gradient(180deg, #3d94e0 0%, #9471d6 100%);
 
@@ -75,6 +85,10 @@
 
   --accent-glow: rgba(10,110,209,0.09);
   --kpi-hover-shadow: 0 8px 28px rgba(0,0,0,0.11);
+
+  /* Opaque light-theme equivalents — see dark-theme comment above. */
+  --blue-glow-solid:   #e7f1fa;
+  --accent-glow-solid: #e9f2fb;
 }
 
 /* ══════════════════════════════════════════════
@@ -969,9 +983,20 @@ tbody td.col-central    { background: var(--blue-glow); }
 
 /* ══════════════════════════════════════════════
    BRANCH COMPARISON — freeze panes (Material Across Branches table)
-   Toggled via the 📌 pin in the top-left header cell. Freezes the header
-   row + first 4 columns (Material Code, Material Description, Material
-   Group, Head Office). Off by default.
+   Two independent toggles, each with its own icon in the top-left header
+   cell:
+     ⇔ .freeze-cols   — pins the first 3 columns (Material Code, Material
+                         Description, Material Group) while scrolling
+                         HORIZONTALLY.
+     ⇕ .freeze-header — pins the header row while scrolling VERTICALLY.
+   Either can be on independently, or both together. Off by default.
+
+   IMPORTANT — no translucent backgrounds on sticky cells: a sticky cell
+   with an rgba() background lets the columns/rows scrolling underneath
+   show through, which reads as the numbers "overlapping" during scroll.
+   Every background used below is a fully-opaque color (see --blue-glow-solid
+   / --accent-glow-solid), even where the equivalent non-frozen cell uses a
+   translucent glow.
    ══════════════════════════════════════════════ */
 .freeze-toggle-btn {
   display: inline-block;
@@ -984,32 +1009,40 @@ tbody td.col-central    { background: var(--blue-glow); }
   transition: opacity 0.15s ease, transform 0.15s ease;
 }
 .freeze-toggle-btn:hover { opacity: 0.9; }
-.freeze-toggle-btn.active { opacity: 1; color: var(--blue); transform: rotate(-35deg); }
+.freeze-toggle-btn.active { opacity: 1; color: var(--blue); }
+.freeze-toggle-btn.freeze-cols-btn.active   { transform: rotate(-35deg); }
+.freeze-toggle-btn.freeze-header-btn.active { transform: scaleY(-1); }
 
-table.frozen-panes thead th {
+/* ── Row freeze (header row pinned while scrolling vertically) ── */
+table.freeze-header thead th {
   position: sticky;
   top: 0;
   z-index: 5;
+  background: var(--surface2); /* opaque — thead's normal bg, restated so scrolled rows never bleed through */
 }
-table.frozen-panes thead th[data-freeze-col] {
-  z-index: 7; /* top-left intersection sits above both the sticky header and sticky columns */
+table.freeze-header thead th.col-central-th {
+  background: var(--blue-glow-solid);
 }
-table.frozen-panes tbody td[data-freeze-col] {
+
+/* ── Column freeze (first 3 columns pinned while scrolling horizontally) ── */
+table.freeze-cols tbody td[data-freeze-col] {
   position: sticky;
   z-index: 3;
   background: var(--surface);
 }
-table.frozen-panes tbody td[data-freeze-col].col-central {
-  background: var(--blue-glow);
+table.freeze-cols tbody tr:hover td[data-freeze-col] {
+  background: var(--accent-glow-solid);
 }
-table.frozen-panes thead th[data-freeze-col].col-central-th {
-  background: var(--blue-glow);
+table.freeze-cols thead th[data-freeze-col] {
+  position: sticky;
+  z-index: 6; /* above a plain sticky header row when both freezes are on */
 }
-table.frozen-panes tbody tr:hover td[data-freeze-col] {
-  background: var(--accent-glow);
-}
-table.frozen-panes tbody tr:hover td[data-freeze-col].col-central {
-  background: var(--blue-glow);
+
+/* ── Both freezes on: the top-left intersection cells need the header's
+   z-index bumped above everything else so they stay above both the sticky
+   header row and the sticky columns scrolling past underneath them. ── */
+table.freeze-header.freeze-cols thead th[data-freeze-col] {
+  z-index: 7;
 }
 
 .col-qty { color: var(--green) !important; font-family: 'IBM Plex Mono', monospace; }
