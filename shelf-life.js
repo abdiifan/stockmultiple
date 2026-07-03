@@ -150,7 +150,7 @@
         if (statusEl) statusEl.innerHTML =
           `<div class="status-ok">✓ LOADED</div><div class="status-name">${escHtml(file.name)}</div>` +
           `<div class="status-name" style="color:var(--green)">${map.size} batch receipt${map.size === 1 ? "" : "s"} indexed (${parsedRows} rows${excludedRows ? `, ${excludedRows} excluded` : ""})</div>`;
-        if (btnEl) btnEl.textContent = "✓ " + file.name;
+        if (btnEl) btnEl.textContent = "🚚 Change Incoming GR File";
 
       } catch (err) {
         console.error("Incoming GR load error:", err);
