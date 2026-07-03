@@ -57,6 +57,38 @@
   let grMap = new Map();
   let grLoaded = false;
 
+  // FEAT-QC-DAYS-QTY-MATCH: a second, stricter index used ONLY by the "Days in
+  // Quality" panel (script.js's _renderQCDaysPanel). That panel needs a GR
+  // receipt to match on Material + Batch + Quantity all at once (a batch can
+  // be split across multiple GR line items / multiple QC holds with different
+  // quantities, and only the line with the matching quantity is the right
+  // receipt for that specific QC stock). Unlike grMap above (which keeps the
+  // EARLIEST posting date per material+batch, for shelf-life-at-receipt math),
+  // this index keeps the MOST RECENT posting date among rows that share the
+  // same material + batch + quantity, per the "if all match, take the recent
+  // posting date" requirement.
+  // Key: `${material}|${batch}|${quantity rounded to 3dp}` → { postingDate: Date (most recent), hits }
+  let grQtyMap = new Map();
+
+  // Candidate header names for the GR quantity column. The uploaded Incoming
+  // GR.xlsx isn't guaranteed to use one exact label across exports, so we
+  // check a short list of common SAP goods-receipt-report headers and use
+  // whichever is present. If none of these match your file's actual column
+  // name, tell me the exact header and I'll add it here.
+  const GR_QTY_COLUMNS = ["Quantity", "Qty", "GR Quantity", "Posting Quantity", "Quantity in Unit of Entry", "Qty in Unit of Entry"];
+  function extractGrQty(r) {
+    for (const col of GR_QTY_COLUMNS) {
+      if (col in r) {
+        const n = Number(r[col]);
+        if (!isNaN(n)) return n;
+      }
+    }
+    return null;
+  }
+  // Rounded to 3dp so float noise in the source file (e.g. 500.000000001)
+  // doesn't silently break an otherwise-exact quantity match.
+  const qtyKeyPart = (qty) => Number(qty).toFixed(3);
+
   const GR_REQUIRED_COLUMNS = ["Material", "Batch", "Posting Date"];
 
   // ── Public accessor for other modules ────────────────────────────────────
@@ -72,8 +104,21 @@
     return entry ? entry.postingDate : null;
   }
 
+  // FEAT-QC-DAYS-QTY-MATCH: strict Material + Batch + Quantity match, most
+  // recent posting date wins on ties. Returns null if quantity is missing/
+  // not a number, or if no GR row shares all three values.
+  function getGrPostingDateByQty(material, batch, quantity) {
+    if (!grLoaded || !material || !batch) return null;
+    const qty = Number(quantity);
+    if (!Number.isFinite(qty)) return null;
+    const key = `${String(material).trim()}|${String(batch).trim()}|${qtyKeyPart(qty)}`;
+    const entry = grQtyMap.get(key);
+    return entry ? entry.postingDate : null;
+  }
+
   window.isIncomingGrLoaded = () => grLoaded;
   window.getIncomingGrPostingDate = getGrPostingDate;
+  window.getIncomingGrPostingDateByQty = getGrPostingDateByQty;
 
   // ── INCOMING GR FILE LOADER ──────────────────────────────────────────────────
   function loadIncomingGrFile(file) {
