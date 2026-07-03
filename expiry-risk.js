@@ -330,7 +330,8 @@ async function renderExpiryRisk() {
         tickfont: { size: 9.5 },
         showgrid: false,
       },
-      yaxis:  { title: "At-Risk Value (ETB)", titlefont: { color: "#f85149" }, tickfont: { color: "#f85149" } },
+      // FIX-AXIS-LABELS: avoid "0M" ticks on the ETB axis when the range is under 1,000,000.
+      yaxis:  { title: "At-Risk Value (ETB)", titlefont: { color: "#f85149" }, tickfont: { color: "#f85149" }, tickformat: "~s" },
       yaxis2: { title: "At-Risk Qty", titlefont: { color: "#ffa657" }, tickfont: { color: "#ffa657" },
                 overlaying: "y", side: "right", showgrid: false },
       legend: { orientation: "h", y: 1.12, x: 0 },
