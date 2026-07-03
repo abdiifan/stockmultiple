@@ -2487,6 +2487,15 @@ function renderBranch() {
   // every renderBranch() call (renderMaterialTab is called fresh each time the tab is opened).
   let matTabInitialized = false;
   function renderMaterialTab() {
+    // FEAT-BRANCH-FREEZE: freeze-panes state for the Material Across Branches
+    // table (header row + first 4 columns: Material Code, Material Description,
+    // Material Group, Head Office/central plant). Off by default; toggled via
+    // the 📌 pin in the top-left header cell. Declared here (not inside
+    // refreshMaterialView) so it survives filter/metric changes that re-render
+    // the table without a full renderMaterialTab() re-run, and resets to off
+    // whenever the Branch Comparison page itself is re-rendered.
+    let matFreezeOn = false;
+
     const wrap         = document.getElementById("branch-tab-material");
     // BUG-BRANCH-3 FIX: use baseDf to enumerate plant names — df (aggregated) may
     // collapse multi-plant materials to a single plant, hiding some branch columns.
@@ -2701,6 +2710,53 @@ function renderBranch() {
 
     refreshMaterialView();
 
+    // FEAT-BRANCH-FREEZE: measure the rendered widths of the frozen columns
+    // (Material Code, Material Description, Material Group, Head Office) and
+    // stamp cumulative pixel offsets onto their `left` style so position:sticky
+    // lines them up correctly — widths vary with content/theme/font, so a
+    // fixed CSS value can't be used.
+    function computeFreezeOffsets(table) {
+      const headCells = [...table.querySelectorAll("thead th[data-freeze-col]")]
+        .sort((a, b) => Number(a.dataset.freezeCol) - Number(b.dataset.freezeCol));
+      let offset = 0;
+      const leftByIdx = {};
+      headCells.forEach(th => {
+        th.style.left = offset + "px";
+        leftByIdx[th.dataset.freezeCol] = offset;
+        offset += th.getBoundingClientRect().width;
+      });
+      table.querySelectorAll("tbody td[data-freeze-col]").forEach(td => {
+        td.style.left = leftByIdx[td.dataset.freezeCol] + "px";
+      });
+    }
+
+    function setMatFreeze(on) {
+      matFreezeOn = on;
+      const table = document.querySelector("#mat-table-wrap table");
+      const btn   = document.getElementById("mat-freeze-toggle");
+      if (!table) return;
+      if (on) {
+        table.classList.add("frozen-panes");
+        if (btn) { btn.classList.add("active"); btn.setAttribute("aria-pressed", "true"); }
+        computeFreezeOffsets(table);
+      } else {
+        table.classList.remove("frozen-panes");
+        if (btn) { btn.classList.remove("active"); btn.setAttribute("aria-pressed", "false"); }
+        table.querySelectorAll("[data-freeze-col]").forEach(el => { el.style.left = ""; });
+      }
+    }
+
+    function wireMatFreezeToggle() {
+      const btn = document.getElementById("mat-freeze-toggle");
+      if (!btn) return;
+      btn.addEventListener("click", (e) => { e.stopPropagation(); setMatFreeze(!matFreezeOn); });
+      btn.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); setMatFreeze(!matFreezeOn); }
+      });
+      // Re-render (metric/filter change) happened — carry the freeze state forward.
+      if (matFreezeOn) setMatFreeze(true);
+    }
+
     function refreshMaterialView() {
       const matWrap   = document.getElementById("mat-ms-wrap");
       const selected  = (matWrap && matWrap._getSelected) ? matWrap._getSelected() : [];
@@ -2876,11 +2932,21 @@ function renderBranch() {
       });
 
       const centralKey = `__p__${centralName}`;
-      const thead = `<thead><tr>${colDefs.map(c =>
-        `<th${c.key === centralKey ? ' class="col-central-th"' : ""}>${escHtml(c.label)}</th>`
-      ).join("")}</tr></thead>`;
+      // FEAT-BRANCH-FREEZE: the first 4 colDefs are always Material Code,
+      // Material Description, Material Group, then the central/Head Office
+      // plant column (allPlantNames sorts central first — see above), so
+      // "first 4 columns" and "the central column" are the same thing here.
+      const FREEZE_COL_MAX_IDX = 3;
+      const thead = `<thead><tr>${colDefs.map((c, i) => {
+        const isCentral = c.key === centralKey;
+        const freezeAttr = i <= FREEZE_COL_MAX_IDX ? ` data-freeze-col="${i}"` : "";
+        const pin = i === 0
+          ? `<span class="freeze-toggle-btn" id="mat-freeze-toggle" role="button" tabindex="0" title="Freeze header row & first columns">📌</span>`
+          : "";
+        return `<th${isCentral ? ' class="col-central-th"' : ""}${freezeAttr}>${escHtml(c.label)}${pin}</th>`;
+      }).join("")}</tr></thead>`;
       const tbody = tableRows.map(r => {
-        const cells = colDefs.map(c => {
+        const cells = colDefs.map((c, i) => {
           const v       = r[c.key];
           const raw     = c.raw ? v : null;           // raw HTML — don't escape
           const display = raw != null ? (raw ?? "")
@@ -2894,14 +2960,20 @@ function renderBranch() {
           // render on top of it unmodified.
           const style   = isZero && c.key !== centralKey ? 'style="color:var(--dim)"' : "";
           const cls     = [c.cellClass, c.key === centralKey ? "col-central" : ""].filter(Boolean).join(" ");
-          return `<td class="${cls}" ${style}>${display}</td>`;
+          const freezeAttr = i <= FREEZE_COL_MAX_IDX ? ` data-freeze-col="${i}"` : "";
+          return `<td class="${cls}" ${style}${freezeAttr}>${display}</td>`;
         }).join("");
         return `<tr>${cells}</tr>`;
       }).join("");
       document.getElementById("mat-table-wrap").innerHTML = `
-        <div style="color:var(--muted);font-size:12px;margin-bottom:6px">Showing ${tableRows.length} of ${materials.length} materials · Blue = Central (${escHtml(centralName)})</div>
+        <div style="color:var(--muted);font-size:12px;margin-bottom:6px">Showing ${tableRows.length} of ${materials.length} materials · Blue = Central (${escHtml(centralName)}) · <span style="cursor:default">📌 Click the pin in the top-left header cell to freeze the header row &amp; first columns</span></div>
         <div class="tbl-wrap"><table>${thead}<tbody>${tbody}</tbody></table></div>
         ${materials.length > 200 ? `<div class="alert-info">Showing first 200 of ${materials.length}. Refine search.</div>` : ""}`;
+
+      // FEAT-BRANCH-FREEZE: wire the pin toggle and (re-)apply whatever
+      // freeze state was active before this re-render (metric/filter changes
+      // rebuild this innerHTML, which would otherwise silently drop it).
+      wireMatFreezeToggle();
 
       // EXPORT-MOS-CB: "Include MOS columns in export" is independent of the
       // on-screen MOS display (showMos) — it reads its own checkbox, defaults
