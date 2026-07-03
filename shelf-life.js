@@ -59,6 +59,22 @@
 
   const GR_REQUIRED_COLUMNS = ["Material", "Batch", "Posting Date"];
 
+  // ── Public accessor for other modules ────────────────────────────────────
+  // grMap itself stays private (module-scoped) so nothing outside this file
+  // can mutate it — other modules that need a posting date (e.g. script.js's
+  // "Days in Quality" panel) go through this instead. Keyed the same way
+  // buildBatchRows() above looks it up: trimmed, original-case Material +
+  // Batch — NOT uppercased, since that's how the GR file's own values and
+  // rawDf's Material/Batch values are compared everywhere else in this file.
+  function getGrPostingDate(material, batch) {
+    if (!grLoaded || !material || !batch) return null;
+    const entry = grMap.get(`${String(material).trim()}|${String(batch).trim()}`);
+    return entry ? entry.postingDate : null;
+  }
+
+  window.isIncomingGrLoaded = () => grLoaded;
+  window.getIncomingGrPostingDate = getGrPostingDate;
+
   // ── INCOMING GR FILE LOADER ──────────────────────────────────────────────────
   function loadIncomingGrFile(file) {
     const statusEl = document.getElementById("incomingFileStatus");
