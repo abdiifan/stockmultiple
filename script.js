@@ -896,31 +896,51 @@ function renderDashboard() {
   df.forEach(r => {
     const k = r["Plant Name"] || "(Blank)";
     if (!plantAggMap[k]) {
-      plantAggMap[k] = { PlantName:k, Unrestricted:0, Transit:0, QC:0, UnrestrictedQty:0, TransitQty:0, QCQty:0, TotalValue:0 };
+      plantAggMap[k] = {
+        PlantName:k, Unrestricted:0, Transit:0, QC:0, TotalValue:0,
+        UnrestrictedMats:new Set(), TransitMats:new Set(), QCMats:new Set(), AllMats:new Set(),
+      };
     }
-    const unrestrictedVal = getMappedVal(r,"Value of Unrestricted Stock");
-    const transitVal2     = getVerifiedTransitVal(r);
-    const qcVal2          = getMappedVal(r,"Value of Stock in Quality Inspection");
-    plantAggMap[k].Unrestricted    += unrestrictedVal;
-    plantAggMap[k].Transit         += transitVal2;
-    plantAggMap[k].QC              += qcVal2;
-    plantAggMap[k].UnrestrictedQty += getMappedQty(r,"Unrestricted Stock");
-    plantAggMap[k].TransitQty      += getVerifiedTransitQty(r);
-    plantAggMap[k].QCQty           += getMappedQty(r,"Stock in Quality Inspection");
-    plantAggMap[k].TotalValue      += unrestrictedVal + transitVal2 + qcVal2;
+    const matKey           = r._mappedMaterial || r["Material"];
+    const unrestrictedVal  = getMappedVal(r,"Value of Unrestricted Stock");
+    const transitVal2      = getVerifiedTransitVal(r);
+    const qcVal2           = getMappedVal(r,"Value of Stock in Quality Inspection");
+    const unrestrictedQty2 = getMappedQty(r,"Unrestricted Stock");
+    const transitQty2      = getVerifiedTransitQty(r);
+    const qcQty2           = getMappedQty(r,"Stock in Quality Inspection");
+    plantAggMap[k].Unrestricted += unrestrictedVal;
+    plantAggMap[k].Transit      += transitVal2;
+    plantAggMap[k].QC           += qcVal2;
+    plantAggMap[k].TotalValue   += unrestrictedVal + transitVal2 + qcVal2;
+    // Only count a material toward a status's SKU set if it actually carries
+    // quantity in that status — matches how the bar segments themselves work.
+    if (unrestrictedQty2 > 0) plantAggMap[k].UnrestrictedMats.add(matKey);
+    if (transitQty2      > 0) plantAggMap[k].TransitMats.add(matKey);
+    if (qcQty2            > 0) plantAggMap[k].QCMats.add(matKey);
+    if (unrestrictedQty2 > 0 || transitQty2 > 0 || qcQty2 > 0) plantAggMap[k].AllMats.add(matKey);
   });
   const plantAgg = sortBy(Object.values(plantAggMap), "TotalValue");
   Plotly.newPlot("chart-plant-val", [
     { type:"bar", name:"Unrestricted (ETB)", x:plantAgg.map(r=>r.PlantName), y:plantAgg.map(r=>r.Unrestricted),
-      customdata:plantAgg.map(r=>r.UnrestrictedQty), marker:{color:"#3fb950"},
-      hovertemplate:"<b>%{x}</b><br>ETB %{y:,.0f}<br>Qty: %{customdata:,.0f}<extra></extra>" },
+      customdata:plantAgg.map(r=>r.UnrestrictedMats.size), marker:{color:"#3fb950"}, yaxis:"y",
+      hovertemplate:"<b>%{x}</b><br>ETB %{y:,.0f}<br>Materials: %{customdata:,d}<extra></extra>" },
     { type:"bar", name:"In Transit (ETB)", x:plantAgg.map(r=>r.PlantName), y:plantAgg.map(r=>r.Transit),
-      customdata:plantAgg.map(r=>r.TransitQty), marker:{color:"#d29922"},
-      hovertemplate:"<b>%{x}</b><br>ETB %{y:,.0f}<br>Qty: %{customdata:,.0f}<extra></extra>" },
+      customdata:plantAgg.map(r=>r.TransitMats.size), marker:{color:"#d29922"}, yaxis:"y",
+      hovertemplate:"<b>%{x}</b><br>ETB %{y:,.0f}<br>Materials: %{customdata:,d}<extra></extra>" },
     { type:"bar", name:"In QC (ETB)", x:plantAgg.map(r=>r.PlantName), y:plantAgg.map(r=>r.QC),
-      customdata:plantAgg.map(r=>r.QCQty), marker:{color:"#f85149"},
-      hovertemplate:"<b>%{x}</b><br>ETB %{y:,.0f}<br>Qty: %{customdata:,.0f}<extra></extra>" },
-  ], pl({ height:280, barmode:"stack", margin:{l:20,r:20,t:20,b:80} }), PLOTLY_CONFIG);
+      customdata:plantAgg.map(r=>r.QCMats.size), marker:{color:"#f85149"}, yaxis:"y",
+      hovertemplate:"<b>%{x}</b><br>ETB %{y:,.0f}<br>Materials: %{customdata:,d}<extra></extra>" },
+    { type:"scatter", mode:"lines+markers", name:"Unique Materials", x:plantAgg.map(r=>r.PlantName), y:plantAgg.map(r=>r.AllMats.size),
+      yaxis:"y2", marker:{color:"#7ee0ff",size:7}, line:{color:"#7ee0ff"},
+      hovertemplate:"<b>%{x}</b><br>Materials: %{y:,d}<extra></extra>" },
+  ], pl({
+    height:300,
+    barmode:"stack",
+    margin:{l:60,r:70,t:20,b:100},
+    xaxis:{tickangle:-35, tickfont:{size:10}, automargin:true},
+    yaxis:{title:{text:"Value (ETB)",font:{size:10}}, automargin:true},
+    yaxis2:{overlaying:"y",side:"right",gridcolor:"transparent",tickfont:{color:"#7ee0ff"},tickformat:",d",title:{text:"Unique Materials",font:{size:10,color:"#7ee0ff"}}},
+  }), PLOTLY_CONFIG);
 
   // ── Material Groups with Expiry Risk ──────────────────────────────────
   // For each material group, count how many distinct materials have
