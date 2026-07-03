@@ -1005,10 +1005,18 @@ function renderDashboard() {
   );
   if (nearByPlant.length) {
     Plotly.newPlot("chart-mg-bar", [
-      { type:"bar", name:"Value at Risk (ETB)", x:nearByPlant.map(r=>r["Plant Name"]), y:nearByPlant.map(r=>r.val), yaxis:"y",  marker:{color:"#d29922"}, hovertemplate:"<b>%{x}</b><br>ETB %{y:,.0f}<extra></extra>" },
-      { type:"scatter", mode:"lines+markers", name:"Qty at Risk", x:nearByPlant.map(r=>r["Plant Name"]), y:nearByPlant.map(r=>r.qty), yaxis:"y2", marker:{color:"#f85149",size:8}, line:{color:"#f85149"}, hovertemplate:"<b>%{x}</b><br>Qty: %{y:,.0f}<extra></extra>" },
-    ], pl({ height:420, margin:{l:20,r:60,t:20,b:100}, barmode:"group",
-      yaxis2:{overlaying:"y",side:"right",gridcolor:"transparent",tickfont:{color:"#f85149"},title:{text:"Qty",font:{color:"#f85149"}}}
+      { type:"bar", name:"Value at Risk (ETB)", x:nearByPlant.map(r=>r["Plant Name"]), y:nearByPlant.map(r=>r.val),
+        marker:{color:"#d29922"},
+        text: nearByPlant.map(r=>fmtETB(r.val)), textposition:"outside", textfont:{size:10, color:"#d29922"}, cliponaxis:false,
+        hovertemplate:"<b>%{x}</b><br>ETB %{y:,.0f}<extra></extra>" },
+    ], pl({ height:420, margin:{l:70,r:20,t:20,b:100},
+      // FIX-CHART-0M: previously left the yaxis tickformat unset. Plotly's
+      // default exponent formatting rounds every gridline to 0 decimal places
+      // in whatever SI unit the axis max picks (here "M", because Head Office
+      // dominates the range) — so every branch far smaller than Head Office
+      // rounded down to "0M" on every tick. ",.2s" keeps 2 significant
+      // figures (e.g. "1.2M", "230k") so intermediate ticks are readable.
+      yaxis: { tickformat: ",.2s", tickprefix: "ETB ", title: { text: "Value at Risk (ETB)", font: { size: 10, color: "#7a97b0" } } },
     }), PLOTLY_CONFIG);
   } else {
     document.getElementById("chart-mg-bar").innerHTML = `<div class="alert-info" style="margin:1rem 0">✓ No near-expiry stock (within 6 months) with quantity on hand.</div>`;
