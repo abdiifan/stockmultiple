@@ -846,6 +846,86 @@ function downloadCSV(data, cols, filename) {
   URL.revokeObjectURL(url);
 }
 
+// ── Shared chart drilldown modal ────────────────────────────────────────────
+// Popup shown when a bar on a dashboard/page chart is clicked, listing the
+// underlying line items behind that bar. Reuses the same visual shell as the
+// "Who's Responsible" search result card (who-resp-modal-overlay) and the
+// Shelf Life lookup's wide table modal (shelf-modal), so it looks and behaves
+// consistently with the rest of the app rather than introducing a new style.
+//
+// opts: { title, meta, rows, cols, rowClass, filenameBase }
+function chartDrillEscHandler(e) { if (e.key === "Escape") closeChartDrillModal(); }
+
+function closeChartDrillModal() {
+  const overlay = document.getElementById("chart-drill-modal-overlay");
+  if (overlay) overlay.remove();
+  document.removeEventListener("keydown", chartDrillEscHandler);
+}
+
+function showChartDrillModal(opts) {
+  closeChartDrillModal();
+  const { title, meta, rows, cols, rowClass, filenameBase } = opts;
+
+  const overlay = document.createElement("div");
+  overlay.id = "chart-drill-modal-overlay";
+  overlay.className = "who-resp-modal-overlay";
+  overlay.innerHTML = `
+    <div class="shelf-modal" role="dialog" aria-modal="true" aria-label="${escHtml(title)}">
+      <button class="who-resp-modal-close" id="chart-drill-modal-close" type="button" aria-label="Close">✕</button>
+      <div class="who-resp-modal-header">
+        <div class="who-resp-modal-code">${escHtml(title)}</div>
+        <div class="who-resp-modal-desc">${escHtml(meta || "")}</div>
+      </div>
+      <div class="shelf-batch-wrap" id="chart-drill-modal-table"></div>
+      <div style="display:flex;gap:0.5rem;margin-top:0.9rem">
+        <button class="apply-btn" id="chart-drill-dl-csv" type="button" style="flex:1">⬇ CSV</button>
+        <button class="apply-btn" id="chart-drill-dl-xlsx" type="button" style="flex:1">⬇ Excel</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  document.getElementById("chart-drill-modal-table").innerHTML = rows.length
+    ? buildTable(rows, cols, rowClass)
+    : `<div class="alert-info">No items found.</div>`;
+
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) closeChartDrillModal(); });
+  document.getElementById("chart-drill-modal-close").addEventListener("click", closeChartDrillModal);
+  document.getElementById("chart-drill-dl-csv").addEventListener("click", () =>
+    downloadCSV(rows, cols, `${filenameBase || "drilldown"}.csv`));
+  document.getElementById("chart-drill-dl-xlsx").addEventListener("click", () =>
+    downloadExcel(rows, cols, `${filenameBase || "drilldown"}.xlsx`));
+  document.addEventListener("keydown", chartDrillEscHandler);
+}
+
+// Standard drilldown table columns — reused across all chart-click modals so
+// the item list always looks the same regardless of which chart it came from.
+const CHART_DRILL_COLS = [
+  {key:"Material", label:"Material Code", fmt:(val,r)=>renderMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap"},
+  {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap"},
+  {key:"Material Group Name", label:"Material Group"},
+  {key:"Plant Name",          label:"Plant"},
+  {key:"_expiryStr",          label:"Expiry Date"},
+  {key:"_drillQty",           label:"Qty",         fmt:fmtQty, rawKey:"_drillQty", cellClass:"col-qty"},
+  {key:"_drillVal",           label:"Value (ETB)", fmt:fmtETB, rawKey:"_drillVal", cellClass:"col-val"},
+];
+
+// Builds a row set for the drilldown modal, stamping in the qty/value fields
+// relevant to whichever stock status the click came from (Unrestricted,
+// Transit, or QC), plus a readable expiry date string. qtyKey/valKey may be a
+// field name (looked up via getMappedQty/getMappedVal) or a function(row) for
+// cases like Transit that need the phantom-exclusion-aware calculation.
+function buildDrillRows(items, qtyKey, valKey) {
+  const qtyFn = typeof qtyKey === "function" ? qtyKey : (r => qtyKey ? getMappedQty(r, qtyKey) : 0);
+  const valFn = typeof valKey === "function" ? valKey : (r => valKey ? getMappedVal(r, valKey) : 0);
+  return sortBy(items.map(r => ({
+    ...r,
+    _expiryStr: r._expiry instanceof Date && !isNaN(r._expiry) ? fmtLocalDate(r._expiry) : "—",
+    _drillQty:  qtyFn(r),
+    _drillVal:  valFn(r),
+  })), "_drillVal");
+}
+
 // ── PLOTLY LAYOUT MERGE ────────────────────────────────────────────────────
 function pl(extra={}) {
   const tc = getPlotlyThemeColors();
@@ -1025,6 +1105,32 @@ function renderDashboard() {
       legend: { orientation: "h", y: -0.18, x: 0, font: { size: 10 } },
       showlegend: true,
     }), PLOTLY_CONFIG);
+
+    document.getElementById("chart-mg-expiry-risk").on("plotly_click", function(data) {
+      const pt = data.points[0];
+      // Use the point's index into mgRiskRows rather than the y-axis label
+      // text, since long group names are truncated with "…" for display and
+      // would be ambiguous/unreliable to match back to the original name.
+      const rowInfo = mgRiskRows[pt.pointIndex];
+      if (!rowInfo) return;
+      const band = pt.data.name.startsWith("Critical") ? "critical" : "high";
+      const items = df.filter(r => {
+        if (!(r._expiry instanceof Date) || isNaN(r._expiry)) return false;
+        if ((r["Unrestricted Stock"] || 0) <= 0) return false;
+        if ((r["Material Group Name"] || "(Blank)") !== rowInfo.grp) return false;
+        return band === "critical"
+          ? (r._expiry >= now && r._expiry <= cut3mo)
+          : (r._expiry > cut3mo && r._expiry <= cut6mo);
+      });
+      const rows = buildDrillRows(items, "Unrestricted Stock", "Value of Unrestricted Stock");
+      const bandLabel = band === "critical" ? "Critical (<3 mo)" : "High (3–6 mo)";
+      showChartDrillModal({
+        title: `⚠️ ${rowInfo.grp} — ${bandLabel}`,
+        meta: `${rows.length} materials at risk`,
+        rows, cols: CHART_DRILL_COLS,
+        filenameBase: `expiry_risk_${rowInfo.grp}_${band}`,
+      });
+    });
   } else {
     mgRiskEl.innerHTML = `<div class="alert-info" style="margin:0.5rem 0;font-size:0.75rem">✓ No material groups have near-expiry stock within 6 months.</div>`;
   }
@@ -1053,6 +1159,18 @@ function renderDashboard() {
       yaxis:{title:{text:"Value at Risk (ETB)",font:{size:10,color:"#d29922"}}, tickfont:{color:"#d29922"}, automargin:true},
       yaxis2:{overlaying:"y",side:"right",gridcolor:"transparent",tickfont:{color:"#f85149"},tickformat:",d",title:{text:"Unique Materials",font:{size:10,color:"#f85149"}}},
     }), PLOTLY_CONFIG);
+
+    document.getElementById("chart-mg-bar").on("plotly_click", function(data) {
+      const plantName = data.points[0].x;
+      const items = nearExpiry.filter(r => (r["Plant Name"] || "(Blank)") === plantName);
+      const rows  = buildDrillRows(items, "Unrestricted Stock", "Value of Unrestricted Stock");
+      showChartDrillModal({
+        title: `⏳ Near-Expiry Risk — ${plantName}`,
+        meta: `${rows.length} items · within 6 months`,
+        rows, cols: CHART_DRILL_COLS,
+        filenameBase: `near_expiry_${plantName}`,
+      });
+    });
   } else {
     document.getElementById("chart-mg-bar").innerHTML = `<div class="alert-info" style="margin:1rem 0">✓ No near-expiry stock (within 6 months) with quantity on hand.</div>`;
   }
@@ -1717,6 +1835,18 @@ function renderTransit() {
       yaxis:{title:{text:"Value (ETB)",font:{size:10,color:"#d29922"}}, tickfont:{color:"#d29922"}, automargin:true},
       yaxis2:{overlaying:"y",side:"right",gridcolor:"transparent",tickfont:{color:"#3fb950"},tickformat:",d",title:{text:"Unique Materials",font:{size:10,color:"#3fb950"}}},
     }), PLOTLY_CONFIG);
+
+    document.getElementById("chart-transit-plant").on("plotly_click", function(data) {
+      const plantName = data.points[0].x;
+      const items = df.filter(r => (r["Plant Name"] || "(Blank)") === plantName);
+      const rows  = buildDrillRows(items, "Stock in Transit", "Value of Stock in Transit");
+      showChartDrillModal({
+        title: `🚚 In Transit — ${plantName}`,
+        meta: `${rows.length} items`,
+        rows, cols: CHART_DRILL_COLS,
+        filenameBase: `transit_${plantName}`,
+      });
+    });
   } else {
     document.getElementById("chart-transit-plant").innerHTML = "";
   }
@@ -1956,6 +2086,18 @@ function renderQC() {
     yaxis:{title:{text:"Value (ETB)",font:{size:10,color:"#f85149"}}, tickfont:{color:"#f85149"}, automargin:true},
     yaxis2:{overlaying:"y",side:"right",gridcolor:"transparent",tickfont:{color:"#3fb950"},tickformat:",d",title:{text:"Unique Materials",font:{size:10,color:"#3fb950"}}},
   }), PLOTLY_CONFIG);
+
+  document.getElementById("chart-qc-plant").on("plotly_click", function(data) {
+    const plantName = data.points[0].x;
+    const items = rawFiltered.filter(r => (r["Plant Name"] || "(Blank)") === plantName);
+    const rows  = buildDrillRows(items, "Stock in Quality Inspection", "Value of Stock in Quality Inspection");
+    showChartDrillModal({
+      title: `🧪 In QC — ${plantName}`,
+      meta: `${rows.length} items`,
+      rows, cols: CHART_DRILL_COLS,
+      filenameBase: `qc_${plantName}`,
+    });
+  });
 
   const qcCols = [
     {key:"Material", label:"Material Code", fmt:(val,r)=>renderMappedMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap"},
