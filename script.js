@@ -910,7 +910,12 @@ function renderDashboard() {
     { type:"bar", name:"In QC (ETB)", x:plantAgg.map(r=>r.PlantName), y:plantAgg.map(r=>r.QC),
       customdata:plantAgg.map(r=>r.QCItems), marker:{color:"#f85149"},
       hovertemplate:"<b>%{x}</b><br>ETB %{y:,.0f}<br>Line items: %{customdata:,.0f}<extra></extra>" },
-  ], pl({ height:280, barmode:"stack", margin:{l:20,r:20,t:20,b:80} }), PLOTLY_CONFIG);
+  ], pl({ height:280, barmode:"stack", margin:{l:20,r:20,t:20,b:80},
+    // FIX-AXIS-LABELS: default axis formatting abbreviates to "M" (millions)
+    // even when the whole range is under 1,000,000, which rounds every tick
+    // label down to "0M". "~s" picks the right SI unit (k/M/etc) per value.
+    yaxis:{ tickformat:"~s" }
+  }), PLOTLY_CONFIG);
 
   // ── Material Groups with Expiry Risk ──────────────────────────────────
   // For each material group, count how many distinct materials have
@@ -1018,6 +1023,9 @@ function renderDashboard() {
       { type:"bar", name:"Value at Risk (ETB)", x:nearByPlant.map(r=>r["Plant Name"]), y:nearByPlant.map(r=>r.val), yaxis:"y",  marker:{color:"#d29922"}, hovertemplate:"<b>%{x}</b><br>ETB %{y:,.0f}<extra></extra>" },
       { type:"scatter", mode:"lines+markers", name:"Items at Risk", x:nearByPlant.map(r=>r["Plant Name"]), y:nearByPlant.map(r=>r.items), yaxis:"y2", marker:{color:"#f85149",size:8}, line:{color:"#f85149"}, hovertemplate:"<b>%{x}</b><br>Line items: %{y:,.0f}<extra></extra>" },
     ], pl({ height:420, margin:{l:20,r:60,t:20,b:100}, barmode:"group",
+      // FIX-AXIS-LABELS: was defaulting to "M" suffix formatting even when the
+      // whole value range sat under 1,000,000, so every tick rounded to "0M".
+      yaxis:{ tickformat:"~s" },
       yaxis2:{overlaying:"y",side:"right",gridcolor:"transparent",tickfont:{color:"#f85149"},title:{text:"Line items",font:{color:"#f85149"}}}
     }), PLOTLY_CONFIG);
   } else {
@@ -1677,7 +1685,10 @@ function renderTransit() {
     Plotly.newPlot("chart-transit-plant", [
       {type:"bar",  name:"Value (ETB)", x:plantAgg.map(r=>r["Plant Name"]), y:plantAgg.map(r=>r.val), yaxis:"y",  marker:{color:"#d29922"}, hovertemplate:"<b>%{x}</b><br>ETB %{y:,.0f}<extra></extra>"},
       {type:"scatter", mode:"lines+markers", name:"Items", x:plantAgg.map(r=>r["Plant Name"]), y:plantAgg.map(r=>r.items), yaxis:"y2", marker:{color:"#3fb950",size:8}, line:{color:"#3fb950"}, hovertemplate:"<b>%{x}</b><br>Line items: %{y:,.0f}<extra></extra>"},
-    ], pl({height:280,margin:{l:20,r:60,t:20,b:80},yaxis2:{overlaying:"y",side:"right",gridcolor:"transparent",tickfont:{color:"#3fb950"}}}), PLOTLY_CONFIG);
+    ], pl({height:280,margin:{l:20,r:60,t:20,b:80},
+      // FIX-AXIS-LABELS: avoid "0M" ticks when the whole value range is under 1,000,000.
+      yaxis:{ tickformat:"~s" },
+      yaxis2:{overlaying:"y",side:"right",gridcolor:"transparent",tickfont:{color:"#3fb950"}}}), PLOTLY_CONFIG);
   } else {
     document.getElementById("chart-transit-plant").innerHTML = "";
   }
@@ -1734,7 +1745,9 @@ function renderExpiry() {
     Plotly.newPlot("chart-expiry-timeline", [
       {type:"bar",   name:"Items Count",   x:ms, y:ms.map(m=>monthMap[m]), marker:{color:"#d29922"}, hovertemplate:"<b>%{x}</b><br>%{y} items<extra></extra>"},
       {type:"scatter",mode:"lines+markers",name:"Value at Risk", x:ms, y:ms.map(m=>valMap[m]), yaxis:"y2", marker:{color:"#f85149",size:8}, line:{color:"#f85149"}, hovertemplate:"<b>%{x}</b><br>ETB %{y:,.0f}<extra></extra>"},
-    ], pl({height:260,margin:{l:20,r:60,t:20,b:60},yaxis2:{overlaying:"y",side:"right",gridcolor:"transparent",tickfont:{color:"#f85149"}}}), PLOTLY_CONFIG);
+    ], pl({height:260,margin:{l:20,r:60,t:20,b:60},
+      // FIX-AXIS-LABELS: avoid "0M" ticks on the ETB axis when the range is under 1,000,000.
+      yaxis2:{overlaying:"y",side:"right",gridcolor:"transparent",tickfont:{color:"#f85149"},tickformat:"~s"}}), PLOTLY_CONFIG);
 
     document.getElementById("chart-expiry-timeline").on("plotly_click", function(data) {
       const pt = data.points[0];
@@ -1897,7 +1910,10 @@ function renderQC() {
   Plotly.newPlot("chart-qc-plant", [
     {type:"bar",     name:"Value (ETB)", x:plantQC.map(r=>r["Plant Name"]), y:plantQC.map(r=>r.val), yaxis:"y",  marker:{color:"#f85149"}, hovertemplate:"<b>%{x}</b><br>ETB %{y:,.0f}<extra></extra>"},
     {type:"scatter", mode:"lines+markers", name:"Items", x:plantQC.map(r=>r["Plant Name"]), y:plantQC.map(r=>r.items), yaxis:"y2", marker:{color:"#3fb950",size:8}, line:{color:"#3fb950"}, hovertemplate:"<b>%{x}</b><br>Line items: %{y:,.0f}<extra></extra>"},
-  ], pl({height:280,margin:{l:20,r:60,t:20,b:80},yaxis2:{overlaying:"y",side:"right",gridcolor:"transparent",tickfont:{color:"#3fb950"}}}), PLOTLY_CONFIG);
+  ], pl({height:280,margin:{l:20,r:60,t:20,b:80},
+    // FIX-AXIS-LABELS: avoid "0M" ticks when the whole value range is under 1,000,000.
+    yaxis:{ tickformat:"~s" },
+    yaxis2:{overlaying:"y",side:"right",gridcolor:"transparent",tickfont:{color:"#3fb950"}}}), PLOTLY_CONFIG);
 
   const qcCols = [
     {key:"Material", label:"Material Code", fmt:(val,r)=>renderMappedMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap"},
@@ -2270,6 +2286,8 @@ function renderBranch() {
       { type:"bar", name:"In Transit (ETB)",   x:sorted.map(r=>r.PlantName), y:sorted.map(r=>r.Transit),      marker:{color:"#d29922"}, hovertemplate:"<b>%{x}</b><br>ETB %{y:,.0f}<extra></extra>" },
       { type:"bar", name:"In QC (ETB)",        x:sorted.map(r=>r.PlantName), y:sorted.map(r=>r.QC),           marker:{color:"#f85149"}, hovertemplate:"<b>%{x}</b><br>ETB %{y:,.0f}<extra></extra>" },
     ], pl({ height:300, barmode:"stack", margin:{l:20,r:20,t:30,b:100},
+      // FIX-AXIS-LABELS: avoid "0M" ticks when the whole value range is under 1,000,000.
+      yaxis:{ tickformat:"~s" },
       title:{text:"Inventory Value by Branch", font:{color:"#8b949e",size:13}} }), PLOTLY_CONFIG);
   }
 
