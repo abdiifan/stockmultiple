@@ -967,6 +967,51 @@ tbody tr.row-critical { background: rgba(224,69,69,0.06); }
 thead th.col-central-th { color: var(--blue); background: var(--blue-glow); font-weight: 700; }
 tbody td.col-central    { background: var(--blue-glow); }
 
+/* ══════════════════════════════════════════════
+   BRANCH COMPARISON — freeze panes (Material Across Branches table)
+   Toggled via the 📌 pin in the top-left header cell. Freezes the header
+   row + first 4 columns (Material Code, Material Description, Material
+   Group, Head Office). Off by default.
+   ══════════════════════════════════════════════ */
+.freeze-toggle-btn {
+  display: inline-block;
+  margin-left: 6px;
+  cursor: pointer;
+  opacity: 0.45;
+  font-size: 0.78rem;
+  line-height: 1;
+  user-select: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.freeze-toggle-btn:hover { opacity: 0.9; }
+.freeze-toggle-btn.active { opacity: 1; color: var(--blue); transform: rotate(-35deg); }
+
+table.frozen-panes thead th {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+table.frozen-panes thead th[data-freeze-col] {
+  z-index: 7; /* top-left intersection sits above both the sticky header and sticky columns */
+}
+table.frozen-panes tbody td[data-freeze-col] {
+  position: sticky;
+  z-index: 3;
+  background: var(--surface);
+}
+table.frozen-panes tbody td[data-freeze-col].col-central {
+  background: var(--blue-glow);
+}
+table.frozen-panes thead th[data-freeze-col].col-central-th {
+  background: var(--blue-glow);
+}
+table.frozen-panes tbody tr:hover td[data-freeze-col] {
+  background: var(--accent-glow);
+}
+table.frozen-panes tbody tr:hover td[data-freeze-col].col-central {
+  background: var(--blue-glow);
+}
+
 .col-qty { color: var(--green) !important; font-family: 'IBM Plex Mono', monospace; }
 .col-val { color: var(--blue) !important; font-family: 'IBM Plex Mono', monospace; }
 
