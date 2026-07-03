@@ -735,20 +735,35 @@ function setKpis(id, cards) {
 }
 
 // ── GROUPBY HELPERS ────────────────────────────────────────────────────────
-// aggCols entries are [outputKey, sourceField]. If sourceField is falsy
-// (null/undefined), that column counts matching rows (line items) instead
-// of summing a field — e.g. [["items", null]] gives a per-group row count.
 function groupBy(data, key, aggCols) {
   const map = {};
   data.forEach(row => {
     // FIX BUG-10: label blank keys clearly so charts don't show an invisible bar
     const k = row[key] || "(Blank)";
     if (!map[k]) { map[k] = { [key]: k }; aggCols.forEach(([c]) => { map[k][c] = 0; }); }
-    aggCols.forEach(([c,src]) => { map[k][c] += src ? (row[src] || 0) : 1; });
+    aggCols.forEach(([c,src]) => { map[k][c] += row[src] || 0; });
   });
   return Object.values(map);
 }
 function sortBy(arr, key, asc=false) { return [...arr].sort((a,b) => asc ? a[key]-b[key] : b[key]-a[key]); }
+
+// ── Count DISTINCT materials (not summed quantity) within each group ───────
+// Used by charts where the "Quantity" line should represent how many unique
+// SKUs are present per group (e.g. per plant, per month) rather than the sum
+// of stock quantities — those are two very different numbers, and mixing them
+// up under one "Qty" label is what was causing confusion.
+// Respects the same source-material mapping used elsewhere (_mappedMaterial).
+function countUniqueMaterialsByGroup(rows, groupKey) {
+  const sets = {};
+  rows.forEach(row => {
+    const g = row[groupKey] || "(Blank)";
+    if (!sets[g]) sets[g] = new Set();
+    sets[g].add(row._mappedMaterial || row["Material"]);
+  });
+  const out = {};
+  Object.keys(sets).forEach(g => { out[g] = sets[g].size; });
+  return out;
+}
 
 // ── TABLE BUILDER ──────────────────────────────────────────────────────────
 // Columns with raw:true may contain trusted HTML (badges etc.) — all others
@@ -881,41 +896,31 @@ function renderDashboard() {
   df.forEach(r => {
     const k = r["Plant Name"] || "(Blank)";
     if (!plantAggMap[k]) {
-      plantAggMap[k] = { PlantName:k, Unrestricted:0, Transit:0, QC:0, UnrestrictedItems:0, TransitItems:0, QCItems:0, TotalValue:0 };
+      plantAggMap[k] = { PlantName:k, Unrestricted:0, Transit:0, QC:0, UnrestrictedQty:0, TransitQty:0, QCQty:0, TotalValue:0 };
     }
     const unrestrictedVal = getMappedVal(r,"Value of Unrestricted Stock");
     const transitVal2     = getVerifiedTransitVal(r);
     const qcVal2          = getMappedVal(r,"Value of Stock in Quality Inspection");
-    const unrestrictedQty = getMappedQty(r,"Unrestricted Stock");
-    const transitQty2     = getVerifiedTransitQty(r);
-    const qcQty2          = getMappedQty(r,"Stock in Quality Inspection");
-    plantAggMap[k].Unrestricted += unrestrictedVal;
-    plantAggMap[k].Transit      += transitVal2;
-    plantAggMap[k].QC           += qcVal2;
-    // FIX-QTY-DISPLAY: tooltip now shows a count of line items with stock in
-    // each status, not the summed physical quantity, per user request.
-    if (unrestrictedQty > 0) plantAggMap[k].UnrestrictedItems++;
-    if (transitQty2     > 0) plantAggMap[k].TransitItems++;
-    if (qcQty2           > 0) plantAggMap[k].QCItems++;
-    plantAggMap[k].TotalValue += unrestrictedVal + transitVal2 + qcVal2;
+    plantAggMap[k].Unrestricted    += unrestrictedVal;
+    plantAggMap[k].Transit         += transitVal2;
+    plantAggMap[k].QC              += qcVal2;
+    plantAggMap[k].UnrestrictedQty += getMappedQty(r,"Unrestricted Stock");
+    plantAggMap[k].TransitQty      += getVerifiedTransitQty(r);
+    plantAggMap[k].QCQty           += getMappedQty(r,"Stock in Quality Inspection");
+    plantAggMap[k].TotalValue      += unrestrictedVal + transitVal2 + qcVal2;
   });
   const plantAgg = sortBy(Object.values(plantAggMap), "TotalValue");
   Plotly.newPlot("chart-plant-val", [
     { type:"bar", name:"Unrestricted (ETB)", x:plantAgg.map(r=>r.PlantName), y:plantAgg.map(r=>r.Unrestricted),
-      customdata:plantAgg.map(r=>r.UnrestrictedItems), marker:{color:"#3fb950"},
-      hovertemplate:"<b>%{x}</b><br>ETB %{y:,.0f}<br>Line items: %{customdata:,.0f}<extra></extra>" },
+      customdata:plantAgg.map(r=>r.UnrestrictedQty), marker:{color:"#3fb950"},
+      hovertemplate:"<b>%{x}</b><br>ETB %{y:,.0f}<br>Qty: %{customdata:,.0f}<extra></extra>" },
     { type:"bar", name:"In Transit (ETB)", x:plantAgg.map(r=>r.PlantName), y:plantAgg.map(r=>r.Transit),
-      customdata:plantAgg.map(r=>r.TransitItems), marker:{color:"#d29922"},
-      hovertemplate:"<b>%{x}</b><br>ETB %{y:,.0f}<br>Line items: %{customdata:,.0f}<extra></extra>" },
+      customdata:plantAgg.map(r=>r.TransitQty), marker:{color:"#d29922"},
+      hovertemplate:"<b>%{x}</b><br>ETB %{y:,.0f}<br>Qty: %{customdata:,.0f}<extra></extra>" },
     { type:"bar", name:"In QC (ETB)", x:plantAgg.map(r=>r.PlantName), y:plantAgg.map(r=>r.QC),
-      customdata:plantAgg.map(r=>r.QCItems), marker:{color:"#f85149"},
-      hovertemplate:"<b>%{x}</b><br>ETB %{y:,.0f}<br>Line items: %{customdata:,.0f}<extra></extra>" },
-  ], pl({ height:280, barmode:"stack", margin:{l:20,r:20,t:20,b:80},
-    // FIX-AXIS-LABELS: default axis formatting abbreviates to "M" (millions)
-    // even when the whole range is under 1,000,000, which rounds every tick
-    // label down to "0M". "~s" picks the right SI unit (k/M/etc) per value.
-    yaxis:{ tickformat:"~s" }
-  }), PLOTLY_CONFIG);
+      customdata:plantAgg.map(r=>r.QCQty), marker:{color:"#f85149"},
+      hovertemplate:"<b>%{x}</b><br>ETB %{y:,.0f}<br>Qty: %{customdata:,.0f}<extra></extra>" },
+  ], pl({ height:280, barmode:"stack", margin:{l:20,r:20,t:20,b:80} }), PLOTLY_CONFIG);
 
   // ── Material Groups with Expiry Risk ──────────────────────────────────
   // For each material group, count how many distinct materials have
@@ -1012,21 +1017,21 @@ function renderDashboard() {
     r._expiry >= nearToday && r._expiry <= nearCutoff &&
     (r["Unrestricted Stock"] || 0) > 0
   );
-  // FIX-QTY-DISPLAY: "items" counts line items (nearExpiry rows, which are
-  // already filtered to Unrestricted Stock > 0) instead of summing quantity.
   const nearByPlant = sortBy(
-    groupBy(nearExpiry, "Plant Name", [["val","Value of Unrestricted Stock"],["items",null]]),
+    groupBy(nearExpiry, "Plant Name", [["val","Value of Unrestricted Stock"]]),
     "val"
   );
+  const uniqByPlantNear = countUniqueMaterialsByGroup(nearExpiry, "Plant Name");
+  nearByPlant.forEach(r => { r.uniqMat = uniqByPlantNear[r["Plant Name"]] || 0; });
   if (nearByPlant.length) {
     Plotly.newPlot("chart-mg-bar", [
       { type:"bar", name:"Value at Risk (ETB)", x:nearByPlant.map(r=>r["Plant Name"]), y:nearByPlant.map(r=>r.val), yaxis:"y",  marker:{color:"#d29922"}, hovertemplate:"<b>%{x}</b><br>ETB %{y:,.0f}<extra></extra>" },
-      { type:"scatter", mode:"lines+markers", name:"Items at Risk", x:nearByPlant.map(r=>r["Plant Name"]), y:nearByPlant.map(r=>r.items), yaxis:"y2", marker:{color:"#f85149",size:8}, line:{color:"#f85149"}, hovertemplate:"<b>%{x}</b><br>Line items: %{y:,.0f}<extra></extra>" },
-    ], pl({ height:420, margin:{l:20,r:60,t:20,b:100}, barmode:"group",
-      // FIX-AXIS-LABELS: was defaulting to "M" suffix formatting even when the
-      // whole value range sat under 1,000,000, so every tick rounded to "0M".
-      yaxis:{ tickformat:"~s" },
-      yaxis2:{overlaying:"y",side:"right",gridcolor:"transparent",tickfont:{color:"#f85149"},title:{text:"Line items",font:{color:"#f85149"}}}
+      { type:"scatter", mode:"lines+markers", name:"Unique Materials at Risk", x:nearByPlant.map(r=>r["Plant Name"]), y:nearByPlant.map(r=>r.uniqMat), yaxis:"y2", marker:{color:"#f85149",size:8}, line:{color:"#f85149"}, hovertemplate:"<b>%{x}</b><br>Materials: %{y}<extra></extra>" },
+    ], pl({
+      height:420, margin:{l:60,r:80,t:20,b:110}, barmode:"group",
+      xaxis:{title:{text:"Plant",font:{size:10}}, tickangle:-35, tickfont:{size:10}, automargin:true},
+      yaxis:{title:{text:"Value at Risk (ETB)",font:{size:10,color:"#d29922"}}, tickfont:{color:"#d29922"}, automargin:true},
+      yaxis2:{overlaying:"y",side:"right",gridcolor:"transparent",tickfont:{color:"#f85149"},tickformat:",d",title:{text:"Unique Materials",font:{size:10,color:"#f85149"}}},
     }), PLOTLY_CONFIG);
   } else {
     document.getElementById("chart-mg-bar").innerHTML = `<div class="alert-info" style="margin:1rem 0">✓ No near-expiry stock (within 6 months) with quantity on hand.</div>`;
@@ -1679,16 +1684,19 @@ function renderTransit() {
 
   // Wire chart
   if (df.length) {
-    // FIX-QTY-DISPLAY: "items" counts line items (df is already filtered to
-    // Stock in Transit > 0 above) instead of summing transit quantity.
-    const plantAgg = sortBy(groupBy(df, "Plant Name", [["val","Value of Stock in Transit"],["items",null]]), "val");
+    const plantAgg  = sortBy(groupBy(df, "Plant Name", [["val","Value of Stock in Transit"]]), "val");
+    const uniqByPlant = countUniqueMaterialsByGroup(df, "Plant Name");
+    plantAgg.forEach(r => { r.uniqMat = uniqByPlant[r["Plant Name"]] || 0; });
     Plotly.newPlot("chart-transit-plant", [
       {type:"bar",  name:"Value (ETB)", x:plantAgg.map(r=>r["Plant Name"]), y:plantAgg.map(r=>r.val), yaxis:"y",  marker:{color:"#d29922"}, hovertemplate:"<b>%{x}</b><br>ETB %{y:,.0f}<extra></extra>"},
-      {type:"scatter", mode:"lines+markers", name:"Items", x:plantAgg.map(r=>r["Plant Name"]), y:plantAgg.map(r=>r.items), yaxis:"y2", marker:{color:"#3fb950",size:8}, line:{color:"#3fb950"}, hovertemplate:"<b>%{x}</b><br>Line items: %{y:,.0f}<extra></extra>"},
-    ], pl({height:280,margin:{l:20,r:60,t:20,b:80},
-      // FIX-AXIS-LABELS: avoid "0M" ticks when the whole value range is under 1,000,000.
-      yaxis:{ tickformat:"~s" },
-      yaxis2:{overlaying:"y",side:"right",gridcolor:"transparent",tickfont:{color:"#3fb950"}}}), PLOTLY_CONFIG);
+      {type:"scatter", mode:"lines+markers", name:"Unique Materials", x:plantAgg.map(r=>r["Plant Name"]), y:plantAgg.map(r=>r.uniqMat), yaxis:"y2", marker:{color:"#3fb950",size:8}, line:{color:"#3fb950"}, hovertemplate:"<b>%{x}</b><br>Materials: %{y}<extra></extra>"},
+    ], pl({
+      height:300,
+      margin:{l:60,r:70,t:20,b:100},
+      xaxis:{title:{text:"Plant",font:{size:10}}, tickangle:-35, tickfont:{size:10}, automargin:true},
+      yaxis:{title:{text:"Value (ETB)",font:{size:10,color:"#d29922"}}, tickfont:{color:"#d29922"}, automargin:true},
+      yaxis2:{overlaying:"y",side:"right",gridcolor:"transparent",tickfont:{color:"#3fb950"},tickformat:",d",title:{text:"Unique Materials",font:{size:10,color:"#3fb950"}}},
+    }), PLOTLY_CONFIG);
   } else {
     document.getElementById("chart-transit-plant").innerHTML = "";
   }
@@ -1735,19 +1743,30 @@ function renderExpiry() {
   ]);
 
   if (expiring.length) {
-    const monthMap = {}, valMap = {};
+    // valMap: value at risk summed per month (bar). uniqMatSets: distinct
+    // materials expiring per month, counted via the same source→target
+    // mapping used elsewhere (_mappedMaterial), so it lines up with the KPI
+    // cards above rather than counting duplicate source rows.
+    const valMap = {}, uniqMatSets = {};
     expiring.forEach(r => {
       const key = `${r._expiry.getFullYear()}-${String(r._expiry.getMonth()+1).padStart(2,"0")}`;
-      monthMap[key] = (monthMap[key] || 0) + 1;
-      valMap[key]   = (valMap[key]   || 0) + r["Value of Unrestricted Stock"];
+      valMap[key] = (valMap[key] || 0) + r["Value of Unrestricted Stock"];
+      if (!uniqMatSets[key]) uniqMatSets[key] = new Set();
+      uniqMatSets[key].add(getMatKey(r));
     });
-    const ms = Object.keys(monthMap).sort();
+    const ms = Object.keys(valMap).sort();
+    const uniqMap = {};
+    ms.forEach(m => { uniqMap[m] = uniqMatSets[m].size; });
     Plotly.newPlot("chart-expiry-timeline", [
-      {type:"bar",   name:"Items Count",   x:ms, y:ms.map(m=>monthMap[m]), marker:{color:"#d29922"}, hovertemplate:"<b>%{x}</b><br>%{y} items<extra></extra>"},
-      {type:"scatter",mode:"lines+markers",name:"Value at Risk", x:ms, y:ms.map(m=>valMap[m]), yaxis:"y2", marker:{color:"#f85149",size:8}, line:{color:"#f85149"}, hovertemplate:"<b>%{x}</b><br>ETB %{y:,.0f}<extra></extra>"},
-    ], pl({height:260,margin:{l:20,r:60,t:20,b:60},
-      // FIX-AXIS-LABELS: avoid "0M" ticks on the ETB axis when the range is under 1,000,000.
-      yaxis2:{overlaying:"y",side:"right",gridcolor:"transparent",tickfont:{color:"#f85149"},tickformat:"~s"}}), PLOTLY_CONFIG);
+      {type:"bar",    name:"Value at Risk (ETB)", x:ms, y:ms.map(m=>valMap[m]), yaxis:"y",  marker:{color:"#d29922"}, hovertemplate:"<b>%{x}</b><br>ETB %{y:,.0f}<extra></extra>"},
+      {type:"scatter",mode:"lines+markers",name:"Unique Materials", x:ms, y:ms.map(m=>uniqMap[m]), yaxis:"y2", marker:{color:"#f85149",size:8}, line:{color:"#f85149"}, hovertemplate:"<b>%{x}</b><br>Materials: %{y}<extra></extra>"},
+    ], pl({
+      height:280,
+      margin:{l:60,r:70,t:20,b:60},
+      xaxis:{title:{text:"Expiry Month",font:{size:10}}, tickfont:{size:10}, automargin:true},
+      yaxis:{title:{text:"Value at Risk (ETB)",font:{size:10,color:"#d29922"}}, tickfont:{color:"#d29922"}, automargin:true},
+      yaxis2:{overlaying:"y",side:"right",gridcolor:"transparent",tickfont:{color:"#f85149"},tickformat:",d",title:{text:"Unique Materials",font:{size:10,color:"#f85149"}}},
+    }), PLOTLY_CONFIG);
 
     document.getElementById("chart-expiry-timeline").on("plotly_click", function(data) {
       const pt = data.points[0];
@@ -1904,16 +1923,19 @@ function renderQC() {
 
   if (!df.length) { document.getElementById("qc-table-wrap").innerHTML = `<div class="alert-info">✓ No items in quality inspection.</div>`; return; }
 
-  // FIX-QTY-DISPLAY: "items" counts line items (rawFiltered is already
-  // filtered to Stock in Quality Inspection > 0 above) instead of summing qty.
-  const plantQC = sortBy(groupBy(rawFiltered, "Plant Name", [["val","Value of Stock in Quality Inspection"],["items",null]]), "val");
+  const plantQC   = sortBy(groupBy(rawFiltered, "Plant Name", [["val","Value of Stock in Quality Inspection"]]), "val");
+  const uniqByPlantQC = countUniqueMaterialsByGroup(rawFiltered, "Plant Name");
+  plantQC.forEach(r => { r.uniqMat = uniqByPlantQC[r["Plant Name"]] || 0; });
   Plotly.newPlot("chart-qc-plant", [
     {type:"bar",     name:"Value (ETB)", x:plantQC.map(r=>r["Plant Name"]), y:plantQC.map(r=>r.val), yaxis:"y",  marker:{color:"#f85149"}, hovertemplate:"<b>%{x}</b><br>ETB %{y:,.0f}<extra></extra>"},
-    {type:"scatter", mode:"lines+markers", name:"Items", x:plantQC.map(r=>r["Plant Name"]), y:plantQC.map(r=>r.items), yaxis:"y2", marker:{color:"#3fb950",size:8}, line:{color:"#3fb950"}, hovertemplate:"<b>%{x}</b><br>Line items: %{y:,.0f}<extra></extra>"},
-  ], pl({height:280,margin:{l:20,r:60,t:20,b:80},
-    // FIX-AXIS-LABELS: avoid "0M" ticks when the whole value range is under 1,000,000.
-    yaxis:{ tickformat:"~s" },
-    yaxis2:{overlaying:"y",side:"right",gridcolor:"transparent",tickfont:{color:"#3fb950"}}}), PLOTLY_CONFIG);
+    {type:"scatter", mode:"lines+markers", name:"Unique Materials", x:plantQC.map(r=>r["Plant Name"]), y:plantQC.map(r=>r.uniqMat), yaxis:"y2", marker:{color:"#3fb950",size:8}, line:{color:"#3fb950"}, hovertemplate:"<b>%{x}</b><br>Materials: %{y}<extra></extra>"},
+  ], pl({
+    height:300,
+    margin:{l:60,r:70,t:20,b:100},
+    xaxis:{title:{text:"Plant",font:{size:10}}, tickangle:-35, tickfont:{size:10}, automargin:true},
+    yaxis:{title:{text:"Value (ETB)",font:{size:10,color:"#f85149"}}, tickfont:{color:"#f85149"}, automargin:true},
+    yaxis2:{overlaying:"y",side:"right",gridcolor:"transparent",tickfont:{color:"#3fb950"},tickformat:",d",title:{text:"Unique Materials",font:{size:10,color:"#3fb950"}}},
+  }), PLOTLY_CONFIG);
 
   const qcCols = [
     {key:"Material", label:"Material Code", fmt:(val,r)=>renderMappedMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap"},
@@ -2286,8 +2308,6 @@ function renderBranch() {
       { type:"bar", name:"In Transit (ETB)",   x:sorted.map(r=>r.PlantName), y:sorted.map(r=>r.Transit),      marker:{color:"#d29922"}, hovertemplate:"<b>%{x}</b><br>ETB %{y:,.0f}<extra></extra>" },
       { type:"bar", name:"In QC (ETB)",        x:sorted.map(r=>r.PlantName), y:sorted.map(r=>r.QC),           marker:{color:"#f85149"}, hovertemplate:"<b>%{x}</b><br>ETB %{y:,.0f}<extra></extra>" },
     ], pl({ height:300, barmode:"stack", margin:{l:20,r:20,t:30,b:100},
-      // FIX-AXIS-LABELS: avoid "0M" ticks when the whole value range is under 1,000,000.
-      yaxis:{ tickformat:"~s" },
       title:{text:"Inventory Value by Branch", font:{color:"#8b949e",size:13}} }), PLOTLY_CONFIG);
   }
 
