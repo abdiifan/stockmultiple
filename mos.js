@@ -83,7 +83,7 @@ function loadMosAmcFile(file) {
         `<div class="status-ok">✓ LOADED</div><div class="status-name">${escHtml(file.name)}</div>` +
         `<div class="status-name" style="color:var(--green)">${count} items · ${detectedPlants.length} plants</div>` +
         (hasHub ? "" : `<div class="status-name" style="color:var(--amber)">⚠️ "${HUB_PLANT}" column not found — hub MOS rule won't apply</div>`);
-      if (btnEl) btnEl.textContent = "✓ " + file.name;
+      if (btnEl) btnEl.textContent = "📐 Change AMC File";
 
       document.getElementById("mos-no-amc").style.display  = "none";
       document.getElementById("mos-content").style.display = "block";
