@@ -2488,13 +2488,20 @@ function renderBranch() {
   let matTabInitialized = false;
   function renderMaterialTab() {
     // FEAT-BRANCH-FREEZE: freeze-panes state for the Material Across Branches
-    // table (header row + first 4 columns: Material Code, Material Description,
-    // Material Group, Head Office/central plant). Off by default; toggled via
-    // the 📌 pin in the top-left header cell. Declared here (not inside
-    // refreshMaterialView) so it survives filter/metric changes that re-render
-    // the table without a full renderMaterialTab() re-run, and resets to off
-    // whenever the Branch Comparison page itself is re-rendered.
-    let matFreezeOn = false;
+    // table. Two INDEPENDENT toggles:
+    //   matColFreezeOn — pins the first 3 columns (Material Code, Material
+    //                    Description, Material Group) while scrolling
+    //                    horizontally.
+    //   matRowFreezeOn — pins the header row while scrolling vertically.
+    // Head Office is intentionally excluded from the frozen columns — it's a
+    // regular scrolling plant column like the others.
+    // Off by default; toggled via the ⇔ / ⇕ icons in the top-left header
+    // cell. Declared here (not inside refreshMaterialView) so they survive
+    // filter/metric changes that re-render the table without a full
+    // renderMaterialTab() re-run, and reset to off whenever the Branch
+    // Comparison page itself is re-rendered.
+    let matColFreezeOn = false;
+    let matRowFreezeOn = false;
 
     const wrap         = document.getElementById("branch-tab-material");
     // BUG-BRANCH-3 FIX: use baseDf to enumerate plant names — df (aggregated) may
@@ -2711,10 +2718,11 @@ function renderBranch() {
     refreshMaterialView();
 
     // FEAT-BRANCH-FREEZE: measure the rendered widths of the frozen columns
-    // (Material Code, Material Description, Material Group, Head Office) and
-    // stamp cumulative pixel offsets onto their `left` style so position:sticky
+    // (Material Code, Material Description, Material Group) and stamp
+    // cumulative pixel offsets onto their `left` style so position:sticky
     // lines them up correctly — widths vary with content/theme/font, so a
-    // fixed CSS value can't be used.
+    // fixed CSS value can't be used. Only relevant to column freeze; row
+    // freeze needs no offset math since the header just sticks to top:0.
     function computeFreezeOffsets(table) {
       const headCells = [...table.querySelectorAll("thead th[data-freeze-col]")]
         .sort((a, b) => Number(a.dataset.freezeCol) - Number(b.dataset.freezeCol));
@@ -2730,31 +2738,57 @@ function renderBranch() {
       });
     }
 
-    function setMatFreeze(on) {
-      matFreezeOn = on;
+    // Column freeze (⇔) — independent of row freeze.
+    function setMatColFreeze(on) {
+      matColFreezeOn = on;
       const table = document.querySelector("#mat-table-wrap table");
-      const btn   = document.getElementById("mat-freeze-toggle");
+      const btn   = document.getElementById("mat-freeze-col-toggle");
       if (!table) return;
       if (on) {
-        table.classList.add("frozen-panes");
+        table.classList.add("freeze-cols");
         if (btn) { btn.classList.add("active"); btn.setAttribute("aria-pressed", "true"); }
         computeFreezeOffsets(table);
       } else {
-        table.classList.remove("frozen-panes");
+        table.classList.remove("freeze-cols");
         if (btn) { btn.classList.remove("active"); btn.setAttribute("aria-pressed", "false"); }
         table.querySelectorAll("[data-freeze-col]").forEach(el => { el.style.left = ""; });
       }
     }
 
+    // Row freeze (⇕) — independent of column freeze.
+    function setMatRowFreeze(on) {
+      matRowFreezeOn = on;
+      const table = document.querySelector("#mat-table-wrap table");
+      const btn   = document.getElementById("mat-freeze-row-toggle");
+      if (!table) return;
+      if (on) {
+        table.classList.add("freeze-header");
+        if (btn) { btn.classList.add("active"); btn.setAttribute("aria-pressed", "true"); }
+      } else {
+        table.classList.remove("freeze-header");
+        if (btn) { btn.classList.remove("active"); btn.setAttribute("aria-pressed", "false"); }
+      }
+    }
+
     function wireMatFreezeToggle() {
-      const btn = document.getElementById("mat-freeze-toggle");
-      if (!btn) return;
-      btn.addEventListener("click", (e) => { e.stopPropagation(); setMatFreeze(!matFreezeOn); });
-      btn.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); setMatFreeze(!matFreezeOn); }
-      });
-      // Re-render (metric/filter change) happened — carry the freeze state forward.
-      if (matFreezeOn) setMatFreeze(true);
+      const colBtn = document.getElementById("mat-freeze-col-toggle");
+      const rowBtn = document.getElementById("mat-freeze-row-toggle");
+
+      if (colBtn) {
+        colBtn.addEventListener("click", (e) => { e.stopPropagation(); setMatColFreeze(!matColFreezeOn); });
+        colBtn.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); setMatColFreeze(!matColFreezeOn); }
+        });
+      }
+      if (rowBtn) {
+        rowBtn.addEventListener("click", (e) => { e.stopPropagation(); setMatRowFreeze(!matRowFreezeOn); });
+        rowBtn.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); setMatRowFreeze(!matRowFreezeOn); }
+        });
+      }
+      // Re-render (metric/filter change) happened — carry both freeze states forward.
+      if (matColFreezeOn) setMatColFreeze(true);
+      if (matRowFreezeOn) setMatRowFreeze(true);
     }
 
     function refreshMaterialView() {
@@ -2932,18 +2966,20 @@ function renderBranch() {
       });
 
       const centralKey = `__p__${centralName}`;
-      // FEAT-BRANCH-FREEZE: the first 4 colDefs are always Material Code,
-      // Material Description, Material Group, then the central/Head Office
-      // plant column (allPlantNames sorts central first — see above), so
-      // "first 4 columns" and "the central column" are the same thing here.
-      const FREEZE_COL_MAX_IDX = 3;
+      // FEAT-BRANCH-FREEZE: the first 3 colDefs are always Material Code,
+      // Material Description, Material Group — those are what get frozen
+      // for horizontal scroll. Head Office/central plant is column index 3
+      // but is NOT frozen; it's a normal scrolling column (it's still
+      // visually tinted via col-central/col-central-th, just not sticky).
+      const FREEZE_COL_MAX_IDX = 2;
       const thead = `<thead><tr>${colDefs.map((c, i) => {
         const isCentral = c.key === centralKey;
         const freezeAttr = i <= FREEZE_COL_MAX_IDX ? ` data-freeze-col="${i}"` : "";
-        const pin = i === 0
-          ? `<span class="freeze-toggle-btn" id="mat-freeze-toggle" role="button" tabindex="0" title="Freeze header row & first columns">📌</span>`
+        const pins = i === 0
+          ? `<span class="freeze-toggle-btn freeze-cols-btn" id="mat-freeze-col-toggle" role="button" tabindex="0" title="Freeze first 3 columns (horizontal scroll)">⇔</span>` +
+            `<span class="freeze-toggle-btn freeze-header-btn" id="mat-freeze-row-toggle" role="button" tabindex="0" title="Freeze header row (vertical scroll)">⇕</span>`
           : "";
-        return `<th${isCentral ? ' class="col-central-th"' : ""}${freezeAttr}>${escHtml(c.label)}${pin}</th>`;
+        return `<th${isCentral ? ' class="col-central-th"' : ""}${freezeAttr}>${escHtml(c.label)}${pins}</th>`;
       }).join("")}</tr></thead>`;
       const tbody = tableRows.map(r => {
         const cells = colDefs.map((c, i) => {
@@ -2966,12 +3002,12 @@ function renderBranch() {
         return `<tr>${cells}</tr>`;
       }).join("");
       document.getElementById("mat-table-wrap").innerHTML = `
-        <div style="color:var(--muted);font-size:12px;margin-bottom:6px">Showing ${tableRows.length} of ${materials.length} materials · Blue = Central (${escHtml(centralName)}) · <span style="cursor:default">📌 Click the pin in the top-left header cell to freeze the header row &amp; first columns</span></div>
+        <div style="color:var(--muted);font-size:12px;margin-bottom:6px">Showing ${tableRows.length} of ${materials.length} materials · Blue = Central (${escHtml(centralName)}) · <span style="cursor:default">⇔ freeze first 3 columns · ⇕ freeze header row — click either icon in the top-left header cell</span></div>
         <div class="tbl-wrap"><table>${thead}<tbody>${tbody}</tbody></table></div>
         ${materials.length > 200 ? `<div class="alert-info">Showing first 200 of ${materials.length}. Refine search.</div>` : ""}`;
 
-      // FEAT-BRANCH-FREEZE: wire the pin toggle and (re-)apply whatever
-      // freeze state was active before this re-render (metric/filter changes
+      // FEAT-BRANCH-FREEZE: wire both toggles and (re-)apply whatever freeze
+      // state was active before this re-render (metric/filter changes
       // rebuild this innerHTML, which would otherwise silently drop it).
       wireMatFreezeToggle();
 
