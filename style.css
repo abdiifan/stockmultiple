@@ -1013,6 +1013,23 @@ tbody td.col-central    { background: var(--blue-glow); }
 .freeze-toggle-btn.freeze-cols-btn.active   { transform: rotate(-35deg); }
 .freeze-toggle-btn.freeze-header-btn.active { transform: scaleY(-1); }
 
+/* FIX-FREEZE-SCROLL: .tbl-wrap only declares overflow-x:auto. Per the CSS
+   overflow spec, setting overflow-x to anything other than 'visible' while
+   overflow-y is 'visible' forces the *computed* overflow-y to 'auto' too —
+   silently turning .tbl-wrap into its own (empty, unscrollable) vertical
+   scroll container. Since that container never actually needs to scroll
+   (it just grows to fit the table), it becomes the nearest scrolling
+   ancestor for position:sticky, so the sticky header/columns stop tracking
+   the real page scroll and instead jump/reset relative to that phantom
+   container — this is what read as "scrolls totally upward". Giving the
+   freeze table an explicit bounded height + overflow-y:auto makes it a
+   real, correctly-behaving scroll container, matching the pattern already
+   used for other scrollable tables (e.g. the phantom-transit table). */
+.tbl-wrap-freeze {
+  max-height: 65vh;
+  overflow-y: auto;
+}
+
 /* ── Row freeze (header row pinned while scrolling vertically) ── */
 table.freeze-header thead th {
   position: sticky;
