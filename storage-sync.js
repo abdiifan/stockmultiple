@@ -13,11 +13,61 @@
 // ════════════════════════════════════════════════════════════════
 
 const FILE_SLOTS = {
-  inventory: { inputId: "fileInput",         path: "inventory/latest.xlsx" },
-  mapping:   { inputId: "mappingFileInput",  path: "mapping/latest.xlsx" },
-  amc:       { inputId: "mosAmcFileInput",   path: "amc/latest.xlsx" },
-  incoming:  { inputId: "incomingFileInput", path: "incoming/latest.xlsx" },
+  inventory: { inputId: "fileInput",         path: "inventory/latest.xlsx", statusId: "fileStatus" },
+  mapping:   { inputId: "mappingFileInput",  path: "mapping/latest.xlsx",   statusId: "mappingFileStatus" },
+  amc:       { inputId: "mosAmcFileInput",   path: "amc/latest.xlsx",       statusId: "mosAmcFileStatus" },
+  incoming:  { inputId: "incomingFileInput", path: "incoming/latest.xlsx",  statusId: "incomingFileStatus" },
 };
+
+// ── Wait for the slot's own status element to leave its "⏳ loading" state ──
+// Every loader (loadFile, loadMappingFile, loadMosAmcFile, loadIncomingGrFile)
+// writes an hourglass into its status element the instant it starts parsing
+// — synchronously, before the FileReader callback ever fires — and replaces
+// it with a ✓/✗ result the instant parsing (success or failure) finishes.
+// That makes the status element a reliable, zero-plumbing signal for "is
+// this slot's async parse actually done yet", without touching script.js,
+// mos.js, or shelf-life.js at all.
+//
+// FIX-RACE: previously pullFileFromSupabase only awaited the network download
+// and the synchronous dispatchEvent() call, then immediately moved on to the
+// next slot — while the just-dispatched file was still being parsed in the
+// background (FileReader + XLSX.read are async). That let inventory and
+// mapping (or amc/incoming) finish parsing out of order relative to how an
+// admin uploads them by hand (one at a time, with a natural pause between
+// clicks), so a viewer's page could render — and, if refreshed at the wrong
+// moment, keep showing — dashboard totals computed from unmapped/partial
+// data instead of the fully material-standardized totals an admin sees.
+function waitForParseSettle(statusId, timeoutMs = 20000) {
+  return new Promise((resolve) => {
+    const el = document.getElementById(statusId);
+    if (!el) { resolve(); return; }
+
+    const isLoading = () => (el.textContent || "").includes("⏳");
+
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(hardTimeout);
+      observer.disconnect();
+      resolve();
+    };
+
+    const observer = new MutationObserver(() => { if (!isLoading()) finish(); });
+    observer.observe(el, { childList: true, subtree: true, characterData: true });
+
+    // Absolute ceiling so a stuck or silently-failing loader can never hang
+    // the rest of the pull sequence forever.
+    const hardTimeout = setTimeout(finish, timeoutMs);
+
+    // By the time dispatchEvent() returns, the loader's synchronous
+    // "start parsing" DOM write has already happened — so isLoading() should
+    // already be true here. This just covers the edge case of a slot with no
+    // registered loader at all (nothing will ever set "⏳"), so we don't wait
+    // out the full timeout for no reason.
+    if (!isLoading()) finish();
+  });
+}
 
 const BUCKET = "inventory-files";
 
@@ -78,6 +128,7 @@ async function pushFileToSupabase(slot, file) {
   const { error: upErr } = await sc.storage.from(BUCKET).upload(path, file, {
     upsert: true,
     contentType: file.type || "application/octet-stream",
+    cacheControl: "0", // FIX-CACHE: never let this fixed-path object be cached — see pullFileFromSupabase
   });
   pending.remove();
   if (upErr) {
@@ -104,16 +155,37 @@ async function pushFileToSupabase(slot, file) {
 
 // ── Pull: called on app load for every signed-in user ──
 async function pullFileFromSupabase(slot) {
-  const { path, inputId } = FILE_SLOTS[slot];
+  const { path, inputId, statusId } = FILE_SLOTS[slot];
   const sc = window.supabaseClient;
 
-  const { data: blob, error } = await sc.storage.from(BUCKET).download(path);
-  if (error) {
-    // statusCode 404 / "Object not found" just means nothing uploaded yet — fine.
-    // Anything else (permission denied, etc.) is worth knowing about.
-    if (error.statusCode !== "404" && !/not.?found/i.test(error.message || "")) {
-      console.error(`[storage-sync] Pull failed (${slot}):`, error);
+  // FIX-CACHE: storage.download() can be served from browser/CDN HTTP cache
+  // for up to Supabase's default cacheControl (3600s), since every upload
+  // reuses the SAME fixed path (upsert to "latest.xlsx"). A page refresh does
+  // NOT guarantee a fresh network fetch — so a viewer can keep seeing an old
+  // snapshot for up to an hour after an admin uploads a new one, even after
+  // reloading, while the admin (who reads the local File object directly,
+  // never over the network) always sees the current file. Route around this
+  // by fetching a signed URL manually with an explicit cache-busting query
+  // param and cache: 'no-store', instead of trusting the SDK's default
+  // caching behavior.
+  const { data: signed, error: signErr } = await sc.storage.from(BUCKET).createSignedUrl(path, 60);
+  if (signErr) {
+    if (signErr.statusCode !== "404" && !/not.?found/i.test(signErr.message || "")) {
+      console.error(`[storage-sync] Pull failed (${slot}):`, signErr);
     }
+    return;
+  }
+  const bustedUrl = signed.signedUrl + (signed.signedUrl.includes("?") ? "&" : "?") + "_cb=" + Date.now();
+  let blob;
+  try {
+    const res = await fetch(bustedUrl, { cache: "no-store" });
+    if (!res.ok) {
+      if (res.status !== 404) console.error(`[storage-sync] Pull fetch failed (${slot}): HTTP ${res.status}`);
+      return;
+    }
+    blob = await res.blob();
+  } catch (err) {
+    console.error(`[storage-sync] Pull fetch failed (${slot}):`, err);
     return;
   }
 
@@ -134,6 +206,11 @@ async function pullFileFromSupabase(slot) {
   input.files = dt.files;
   input.dispatchEvent(new Event("change", { bubbles: true })); // capture-phase listener consumes the flag synchronously here
   input.dataset.fromSupabase = "";
+
+  // FIX-RACE: don't let the caller move on to the next slot until this
+  // slot's async Excel parse has actually finished — see waitForParseSettle
+  // above for why this matters.
+  if (statusId) await waitForParseSettle(statusId);
 }
 
 // ── Wire up: intercept admin's own file picks to also push to Supabase ──
