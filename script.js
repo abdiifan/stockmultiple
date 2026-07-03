@@ -2966,17 +2966,16 @@ function renderBranch() {
       });
 
       const centralKey = `__p__${centralName}`;
-      // FEAT-BRANCH-FREEZE: the first 3 colDefs are always Material Code,
-      // Material Description, Material Group — those are what get frozen
-      // for horizontal scroll. Head Office/central plant is column index 3
-      // but is NOT frozen; it's a normal scrolling column (it's still
-      // visually tinted via col-central/col-central-th, just not sticky).
-      const FREEZE_COL_MAX_IDX = 2;
+      // FEAT-BRANCH-FREEZE: the first 4 colDefs are frozen for horizontal
+      // scroll. Head Office/central plant is NOT frozen; it's a normal
+      // scrolling column (it's still visually tinted via
+      // col-central/col-central-th, just not sticky).
+      const FREEZE_COL_MAX_IDX = 3;
       const thead = `<thead><tr>${colDefs.map((c, i) => {
         const isCentral = c.key === centralKey;
         const freezeAttr = i <= FREEZE_COL_MAX_IDX ? ` data-freeze-col="${i}"` : "";
         const pins = i === 0
-          ? `<span class="freeze-toggle-btn freeze-cols-btn" id="mat-freeze-col-toggle" role="button" tabindex="0" title="Freeze first 3 columns (horizontal scroll)">⇔</span>` +
+          ? `<span class="freeze-toggle-btn freeze-cols-btn" id="mat-freeze-col-toggle" role="button" tabindex="0" title="Freeze first 4 columns (horizontal scroll)">⇔</span>` +
             `<span class="freeze-toggle-btn freeze-header-btn" id="mat-freeze-row-toggle" role="button" tabindex="0" title="Freeze header row (vertical scroll)">⇕</span>`
           : "";
         return `<th${isCentral ? ' class="col-central-th"' : ""}${freezeAttr}>${escHtml(c.label)}${pins}</th>`;
@@ -3002,8 +3001,8 @@ function renderBranch() {
         return `<tr>${cells}</tr>`;
       }).join("");
       document.getElementById("mat-table-wrap").innerHTML = `
-        <div style="color:var(--muted);font-size:12px;margin-bottom:6px">Showing ${tableRows.length} of ${materials.length} materials · Blue = Central (${escHtml(centralName)}) · <span style="cursor:default">⇔ freeze first 3 columns · ⇕ freeze header row — click either icon in the top-left header cell</span></div>
-        <div class="tbl-wrap"><table>${thead}<tbody>${tbody}</tbody></table></div>
+        <div style="color:var(--muted);font-size:12px;margin-bottom:6px">Showing ${tableRows.length} of ${materials.length} materials · Blue = Central (${escHtml(centralName)}) · <span style="cursor:default">⇔ freeze first 4 columns · ⇕ freeze header row — click either icon in the top-left header cell</span></div>
+        <div class="tbl-wrap tbl-wrap-freeze"><table>${thead}<tbody>${tbody}</tbody></table></div>
         ${materials.length > 200 ? `<div class="alert-info">Showing first 200 of ${materials.length}. Refine search.</div>` : ""}`;
 
       // FEAT-BRANCH-FREEZE: wire both toggles and (re-)apply whatever freeze
