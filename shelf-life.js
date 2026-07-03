@@ -130,12 +130,13 @@
           const posting = parseExpiryDate(r["Posting Date"]);
           if (!posting) continue;
           const plant = String(r["Plant"] || "").trim().toUpperCase();
+          const storageLoc = String(r["Storage Location"] || "").trim().toUpperCase();
 
           const key = `${mat}|${batch}`;
           const existing = map.get(key);
           // Earliest posting date per material+batch = the original GR date
           if (!existing || posting < existing.postingDate) {
-            map.set(key, { postingDate: posting, plant, hits: existing ? existing.hits + 1 : 1 });
+            map.set(key, { postingDate: posting, plant, storageLoc, hits: existing ? existing.hits + 1 : 1 });
           } else {
             existing.hits += 1;
           }
@@ -652,13 +653,15 @@
         const expiry = r._expiry instanceof Date && !isNaN(r._expiry) ? r._expiry : null;
         const prod   = r._prodDate instanceof Date && !isNaN(r._prodDate) ? r._prodDate : null;
         const plant = String(r["Plant"] || "").trim().toUpperCase();
+        const storageLoc = String(r["Storage Location"] || "").trim();
         const existing = stockByKey.get(key);
         if (existing) {
           existing.qty += qty;
           existing.plants.add(plant);
+          if (storageLoc) existing.storageLocs.add(storageLoc);
           if (!existing.prod && prod) existing.prod = prod;
         } else {
-          stockByKey.set(key, { qty, expiry, nonExpiring: isNonExpiring(expiry), prod, plants: new Set([plant]) });
+          stockByKey.set(key, { qty, expiry, nonExpiring: isNonExpiring(expiry), prod, plants: new Set([plant]), storageLocs: new Set(storageLoc ? [storageLoc] : []) });
         }
       }
     }
@@ -702,7 +705,8 @@
         material,
         materialDesc: descByMaterial.get(material) || "",
         batch,
-        plant: stock ? [...stock.plants].join(", ") : (gr.plant || "—"),
+        plant: gr.plant || (stock ? [...stock.plants].join(", ") : "") || "—",
+        storageLoc: gr.storageLoc || (stock ? [...stock.storageLocs].join(", ") : "") || "—",
         posting: gr.postingDate,
         qty: stock ? stock.qty : null,
         prod, expiry, nonExpiring,
@@ -737,6 +741,7 @@
       { key: "materialDesc", label: "Description" },
       { key: "batch",   label: "Batch", cellClass: "col-mat-code-wrap" },
       { key: "plant",   label: "Plant" },
+      { key: "storageLoc", label: "Storage Location" },
       { key: "posting", label: "GR Posting Date", fmt: v => v ? fmtLocalDate(v) : "—" },
       { key: "qty",     label: "Qty on Hand", fmt: (v, r) => r.inStock ? fmtQty(v) : "—" },
       { key: "expiry",  label: "Expiration Date", fmt: (v, r) => !r.inStock ? "—" : (r.nonExpiring ? "No expiry" : (v ? fmtLocalDate(v) : "—")) },
@@ -778,7 +783,7 @@
     if (rows.length) {
       const exportCols = [
         { key: "material", label: "Material" }, { key: "materialDesc", label: "Description" },
-        { key: "batch", label: "Batch" }, { key: "plant", label: "Plant" },
+        { key: "batch", label: "Batch" }, { key: "plant", label: "Plant" }, { key: "storageLoc", label: "Storage Location" },
         { key: "posting", label: "GR Posting Date", fmt: v => v ? fmtLocalDate(v) : "" },
         { key: "qty", label: "Qty on Hand", fmt: (v, r) => r.inStock ? Number(v).toFixed(2) : "" },
         { key: "expiry", label: "Expiration Date", fmt: (v, r) => !r.inStock ? "" : (r.nonExpiring ? "No expiry" : (v ? fmtLocalDate(v) : "")) },
