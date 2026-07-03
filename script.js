@@ -2536,35 +2536,18 @@ function renderBranch() {
       return qty > 0 ? Infinity : null;
     }
 
-    // FEAT-BRANCH-SOH-MOS-AMC: renders a table cell showing any combination of
-    // SOH (the selected quantity metric) / MOS (qty ÷ AMC) / AMC (raw monthly
-    // consumption), each as its own stacked sub-row, per the "Show" checkboxes.
-    // Falls back to plain qty if somehow called with everything off, so a cell
-    // is never left blank.
-    function plantCellMulti(qty, mos, amc, flags) {
-      const rows = [];
-      if (flags.soh) rows.push(`<div>${fmtQty(qty)}</div>`);
-      if (flags.mos) {
-        const style = (typeof mosCellStyle === "function") ? mosCellStyle(mos) : "";
-        const mosHtml = (typeof fmtMosVal === "function") ? fmtMosVal(mos)
-          : (mos === null || mos === undefined ? "N/A" : mos === Infinity ? "∞" : `${mos.toFixed(1)} mo`);
-        rows.push(`<div style="font-size:0.92em;font-weight:600;margin-top:3px;opacity:0.95;${style}"><span style="opacity:0.55;font-weight:400;font-size:0.85em;margin-right:3px">MOS</span>${mosHtml}</div>`);
-      }
-      if (flags.amc) {
-        const amcHtml = (amc === null || amc === undefined) ? "N/A" : fmtQty(amc);
-        rows.push(`<div style="font-size:0.85em;opacity:0.75;margin-top:2px"><span style="opacity:0.7;margin-right:3px">AMC</span>${amcHtml}</div>`);
-      }
-      return rows.length ? rows.join("") : `<div>${fmtQty(qty)}</div>`;
+    // Renders a table cell showing the qty value with its MOS underneath.
+    function plantCellWithMos(qty, mos) {
+      const style = (typeof mosCellStyle === "function") ? mosCellStyle(mos) : "";
+      const mosHtml = (typeof fmtMosVal === "function") ? fmtMosVal(mos)
+        : (mos === null || mos === undefined ? "N/A" : mos === Infinity ? "∞" : `${mos.toFixed(1)} mo`);
+      return `<div>${fmtQty(qty)}</div><div style="font-size:0.92em;font-weight:600;margin-top:3px;opacity:0.95;${style}">${mosHtml}</div>`;
     }
 
     function mosExportVal(mos) {
       if (mos === null || mos === undefined) return "Not Committed";
       if (mos === Infinity) return "∞";
       return Number(mos).toFixed(1);
-    }
-
-    function amcExportVal(amc) {
-      return (amc === null || amc === undefined) ? "Not Committed" : Number(amc).toFixed(1);
     }
 
     if (!matTabInitialized) {
@@ -2602,20 +2585,6 @@ function renderBranch() {
             </select>
           </div>
           <div>
-            <div class="nav-label" style="font-size:0.65rem;margin-bottom:3px">Show</div>
-            <div style="display:flex;align-items:center;gap:10px;height:32px">
-              <label style="display:flex;align-items:center;gap:4px;font-size:0.78rem;cursor:pointer" title="Stock on Hand — the value picked by the Metric dropdown">
-                <input type="checkbox" id="mat-show-soh" checked /> SOH
-              </label>
-              <label id="mat-show-mos-label" style="display:flex;align-items:center;gap:4px;font-size:0.78rem;${mosAvailable ? "cursor:pointer" : "opacity:0.4"}" title="Months of Stock (Qty ÷ AMC) — only available when a Quantity metric is selected and AMC data is loaded">
-                <input type="checkbox" id="mat-show-mos" ${mosAvailable ? "" : "disabled"} /> MOS
-              </label>
-              <label id="mat-show-amc-label" style="display:flex;align-items:center;gap:4px;font-size:0.78rem;${mosAvailable ? "cursor:pointer" : "opacity:0.4"}" title="Average Monthly Consumption — only available when a Quantity metric is selected and AMC data is loaded">
-                <input type="checkbox" id="mat-show-amc" ${mosAvailable ? "" : "disabled"} /> AMC
-              </label>
-            </div>
-          </div>
-          <div>
             <div class="nav-label" style="font-size:0.65rem;margin-bottom:3px">Material Type</div>
             <select id="mat-mgfilter" style="background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px">
               <option value="">All Material Types</option>
@@ -2638,7 +2607,10 @@ function renderBranch() {
           <button id="mat-clear" class="apply-btn secondary">Clear</button>
         </div>
         <div id="mat-chart-wrap" style="margin-bottom:1rem"></div>
-        <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.5rem">Downloads include whichever of SOH / MOS / AMC are ticked above.</div>
+        <label for="mat-export-mos" style="display:flex;align-items:center;gap:6px;font-size:0.78rem;color:var(--muted);margin-bottom:0.5rem;${mosAvailable ? "cursor:pointer" : "opacity:0.5"}" title="Adds {Plant} MOS columns to the exported file even if the table above isn't currently showing MOS (calculated from Total Quantity).">
+          <input type="checkbox" id="mat-export-mos" ${mosAvailable ? "checked" : "disabled"} />
+          Include MOS columns in export
+        </label>
         <div id="mat-dl-row" style="display:flex;gap:0.6rem;justify-content:flex-end;margin-bottom:0.5rem"></div>
         <div id="mat-table-wrap"></div>`;
       document.getElementById("mat-apply").addEventListener("click", refreshMaterialView);
@@ -2658,10 +2630,8 @@ function renderBranch() {
       // more material groups (e.g. only "Antibiotics" or "Vaccines") in addition
       // to / instead of picking individual materials.
       buildMultiSelect("mat-mg-ms-wrap", "mat-mg-ms-dd", mgNamesForFilter, "All Material Groups");
-      ["mat-show-soh", "mat-show-mos", "mat-show-amc"].forEach(id => {
-        const cb = document.getElementById(id);
-        if (cb) cb.addEventListener("change", refreshMaterialView);
-      });
+      const exportMosCb = document.getElementById("mat-export-mos");
+      if (exportMosCb) exportMosCb.addEventListener("change", refreshMaterialView);
     }
 
     // ── Spread-chart drilldown: auto-select materials from the clicked group ──
@@ -2714,30 +2684,6 @@ function renderBranch() {
       const isQty     = metric.includes("Qty");
       const fmtFn     = isQty ? fmtQty : fmtETB;
 
-      // FEAT-BRANCH-SOH-MOS-AMC: read the three "Show" checkboxes. MOS/AMC only
-      // make sense against a quantity metric with AMC data loaded, so they're
-      // force-disabled otherwise. If every box ends up unchecked (e.g. user
-      // unticks SOH right after switching away from a Qty metric, which just
-      // force-disabled MOS/AMC too), silently re-check SOH so a cell is never
-      // left blank.
-      const showSohCb = document.getElementById("mat-show-soh");
-      const showMosCb = document.getElementById("mat-show-mos");
-      const showAmcCb = document.getElementById("mat-show-amc");
-      const mosAmcUsable = isQty && mosAvailable;
-      if (showMosCb) showMosCb.disabled = !mosAmcUsable;
-      if (showAmcCb) showAmcCb.disabled = !mosAmcUsable;
-      const mosLabelEl = document.getElementById("mat-show-mos-label");
-      const amcLabelEl = document.getElementById("mat-show-amc-label");
-      if (mosLabelEl) mosLabelEl.style.opacity = mosAmcUsable ? "1" : "0.4";
-      if (amcLabelEl) amcLabelEl.style.opacity = mosAmcUsable ? "1" : "0.4";
-      let showSoh = showSohCb ? showSohCb.checked : true;
-      let showMos = mosAmcUsable && showMosCb ? showMosCb.checked : false;
-      let showAmc = mosAmcUsable && showAmcCb ? showAmcCb.checked : false;
-      if (!showSoh && !showMos && !showAmc) {
-        showSoh = true;
-        if (showSohCb) showSohCb.checked = true;
-      }
-
       let materials = Object.entries(matPlantMap)
         .filter(([mat, info]) => {
           if (mgFilter && info.valType !== mgFilter) return false;
@@ -2757,18 +2703,15 @@ function renderBranch() {
             grandTotal   += plantData[pn];
             if (plantData[pn] > 0) branchCount++;
           });
-          // FEAT-BRANCH-SOH-MOS-AMC: MOS/AMC only make sense against a quantity,
-          // and only when AMC data has been loaded.
-          // computeMosAmcData() takes a plant->qty map (+ grand total qty) and
-          // returns matching plant->MOS and plant->AMC maps in one pass (AMC
-          // doesn't depend on qty, but is looked up alongside MOS since both
-          // need the same hub/branch AMC resolution below). Shared by the
-          // on-screen display (tied to whichever qty metric is selected) and
-          // the export-only version (always based on Total Quantity, so
-          // exporting MOS/AMC works even for materials with 0 in the currently
-          // selected metric).
-          function computeMosAmcData(qtyByPlant, grandQty) {
-            const mos = {}, amc = {};
+          // FEAT-BRANCH-MOS: MOS only makes sense against a quantity, and only
+          // when AMC data has been loaded.
+          // computeMosData() takes a plant->qty map (+ grand total qty) and
+          // returns the matching plant->MOS map. Shared by the on-screen MOS
+          // (tied to whichever qty metric is selected) and the export-only
+          // MOS (EXPORT-MOS-CB: always based on Total Quantity, so "Include
+          // MOS columns in export" works even when viewing a Value metric).
+          function computeMosData(qtyByPlant, grandQty) {
+            const out = {};
             const mosRow = mosByCode.get(mat);
             allPlantNames.forEach(pn => {
               // FIX-BRANCH-MOS-HUB: detect the hub by pn === centralName (already
@@ -2778,29 +2721,24 @@ function renderBranch() {
               // silently fails to flag the hub when there's no such AMC column.
               const isHubPlant = pn === centralName;
               const code = plantNameToCode[pn];
-              const plantAmc = mosRow ? branchAmcFor(mosRow, isHubPlant ? mosHubCode : code) : null;
-              amc[pn] = plantAmc;
-              mos[pn] = mosFor(qtyByPlant[pn] || 0, plantAmc);
+              const amc  = mosRow ? branchAmcFor(mosRow, isHubPlant ? mosHubCode : code) : null;
+              out[pn] = mosFor(qtyByPlant[pn] || 0, amc);
             });
             // National = network-wide qty (grandQty, already incl. HO01) ÷ branch-only AMC
             const nationalAmc = mosRow ? branchAmcFor(mosRow, mosHubCode) : null;
-            amc.__national__ = nationalAmc;
-            mos.__national__ = mosFor(grandQty, nationalAmc);
-            return { mos, amc };
+            out.__national__ = mosFor(grandQty, nationalAmc);
+            return out;
           }
 
-          const mosAmcOnScreen = (isQty && mosAvailable) ? computeMosAmcData(plantData, grandTotal) : null;
-          const mosData = mosAmcOnScreen ? mosAmcOnScreen.mos : null;
-          const amcData = mosAmcOnScreen ? mosAmcOnScreen.amc : null;
+          const mosData = (isQty && mosAvailable) ? computeMosData(plantData, grandTotal) : null;
 
-          // Export-only MOS/AMC, always computed from Total Quantity regardless
-          // of the currently selected metric, so exports stay meaningful no
-          // matter what the table is currently displaying.
-          let exportMosData = null, exportAmcData = null;
+          // EXPORT-MOS-CB: export-only MOS, always computed from Total Quantity
+          // regardless of the currently selected metric (qty or value), so it's
+          // available no matter what the table is currently displaying.
+          let exportMosData = null;
           if (mosAvailable) {
             if (isQty && metric === "TotalQty") {
               exportMosData = mosData; // already exactly this calc — reuse
-              exportAmcData = amcData;
             } else {
               const totalQtyByPlant = {};
               let totalQtyGrand = 0;
@@ -2809,13 +2747,11 @@ function renderBranch() {
                 totalQtyByPlant[pn] = tq;
                 totalQtyGrand += tq;
               });
-              const exp = computeMosAmcData(totalQtyByPlant, totalQtyGrand);
-              exportMosData = exp.mos;
-              exportAmcData = exp.amc;
+              exportMosData = computeMosData(totalQtyByPlant, totalQtyGrand);
             }
           }
 
-          return {mat, desc:info.desc, group:info.group, valType:info.valType, plantData, mosData, amcData, exportMosData, exportAmcData, grandTotal, branchCount};
+          return {mat, desc:info.desc, group:info.group, valType:info.valType, plantData, mosData, exportMosData, grandTotal, branchCount};
         });
 
       if (sortMode === "total_desc") materials.sort((a,b) => b.grandTotal - a.grandTotal);
