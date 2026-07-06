@@ -5,6 +5,33 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>EPSS Stock-Multiple — Inventory Management</title>
   <link rel="icon" type="image/png" href="epss-favicon.png" />
+  <script>
+    // ── Apply saved appearance/font BEFORE first paint to avoid a flash ──
+    (function () {
+      try {
+        var theme = localStorage.getItem('epss-theme');
+        if (theme === 'light' || theme === 'hc-black' || theme === 'hc-white' || theme === 'horizon') {
+          document.documentElement.setAttribute('data-theme', theme);
+        }
+        var fontFamilies = {
+          jakarta: "'Plus Jakarta Sans', 'Inter', sans-serif",
+          inter:   "'Inter', sans-serif",
+          system:  "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+          georgia: "Georgia, 'Times New Roman', serif",
+          mono:    "'IBM Plex Mono', monospace"
+        };
+        var fam = localStorage.getItem('epss-font-family');
+        if (fam && fontFamilies[fam]) {
+          document.documentElement.style.setProperty('--app-font-family', fontFamilies[fam]);
+        }
+        var fontSizes = { small: '13px', medium: '14px', large: '16px', xlarge: '18px' };
+        var size = localStorage.getItem('epss-font-size');
+        if (size && fontSizes[size]) {
+          document.documentElement.style.fontSize = fontSizes[size];
+        }
+      } catch (e) { /* ignore — private mode / storage unavailable */ }
+    })();
+  </script>
   <style>
     .brand-icon img { height: 38px; width: auto; display: block; }
     .landing-logo img { height: 86px; width: auto; display: block; margin: 0 auto 0.5rem; }
@@ -574,14 +601,82 @@
 
 </aside>
 
-<!-- Theme Toggle -->
-<button id="theme-toggle" title="Toggle dark / light mode">
-  <span class="theme-toggle-icon" id="theme-icon">🌙</span>
-  <span class="theme-toggle-label" id="theme-label">Dark</span>
-  <div class="theme-toggle-track">
-    <div class="theme-toggle-thumb"></div>
+<!-- Settings Menu -->
+<div id="settings-menu-wrap">
+  <button id="settings-menu-btn" type="button" title="Settings" aria-haspopup="true" aria-expanded="false">
+    <span id="settings-menu-icon">⚙️</span>
+  </button>
+
+  <div id="settings-menu-panel" role="menu" aria-label="Settings">
+
+    <div class="settings-panel-section">
+      <div class="settings-panel-label">Appearance</div>
+
+      <label class="settings-quick-toggle" for="settings-dark-light-switch">
+        <span>🌙 Dark</span>
+        <span class="settings-switch">
+          <input type="checkbox" id="settings-dark-light-switch">
+          <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
+        </span>
+        <span>☀️ Light</span>
+      </label>
+
+      <div class="settings-theme-grid" id="settings-theme-grid">
+        <button type="button" class="settings-theme-swatch" data-theme-value="belize-deep" title="Belize Deep">
+          <span class="settings-swatch-preview settings-swatch-belize-deep"></span><span>Belize Deep</span>
+        </button>
+        <button type="button" class="settings-theme-swatch" data-theme-value="belize" title="Belize">
+          <span class="settings-swatch-preview settings-swatch-belize"></span><span>Belize</span>
+        </button>
+        <button type="button" class="settings-theme-swatch" data-theme-value="hc-black" title="High Contrast Black">
+          <span class="settings-swatch-preview settings-swatch-hc-black"></span><span>HC Black</span>
+        </button>
+        <button type="button" class="settings-theme-swatch" data-theme-value="hc-white" title="High Contrast White">
+          <span class="settings-swatch-preview settings-swatch-hc-white"></span><span>HC White</span>
+        </button>
+        <button type="button" class="settings-theme-swatch" data-theme-value="horizon" title="Horizon" style="grid-column: 1 / -1;">
+          <span class="settings-swatch-preview settings-swatch-horizon"></span><span>Horizon</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="settings-panel-divider"></div>
+
+    <div class="settings-panel-section">
+      <div class="settings-panel-label">Font style &amp; size</div>
+
+      <div>
+        <label class="settings-field-label" for="settings-font-family">Font style</label>
+        <select id="settings-font-family" class="settings-select">
+          <option value="jakarta">Plus Jakarta Sans (default)</option>
+          <option value="inter">Inter</option>
+          <option value="system">System UI</option>
+          <option value="georgia">Georgia (serif)</option>
+          <option value="mono">IBM Plex Mono</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="settings-field-label" for="settings-font-size">Font size</label>
+        <select id="settings-font-size" class="settings-select">
+          <option value="small">Small</option>
+          <option value="medium">Medium (default)</option>
+          <option value="large">Large</option>
+          <option value="xlarge">Extra Large</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="settings-panel-divider"></div>
+
+    <div class="settings-panel-section">
+      <div class="settings-panel-label">Account</div>
+      <div id="settings-account-info" class="settings-account-info">Not signed in</div>
+      <button type="button" id="settings-signout-btn" class="settings-signout-btn">🚪 Sign out</button>
+    </div>
+
   </div>
-</button>
+</div>
 
 <!-- ═══════════════════════════ MAIN ═══════════════════════════ -->
 <main id="main">
@@ -1110,38 +1205,6 @@
 
 <script>
 // ── THEME TOGGLE ─────────────────────────────────────────────
-(function() {
-  const ROOT  = document.documentElement;
-  const btn   = document.getElementById('theme-toggle');
-  const icon  = document.getElementById('theme-icon');
-  const label = document.getElementById('theme-label');
-
-  function safeGet(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
-  function safeSet(k,v){ try { localStorage.setItem(k,v); } catch(e){} }
-
-  const saved = safeGet('epss-theme');
-  if (saved === 'light') {
-    ROOT.setAttribute('data-theme', 'light');
-    icon.textContent  = '☀️';
-    label.textContent = 'Light';
-  }
-
-  btn.addEventListener('click', () => {
-    const isLight = ROOT.getAttribute('data-theme') === 'light';
-    if (isLight) {
-      ROOT.removeAttribute('data-theme');
-      icon.textContent  = '🌙';
-      label.textContent = 'Dark';
-      safeSet('epss-theme', 'dark');
-    } else {
-      ROOT.setAttribute('data-theme', 'light');
-      icon.textContent  = '☀️';
-      label.textContent = 'Light';
-      safeSet('epss-theme', 'light');
-    }
-  });
-})();
-
 // ── MOBILE SIDEBAR TOGGLE ─────────────────────────────────────
 (function() {
   const sidebar  = document.getElementById('sidebar');
@@ -1281,6 +1344,7 @@ document.querySelectorAll('.overview-card[data-goto]').forEach(card => {
 </script>
 <!-- filters + script deferred: run after DOM is ready -->
 <script src="auth.js" defer></script>
+<script src="settings-menu.js" defer></script>
 <script src="idle-logout.js" defer></script>
 <script src="storage-sync.js" defer></script>
 <script src="filters.js" defer></script>
