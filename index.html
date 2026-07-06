@@ -298,6 +298,13 @@
     }
     .who-resp-view-at-risk:hover { background: rgba(217, 64, 64, 0.1); }
 
+    /* ── Admin-only upload controls — hidden for viewer accounts. Default
+       state (before role is confirmed by storage-sync.js) is hidden, then
+       revealed for admins once window.isAdmin is known; see storage-sync.js
+       applyUploadVisibility(). !important so this wins regardless of
+       whatever base rule sets .upload-btn's own display. ── */
+    .upload-admin-only.viewer-hidden { display: none !important; }
+
     /* ── 🕐 Shelf Life Look-up — modal is wider than who-resp's (batch table) ── */
     .shelf-modal {
       position: relative;
@@ -594,7 +601,7 @@
     </div>
     <div id="admin-upload-section">
       <div class="upload-label">📂 Inventory</div>
-      <label class="upload-btn" for="fileInput">
+      <label class="upload-btn upload-admin-only viewer-hidden" for="fileInput">
         <span id="uploadBtnText">📂 Upload Inventory Excel</span>
         <input type="file" id="fileInput" accept=".xlsx,.xls" />
       </label>
@@ -602,7 +609,7 @@
 
       <div class="sidebar-divider"></div>
       <div class="upload-label">⚗️ Material Standardization</div>
-      <label class="upload-btn mapping-upload-btn" for="mappingFileInput">
+      <label class="upload-btn mapping-upload-btn upload-admin-only viewer-hidden" for="mappingFileInput">
         <span id="mappingUploadBtnText">🗺️ Upload Mapping Excel</span>
         <input type="file" id="mappingFileInput" accept=".xlsx,.xls" />
       </label>
@@ -610,7 +617,7 @@
 
       <div class="sidebar-divider"></div>
       <div class="upload-label">📐 AMC (for MOS)</div>
-      <label class="upload-btn" style="background:var(--card-bg);border:1.5px solid var(--blue)" for="mosAmcFileInput">
+      <label class="upload-btn upload-admin-only viewer-hidden" style="background:var(--card-bg);border:1.5px solid var(--blue)" for="mosAmcFileInput">
         <span id="mosAmcUploadBtnText">📐 Upload AMC.xlsx</span>
         <input type="file" id="mosAmcFileInput" accept=".xlsx,.xls" />
       </label>
@@ -618,7 +625,7 @@
 
       <div class="sidebar-divider"></div>
       <div class="upload-label">🚚 Goods Receipt Log</div>
-      <label class="upload-btn incoming-upload-btn" for="incomingFileInput">
+      <label class="upload-btn incoming-upload-btn upload-admin-only viewer-hidden" for="incomingFileInput">
         <span id="incomingUploadBtnText">🚚 Upload Incoming GR.xlsx</span>
         <input type="file" id="incomingFileInput" accept=".xlsx,.xls" />
       </label>
