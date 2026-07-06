@@ -384,6 +384,10 @@
 
       const grEntry = batch ? grMap.get(`${code}|${batch}`) : null;
       const posting = grEntry ? grEntry.postingDate : null;
+      // Storage Location as of the original Goods Receipt (from the Incoming
+      // GR file), distinct from `storageLoc` above which is the CURRENT
+      // location from the inventory file — a batch is often moved after receipt.
+      const receivedStorageLoc = grEntry ? (grEntry.storageLoc || "") : "";
 
       const totalShelfDays = (!nonExpiring && prod && expiry) ? daysBetween(prod, expiry) : null;
       const remainAtReceiptDays = (!nonExpiring && posting && expiry) ? daysBetween(posting, expiry) : null;
@@ -394,7 +398,7 @@
       const daysLeftToday = (!nonExpiring && expiry) ? daysBetween(today, expiry) : null;
 
       out.push({
-        batch, plant, storageLoc, valType, qty,
+        batch, plant, storageLoc, receivedStorageLoc, valType, qty,
         prod, expiry, posting, nonExpiring,
         totalShelfDays, remainAtReceiptDays, remainPct, daysLeftToday,
         grMatched: !!grEntry,
@@ -605,7 +609,8 @@
       ...(multi ? [{ key: "material", label: "Material", cellClass: "col-mat-code-wrap" }] : []),
       { key: "batch",   label: "Batch", cellClass: "col-mat-code-wrap" },
       { key: "plant",   label: "Plant" },
-      { key: "storageLoc", label: "Storage Location" },
+      { key: "storageLoc", label: "Storage Location (Current)" },
+      { key: "receivedStorageLoc", label: "Storage Location (Received)", fmt: (v, r) => v ? v : (grLoaded ? "—" : "Upload GR file") },
       { key: "valType", label: "Valuation Type" },
       { key: "qty",     label: "Qty on Hand", fmt: fmtQty },
       { key: "prod",    label: "Production Date", fmt: v => v ? fmtLocalDate(v) : "—" },
@@ -653,7 +658,8 @@
     if (allBatches.length) {
       const exportCols = [
         ...(multi ? [{ key: "material", label: "Material" }] : []),
-        { key: "batch", label: "Batch" }, { key: "plant", label: "Plant" }, { key: "storageLoc", label: "Storage Location" },
+        { key: "batch", label: "Batch" }, { key: "plant", label: "Plant" }, { key: "storageLoc", label: "Storage Location (Current)" },
+        { key: "receivedStorageLoc", label: "Storage Location (Received)" },
         { key: "valType", label: "Valuation Type" },
         { key: "qty", label: "Qty on Hand", fmt: v => Number(v).toFixed(2) },
         { key: "prod", label: "Production Date", fmt: v => v ? fmtLocalDate(v) : "" },
