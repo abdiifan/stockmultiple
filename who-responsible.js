@@ -1,12 +1,16 @@
 // =============================================================================
 // PharmaTrack v2 — who-responsible.js
 // "🔎 Who's Responsible?" — sidebar search that answers, for any material:
-// who owns it, how much sits at the hub, how many branches carry it, and its
-// National MOS. Lives right under the nav menu and works on every page.
+// who owns it, how much sits at the hub, how many branches carry it, its
+// National MOS, and (when expiry-risk.js is loaded) how many at-risk items
+// across the WHOLE portfolio belong to that same responsible person.
 //
-// Requires: script.js (rawDf, personFilter, fmtQty, escHtml, renderPage)
+// Requires: script.js (rawDf, personFilter, fmtQty, fmtETB, escHtml, renderPage)
 //           mos.js (mosMerged, HUB_PLANT, buildMosSohMap, computeNationalMOS,
 //           fmtMosVal)
+// Optional: expiry-risk.js (buildRiskSnapshot) — powers the "At-Risk Items"
+//           tile and its "View at-risk items" button. Degrades gracefully
+//           (tile shows "—") if expiry-risk.js isn't loaded.
 // Must be loaded AFTER both script.js and mos.js.
 // =============================================================================
 
@@ -119,6 +123,38 @@
     activeIndex = idx;
   }
 
+  // ── At-risk items assigned to a given person ──────────────────────────────
+  // Cross-references expiry-risk.js's buildRiskSnapshot(): counts distinct
+  // materials (across all plants) that are currently AT RISK (more stock on
+  // hand than can be consumed before expiry) and assigned to `person`.
+  //
+  // buildRiskSnapshot() -> getMosFilteredRows() already applies whatever
+  // person is in the GLOBAL sidebar personFilter, which is usually NOT the
+  // person this card is about. We temporarily swap the global filter to
+  // exactly this person, read the snapshot, then restore it — safe because
+  // buildRiskSnapshot() is fully synchronous (no awaits in between).
+  function computeAtRiskForPerson(person) {
+    if (!person) return null;
+    if (typeof buildRiskSnapshot !== "function" || typeof personFilter === "undefined") return null;
+
+    const savedFilter = personFilter;
+    let snapshot;
+    try {
+      personFilter = new Set([person]);
+      snapshot = buildRiskSnapshot("", "", "");
+    } catch (e) {
+      console.error("[who-responsible] computeAtRiskForPerson failed:", e);
+      return null;
+    } finally {
+      personFilter = savedFilter;
+    }
+
+    const atRiskRows = snapshot.filter(r => r.atRisk);
+    const codes = new Set(atRiskRows.map(r => r.code));
+    const totalVal = atRiskRows.reduce((s, r) => s + (r.atRiskVal || 0), 0);
+    return { materialCount: codes.size, totalVal };
+  }
+
   // ── Build the data shown in the result card ────────────────────────────────
   function buildCardData(code) {
     const r = mosMerged.find(m => m.code === code);
@@ -144,6 +180,8 @@
 
     const nat = (typeof computeNationalMOS === "function") ? computeNationalMOS(r, sohMap) : null;
 
+    const atRisk = r.person ? computeAtRiskForPerson(r.person) : null;
+
     return {
       code: r.code,
       desc: r.desc,
@@ -152,6 +190,8 @@
       branchesWithStock: withStock,
       branchesTotal: branchPlants.size,
       nationalMos: nat ? nat.mos : null,
+      atRiskCount: atRisk ? atRisk.materialCount : null,
+      atRiskVal: atRisk ? atRisk.totalVal : null,
     };
   }
 
@@ -208,10 +248,18 @@
             <div class="who-resp-stat-label">📐 National MOS</div>
             <div class="who-resp-stat-value">${mosDisplay}</div>
           </div>
+          <div class="who-resp-stat">
+            <div class="who-resp-stat-label">⚠️ At-Risk Items (this person)</div>
+            <div class="who-resp-stat-value">${data.atRiskCount === null ? "—" : data.atRiskCount}</div>
+            ${data.atRiskCount ? `<div class="who-resp-stat-sub">${fmtETB(data.atRiskVal)} exposure</div>` : ""}
+          </div>
         </div>
         ${data.person
           ? `<button type="button" class="apply-btn who-resp-view-all" id="who-resp-view-all">View all of ${escHtml(data.person)}'s items →</button>`
           : `<div class="alert-info" style="margin-top:0.2rem">No responsible person on file for this material.</div>`}
+        ${(data.person && data.atRiskCount)
+          ? `<button type="button" class="apply-btn who-resp-view-at-risk" id="who-resp-view-at-risk">View ${escHtml(data.person)}'s at-risk items →</button>`
+          : ""}
       </div>
     `;
     document.body.appendChild(overlay);
@@ -223,6 +271,18 @@
       viewAllBtn.addEventListener("click", () => {
         applyPersonFilter(data.person);
         closeModal();
+      });
+    }
+    const viewAtRiskBtn = document.getElementById("who-resp-view-at-risk");
+    if (viewAtRiskBtn) {
+      viewAtRiskBtn.addEventListener("click", () => {
+        applyPersonFilter(data.person);
+        closeModal();
+        // Same "click the real nav button" convention script.js uses elsewhere
+        // (e.g. dashboard KPI card drilldowns) so currentPage/nav highlighting
+        // stay in sync, rather than calling renderPage() directly.
+        const navBtn = document.querySelector('.nav-btn[data-page="expiry-risk"]');
+        if (navBtn) navBtn.click();
       });
     }
     document.addEventListener("keydown", escHandler);
