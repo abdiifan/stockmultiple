@@ -587,6 +587,10 @@ body { display: flex; }
 .nav-group.expanded { margin-bottom: 0.55rem; padding-bottom: 0.2rem; }
 .nav-group.expanded .nav-group-title { border-bottom-color: transparent; margin-bottom: 0.1rem; }
 
+/* Data Source group — collapsible upload section (own content, not .nav-btn) */
+#data-source-group #admin-upload-section { display: none; }
+#data-source-group.expanded #admin-upload-section { display: block; }
+
 /* Quick Lookup sidebar entry: acts as a single nav link (no chevron, no
    inline expansion) — its tools now live on the main screen. */
 .quick-lookup-group .nav-group-title::after { content: none; }
