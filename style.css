@@ -53,6 +53,14 @@
   --radius-lg: 14px;
 
   --theme-transition: background 0.25s ease, color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+
+  /* Whole-app font controls — overridden inline (on <html>) by
+     settings-menu.js and persisted to localStorage under
+     epss-font-family / epss-font-size. Everything in the app either
+     inherits font-family from body or is declared font-family:inherit,
+     and font-size is set in rem almost everywhere, so changing these
+     two on the root cascades to the whole UI. */
+  --app-font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
 }
 
 /* ══════════════════════════════════════════════
@@ -92,13 +100,115 @@
 }
 
 /* ══════════════════════════════════════════════
+   HIGH CONTRAST BLACK
+   ══════════════════════════════════════════════ */
+[data-theme="hc-black"] {
+  --bg:        #000000;
+  --surface:   #0a0a0a;
+  --surface2:  #141414;
+  --surface3:  #1e1e1e;
+  --border:    #4a4a4a;
+  --border2:   #6b6b6b;
+  --text:      #ffffff;
+  --muted:     #d6d6d6;
+  --dim:       #9a9a9a;
+
+  --blue:      #66c3ff;
+  --blue-soft: #1b3a52;
+  --blue-glow: rgba(102,195,255,0.25);
+  --green:     #5cd97f;
+  --amber:     #ffcc4d;
+  --red:       #ff6b6b;
+  --purple:    #c9a6ff;
+
+  --risk-critical: #ff6b6b;
+  --risk-high:     #ffcc4d;
+  --risk-moderate: #ffe066;
+  --risk-low:      #5cd97f;
+
+  --accent-glow: rgba(102,195,255,0.2);
+  --kpi-hover-shadow: 0 12px 36px rgba(0,0,0,0.8);
+
+  --blue-glow-solid:   #12324a;
+  --accent-glow-solid: #14293a;
+}
+
+/* ══════════════════════════════════════════════
+   HIGH CONTRAST WHITE
+   ══════════════════════════════════════════════ */
+[data-theme="hc-white"] {
+  --bg:        #ffffff;
+  --surface:   #ffffff;
+  --surface2:  #ffffff;
+  --surface3:  #f0f0f0;
+  --border:    #000000;
+  --border2:   #000000;
+  --text:      #000000;
+  --muted:     #333333;
+  --dim:       #555555;
+
+  --blue:      #0043ce;
+  --blue-soft: #cfe0ff;
+  --blue-glow: rgba(0,67,206,0.14);
+  --green:     #05680d;
+  --amber:     #7a4900;
+  --red:       #a2191f;
+  --purple:    #5217a8;
+
+  --risk-critical: #a2191f;
+  --risk-high:     #7a4900;
+  --risk-moderate: #6e5700;
+  --risk-low:      #05680d;
+
+  --accent-glow: rgba(0,67,206,0.12);
+  --kpi-hover-shadow: 0 8px 24px rgba(0,0,0,0.25);
+
+  --blue-glow-solid:   #e2ecff;
+  --accent-glow-solid: #eef2ff;
+}
+
+/* ══════════════════════════════════════════════
+   HORIZON (modern, soft neutral)
+   ══════════════════════════════════════════════ */
+[data-theme="horizon"] {
+  --bg:        #eef1f4;
+  --surface:   #ffffff;
+  --surface2:  #f7f8fa;
+  --surface3:  #eceef2;
+  --border:    #dbe0e6;
+  --border2:   #c4cbd4;
+  --text:      #1a1f28;
+  --muted:     #5c6675;
+  --dim:       #8a93a1;
+
+  --blue:      #0854a0;
+  --blue-soft: #d7e6f5;
+  --blue-glow: rgba(8,84,160,0.10);
+  --green:     #1e7d4a;
+  --amber:     #a1650a;
+  --red:       #b93a2e;
+  --purple:    #6a4ba0;
+
+  --risk-critical: #b93a2e;
+  --risk-high:     #c07a1f;
+  --risk-moderate: #a1650a;
+  --risk-low:      #1e7d4a;
+
+  --accent-glow: rgba(8,84,160,0.08);
+  --kpi-hover-shadow: 0 8px 26px rgba(20,30,50,0.10);
+
+  --blue-glow-solid:   #e7eff8;
+  --accent-glow-solid: #eaeef4;
+}
+
+/* ══════════════════════════════════════════════
    BASE
    ══════════════════════════════════════════════ */
 html, body {
   height: 100%;
   background: var(--bg);
   color: var(--text);
-  font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+  font-family: var(--app-font-family);
   font-size: 14px;
   line-height: 1.55;
   transition: var(--theme-transition);
@@ -172,7 +282,7 @@ body { display: flex; }
   color: var(--blue);
   letter-spacing: -0.02em;
   line-height: 1.2;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: var(--app-font-family);
 }
 .brand-sub {
   font-size: 0.56rem;
@@ -208,51 +318,187 @@ body { display: flex; }
 #mobile-menu-btn:hover { border-color: var(--blue); background: var(--surface2); }
 
 /* ══════════════════════════════════════════════
-   THEME TOGGLE BUTTON
+   SETTINGS MENU (top-right gear → dropdown)
    ══════════════════════════════════════════════ */
-#theme-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+#settings-menu-wrap {
   position: fixed;
   top: 1rem;
   right: 1.5rem;
-  z-index: 200;
+  z-index: 300;
+}
+#settings-menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
   background: var(--surface2);
   border: 1px solid var(--border2);
   border-radius: var(--radius-md);
-  padding: 0.4rem 0.7rem;
   cursor: pointer;
-  font-family: inherit;
-  font-size: 0.7rem;
-  font-weight: 600;
+  font-size: 1.05rem;
   color: var(--muted);
   transition: var(--theme-transition), transform 0.12s;
-  gap: 0.5rem;
   box-shadow: 0 2px 10px rgba(0,0,0,0.2);
 }
-#theme-toggle:hover { border-color: var(--blue); color: var(--text); background: var(--surface3); }
-#theme-toggle:active { transform: scale(0.97); }
-.theme-toggle-track {
-  width: 32px; height: 17px;
+#settings-menu-btn:hover { border-color: var(--blue); color: var(--text); background: var(--surface3); }
+#settings-menu-btn:active { transform: scale(0.95); }
+#settings-menu-btn.open { border-color: var(--blue); color: var(--blue); }
+
+#settings-menu-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 296px;
+  max-height: calc(100vh - 5rem);
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 16px 44px rgba(0,0,0,0.35);
+  padding: 0.9rem;
+  display: none;
+  flex-direction: column;
+  gap: 0.9rem;
+  transform: translateY(-6px);
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+#settings-menu-panel.open { display: flex; transform: translateY(0); opacity: 1; }
+
+.settings-panel-section { display: flex; flex-direction: column; gap: 0.55rem; }
+.settings-panel-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.settings-panel-divider { height: 1px; background: var(--border); margin: 0 -0.1rem; }
+.settings-field-label {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+/* Quick Dark / Light switch */
+.settings-quick-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.76rem;
+  color: var(--muted);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.5rem 0.7rem;
+}
+.settings-switch { position: relative; display: inline-block; width: 36px; height: 19px; flex-shrink: 0; }
+.settings-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+.settings-switch-track {
+  position: absolute; inset: 0;
   background: var(--border2);
   border-radius: 999px;
-  position: relative;
-  transition: background 0.22s;
-  flex-shrink: 0;
+  transition: background 0.2s;
+  cursor: pointer;
 }
-[data-theme="light"] .theme-toggle-track { background: var(--blue); }
-.theme-toggle-thumb {
+.settings-switch input:checked ~ .settings-switch-track { background: var(--blue); }
+.settings-switch-thumb {
   position: absolute; top: 2px; left: 2px;
-  width: 13px; height: 13px;
+  width: 15px; height: 15px;
   background: var(--surface);
   border-radius: 50%;
-  transition: transform 0.22s, background 0.22s;
+  transition: transform 0.2s;
   box-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
-[data-theme="light"] .theme-toggle-thumb { transform: translateX(15px); background: #fff; }
-.theme-toggle-icon { font-size: 0.85rem; }
-.theme-toggle-label { flex: 1; }
+.settings-switch input:checked ~ .settings-switch-track .settings-switch-thumb { transform: translateX(17px); background: #fff; }
+
+/* Named theme swatch grid */
+.settings-theme-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+.settings-theme-swatch {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.5rem;
+  background: var(--surface2);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--muted);
+  transition: border-color 0.15s, color 0.15s;
+  text-align: left;
+}
+.settings-theme-swatch:hover { border-color: var(--blue); color: var(--text); }
+.settings-theme-swatch.active { border-color: var(--blue); color: var(--blue); background: var(--accent-glow); }
+.settings-swatch-preview {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1px solid rgba(0,0,0,0.15);
+}
+.settings-swatch-belize-deep { background: linear-gradient(135deg, #07090d 50%, #3d94e0 50%); }
+.settings-swatch-belize      { background: linear-gradient(135deg, #f0f3f8 50%, #0a6ed1 50%); }
+.settings-swatch-hc-black    { background: linear-gradient(135deg, #000000 50%, #66c3ff 50%); }
+.settings-swatch-hc-white    { background: linear-gradient(135deg, #ffffff 50%, #0043ce 50%); border-color: rgba(0,0,0,0.3); }
+.settings-swatch-horizon     { background: linear-gradient(135deg, #eef1f4 50%, #0854a0 50%); }
+
+/* Font style / size selects — mirror .person-filter-select look */
+.settings-select {
+  width: 100%;
+  padding: 5px 28px 5px 10px;
+  border-radius: 7px;
+  border: 1.5px solid var(--border);
+  background: var(--card-bg, var(--surface2));
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%237a97b0'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  transition: border-color 0.15s;
+}
+.settings-select:focus { border-color: var(--blue); }
+
+/* Account section */
+.settings-account-info {
+  font-size: 0.74rem;
+  color: var(--muted);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.65rem;
+  word-break: break-word;
+}
+.settings-signout-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  background: none;
+  border: 1.5px solid var(--red);
+  color: var(--red);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.settings-signout-btn:hover { background: var(--red); color: #fff; }
 
 /* ══════════════════════════════════════════════
    NAV
@@ -470,7 +716,7 @@ body { display: flex; }
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: var(--app-font-family);
   line-height: 1.1;
 }
 .landing-desc {
@@ -524,7 +770,7 @@ body { display: flex; }
   font-weight: 800;
   letter-spacing: -0.02em;
   margin-bottom: 0.2rem;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: var(--app-font-family);
 }
 .page-subtitle { color: var(--muted); font-size: 0.77rem; font-weight: 400; }
 .page-actions  { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
@@ -1482,9 +1728,13 @@ td.col-mat-desc-wrap { max-width: 280px; white-space: normal; line-height: 1.4; 
     padding: 4rem 1rem 1.5rem;
   }
 
-  #theme-toggle {
+  #settings-menu-wrap {
     top: 1rem;
     right: 1rem;
+  }
+  #settings-menu-panel {
+    width: calc(100vw - 2rem);
+    max-width: 320px;
   }
 
   .landing-title { font-size: 1.8rem; }
@@ -1539,10 +1789,6 @@ td.col-mat-desc-wrap { max-width: 280px; white-space: normal; line-height: 1.4; 
      instead of risking horizontal overflow off the viewport edge */
   .ms-dropdown { left: 0; right: 0; width: 100%; min-width: 0; max-width: none; }
   .filter-bar .ms-wrap .ms-dropdown { width: 100%; }
-
-  /* Compact theme toggle — keep the switch, drop the label to save space */
-  #theme-toggle { padding: 0.4rem 0.55rem; gap: 0.35rem; }
-  .theme-toggle-label { display: none; }
 
   /* Denser KPI cards on phones */
   .kpi-card { padding: 0.85rem 0.95rem 0.8rem; }
