@@ -339,6 +339,20 @@ async function pullFileFromSupabase(slot) {
   renderSyncInfo(slot);
 }
 
+// ── Hide upload controls for viewers ──────────────────────────────────────
+// Only the clickable label+input is hidden (class "upload-admin-only") —
+// the upload-label heading and the #<slot>Status / sync-info row stay
+// visible for everyone, so viewers can still see what's loaded and refresh
+// it, they just can't pick a local file that would only display for them
+// (pushFileToSupabase never runs for non-admins anyway; hiding the control
+// avoids a viewer ever landing in that confusing local-only state).
+function applyUploadVisibility() {
+  const isAdmin = !!window.isAdmin;
+  document.querySelectorAll(".upload-admin-only").forEach(el => {
+    el.classList.toggle("viewer-hidden", !isAdmin);
+  });
+}
+
 // ── Wire up: intercept admin's own file picks to also push to Supabase ──
 // NOTE: script.js resets input.value = "" right after reading the file in
 // its own (bubble-phase) change listener. We use { capture: true } here so
@@ -404,6 +418,7 @@ function attachRealtimeSync() {
 
 // ── On auth ready: load whatever's already in Supabase for everyone ──
 document.addEventListener("epss-auth-ready", async () => {
+  applyUploadVisibility();
   attachAdminUploadSync();
   attachRealtimeSync();
 
