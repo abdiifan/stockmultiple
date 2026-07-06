@@ -175,7 +175,7 @@
 
           // Apply the same exclusion rules used everywhere else (filters.js),
           // so Project Stock / non-medical / excluded-location materials never
-          // surface in "New Incoming Stock" even though this file is loaded
+          // surface in "New Received Stock" even though this file is loaded
           // separately from the main inventory upload. "Material" is always
           // present; the other columns are only checked when the GR export
           // happens to include them.
@@ -673,7 +673,7 @@
     document.addEventListener("keydown", escHandler);
   }
 
-  // ── 🆕 New Incoming Stock ───────────────────────────────────────────────────
+  // ── 🆕 New Received Stock ───────────────────────────────────────────────────
   // Lists every batch whose GR Posting Date (from the uploaded Incoming GR.xlsx)
   // falls inside a chosen window — "last N days" by default, or an explicit
   // From/To date range. Cross-references rawDf (by Material+Batch) to show
@@ -824,10 +824,10 @@
     overlay.id = "incoming-modal-overlay";
     overlay.className = "who-resp-modal-overlay";
     overlay.innerHTML = `
-      <div class="shelf-modal" role="dialog" aria-modal="true" aria-label="New incoming stock">
+      <div class="shelf-modal" role="dialog" aria-modal="true" aria-label="New Received Stock">
         <button class="who-resp-modal-close" id="incoming-modal-close" type="button" aria-label="Close">✕</button>
         <div class="who-resp-modal-header">
-          <div class="who-resp-modal-code">🆕 New Incoming Stock</div>
+          <div class="who-resp-modal-code">🆕 New Received Stock</div>
           <div class="who-resp-modal-desc">${escHtml(fmtLocalDate(fromDate))} – ${escHtml(fmtLocalDate(toDate))}</div>
         </div>
         <div class="shelf-kpi-row">${kpis.join("")}</div>
@@ -839,7 +839,7 @@
 
     document.getElementById("incoming-new-table").innerHTML = rows.length
       ? buildTable(rows, cols, r => r.inStock ? "" : "row-red", "", { id: "incoming-new-export", title: "" })
-      : '<div class="alert-info" style="margin:0.5rem 0">No new incoming stock in this window.</div>';
+      : '<div class="alert-info" style="margin:0.5rem 0">No New Received Stock in this window.</div>';
 
     if (rows.length) {
       const exportCols = [
