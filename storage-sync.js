@@ -71,6 +71,118 @@ function waitForParseSettle(statusId, timeoutMs = 20000) {
 
 const BUCKET = "inventory-files";
 
+// ── Relative time formatting (e.g. "3h ago", "just now") ──
+function formatRelativeTime(isoOrDate) {
+  if (!isoOrDate) return null;
+  const then = isoOrDate instanceof Date ? isoOrDate : new Date(isoOrDate);
+  if (isNaN(then.getTime())) return null;
+  const diffMs = Date.now() - then.getTime();
+  if (diffMs < 0) return "just now";
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1)   return "just now";
+  if (mins < 60)  return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24)   return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30)  return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  return `${Math.floor(months / 12)}y ago`;
+}
+
+// ── Sync-info row: "Last synced Xh ago" + a per-slot "Refresh now" button ──
+// Rendered as a sibling of the slot's existing #<statusId> element (never
+// inside it — script.js/mos.js/shelf-life.js's loaders overwrite that
+// element's innerHTML wholesale on every load, which would silently wipe
+// out anything we nested in there).
+const slotMeta = {}; // slot -> { uploadedAt: Date|null, filename: string|null }
+
+function ensureSyncInfoStyles() {
+  if (document.getElementById("sync-info-styles")) return;
+  const style = document.createElement("style");
+  style.id = "sync-info-styles";
+  style.textContent = `
+    .sync-info-row {
+      display: flex; align-items: center; gap: 8px;
+      margin-top: 4px; font-size: 0.72rem; opacity: 0.75;
+    }
+    .sync-info-row .sync-info-text { flex: 1; min-width: 0; }
+    .sync-info-refresh-btn {
+      background: none; border: 1px solid currentColor; border-radius: 6px;
+      padding: 2px 8px; font-size: 0.7rem; cursor: pointer; opacity: 0.85;
+      color: inherit; flex-shrink: 0; line-height: 1.4;
+    }
+    .sync-info-refresh-btn:hover { opacity: 1; }
+    .sync-info-refresh-btn:disabled { opacity: 0.4; cursor: default; }
+  `;
+  document.head.appendChild(style);
+}
+
+function ensureSyncInfoEl(slot) {
+  const { statusId } = FILE_SLOTS[slot];
+  const wrapId = `${statusId}-sync-info`;
+  let el = document.getElementById(wrapId);
+  if (el) return el;
+
+  const statusEl = document.getElementById(statusId);
+  if (!statusEl || !statusEl.parentNode) return null;
+
+  ensureSyncInfoStyles();
+  el = document.createElement("div");
+  el.id = wrapId;
+  el.className = "sync-info-row";
+  el.innerHTML = `<span class="sync-info-text"></span><button type="button" class="sync-info-refresh-btn">🔄 Refresh</button>`;
+  statusEl.insertAdjacentElement("afterend", el);
+
+  el.querySelector(".sync-info-refresh-btn").addEventListener("click", () => manualRefresh(slot));
+  return el;
+}
+
+function renderSyncInfo(slot) {
+  const el = ensureSyncInfoEl(slot);
+  if (!el) return;
+  const meta = slotMeta[slot];
+  const textEl = el.querySelector(".sync-info-text");
+  const btnEl  = el.querySelector(".sync-info-refresh-btn");
+  if (!meta || !meta.uploadedAt) {
+    textEl.textContent = "Not yet synced";
+  } else {
+    const rel = formatRelativeTime(meta.uploadedAt);
+    textEl.textContent = `Last synced ${rel || "—"}${meta.filename ? ` · ${meta.filename}` : ""}`;
+    textEl.title = meta.uploadedAt.toLocaleString();
+  }
+  if (btnEl) btnEl.disabled = false;
+}
+
+// Keep the "Xh ago" text fresh without re-fetching, since the underlying
+// timestamp doesn't change between real syncs.
+setInterval(() => {
+  Object.keys(slotMeta).forEach(slot => { if (slotMeta[slot] && slotMeta[slot].uploadedAt) renderSyncInfo(slot); });
+}, 60 * 1000);
+
+async function fetchSlotMetadata(slot) {
+  const sc = window.supabaseClient;
+  const { path } = FILE_SLOTS[slot];
+  try {
+    const { data, error } = await sc.from("app_files").select("uploaded_at, filename").eq("slot", slot).eq("storage_path", path).maybeSingle();
+    if (error || !data) return null;
+    return { uploadedAt: data.uploaded_at ? new Date(data.uploaded_at) : null, filename: data.filename || null };
+  } catch (e) {
+    console.error(`[storage-sync] Metadata fetch failed (${slot}):`, e);
+    return null;
+  }
+}
+
+async function manualRefresh(slot) {
+  const el = ensureSyncInfoEl(slot);
+  const btnEl = el && el.querySelector(".sync-info-refresh-btn");
+  if (btnEl) { btnEl.disabled = true; btnEl.textContent = "⏳ …"; }
+  await pullFileFromSupabase(slot);
+  if (btnEl) { btnEl.disabled = false; btnEl.textContent = "🔄 Refresh"; }
+  const label = slot.charAt(0).toUpperCase() + slot.slice(1);
+  showToast(`✓ ${label} refreshed`, "ok");
+}
+
 // ── Toast notifications ──
 function ensureToastStyles() {
   if (document.getElementById("sync-toast-styles")) return;
@@ -151,12 +263,17 @@ async function pushFileToSupabase(slot, file) {
   }
 
   showToast(`✓ ${label} synced — all users will see this on refresh`, "ok");
+
+  slotMeta[slot] = { uploadedAt: new Date(), filename: file.name };
+  renderSyncInfo(slot);
 }
 
 // ── Pull: called on app load for every signed-in user ──
 async function pullFileFromSupabase(slot) {
   const { path, inputId, statusId } = FILE_SLOTS[slot];
   const sc = window.supabaseClient;
+
+  renderSyncInfo(slot); // show whatever we know so far (placeholder on first load)
 
   // FIX-CACHE: storage.download() can be served from browser/CDN HTTP cache
   // for up to Supabase's default cacheControl (3600s), since every upload
@@ -173,6 +290,8 @@ async function pullFileFromSupabase(slot) {
     if (signErr.statusCode !== "404" && !/not.?found/i.test(signErr.message || "")) {
       console.error(`[storage-sync] Pull failed (${slot}):`, signErr);
     }
+    slotMeta[slot] = null;
+    renderSyncInfo(slot);
     return;
   }
   const bustedUrl = signed.signedUrl + (signed.signedUrl.includes("?") ? "&" : "?") + "_cb=" + Date.now();
@@ -181,11 +300,15 @@ async function pullFileFromSupabase(slot) {
     const res = await fetch(bustedUrl, { cache: "no-store" });
     if (!res.ok) {
       if (res.status !== 404) console.error(`[storage-sync] Pull fetch failed (${slot}): HTTP ${res.status}`);
+      slotMeta[slot] = null;
+      renderSyncInfo(slot);
       return;
     }
     blob = await res.blob();
   } catch (err) {
     console.error(`[storage-sync] Pull fetch failed (${slot}):`, err);
+    slotMeta[slot] = null;
+    renderSyncInfo(slot);
     return;
   }
 
@@ -211,6 +334,9 @@ async function pullFileFromSupabase(slot) {
   // slot's async Excel parse has actually finished — see waitForParseSettle
   // above for why this matters.
   if (statusId) await waitForParseSettle(statusId);
+
+  slotMeta[slot] = await fetchSlotMetadata(slot);
+  renderSyncInfo(slot);
 }
 
 // ── Wire up: intercept admin's own file picks to also push to Supabase ──
