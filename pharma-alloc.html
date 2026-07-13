@@ -1575,31 +1575,24 @@
               <tr>
                 <th class="sortable" data-col="materialCode" onclick="sortTable('materialCode')">Material Code <span class="sort-icon">↕</span></th>
                 <th class="sortable" data-col="description" onclick="sortTable('description')">Description <span class="sort-icon">↕</span></th>
-                <th class="sortable" data-col="materialType" onclick="sortTable('materialType')">Type <span class="sort-icon">↕</span></th>
+                <th class="sortable" data-col="materialType" onclick="sortTable('materialType')">Material Type <span class="sort-icon">↕</span></th>
                 <th class="sortable" data-col="branchSOH" onclick="sortTable('branchSOH')">Branch SOH <span class="sort-icon">↕</span></th>
                 <th class="sortable" data-col="centralSOH" onclick="sortTable('centralSOH')">Central SOH <span class="sort-icon">↕</span></th>
                 <th class="sortable" data-col="nationalSOH" onclick="sortTable('nationalSOH')">National SOH <span class="sort-icon">↕</span></th>
-                <th class="sortable" data-col="amc" onclick="sortTable('amc')">AMC <span class="sort-icon">↕</span></th>
-                <th class="sortable" data-col="mosCentral" onclick="sortTable('mosCentral')">MOS Central <span class="sort-icon">↕</span></th>
-                <th class="sortable" data-col="branchForecast" onclick="sortTable('branchForecast')">Forecast Qty <span class="sort-icon">↕</span></th>
+                <th class="sortable" data-col="branchForecast" onclick="sortTable('branchForecast')">Branch Forecast Qty <span class="sort-icon">↕</span></th>
                 <th class="sortable" data-col="deliveredQty" onclick="sortTable('deliveredQty')">Delivered Qty <span class="sort-icon">↕</span></th>
                 <th class="sortable" data-col="fillRateQtyPct" onclick="sortTable('fillRateQtyPct')">Fill Rate Qty % <span class="sort-icon">↕</span></th>
-                <th class="sortable" data-col="branchForecastValue" onclick="sortTable('branchForecastValue')">Forecast Value <span class="sort-icon">↕</span></th>
-                <th class="sortable" data-col="branchDeliveredValue" onclick="sortTable('branchDeliveredValue')">Delivered Value <span class="sort-icon">↕</span></th>
-                <th class="sortable" data-col="fillRateValuePct" onclick="sortTable('fillRateValuePct')">Fill Rate Value % <span class="sort-icon">↕</span></th>
                 <th class="sortable" data-col="branchRemainingNeed" onclick="sortTable('branchRemainingNeed')">Branch Remaining Need <span class="sort-icon">↕</span></th>
                 <th class="sortable" data-col="nationalRemainingNeed" onclick="sortTable('nationalRemainingNeed')">National Remaining Need <span class="sort-icon">↕</span></th>
-                <th class="sortable" data-col="recommendedAllocation" onclick="sortTable('recommendedAllocation')">Rec. Allocation <span class="sort-icon">↕</span></th>
-                <th class="sortable" data-col="allocationPct" onclick="sortTable('allocationPct')">Alloc % <span class="sort-icon">↕</span></th>
-                <th class="sortable" data-col="allocationStatus" onclick="sortTable('allocationStatus')">Status <span class="sort-icon">↕</span></th>
-                <th class="sortable" data-col="overstockFlag" onclick="sortTable('overstockFlag')">Overstock Flag <span class="sort-icon">↕</span></th>
+                <th class="sortable" data-col="recommendedAllocation" onclick="sortTable('recommendedAllocation')">Recommended Allocation <span class="sort-icon">↕</span></th>
+                <th class="sortable" data-col="allocationStatus" onclick="sortTable('allocationStatus')">Allocation Status <span class="sort-icon">↕</span></th>
                 <th>Comments</th>
                 <th class="sortable" data-col="suggestedRedistribution" onclick="sortTable('suggestedRedistribution')">Suggested Redistribution <span class="sort-icon">↕</span></th>
               </tr>
             </thead>
             <tbody id="allocationTbody">
               <tr>
-                <td colspan="22" class="empty-state">
+                <td colspan="15" class="empty-state">
                   <div class="empty-icon">📋</div>
                   <p>No allocation data yet.</p>
                   <p>Go to <strong>Data Input</strong> to load your source data.</p>
@@ -1665,14 +1658,15 @@
               <tr><td>Branch SOH</td><td>Col 4 — Branch CDSS</td></tr>
               <tr><td>Central SOH</td><td>Col 4 — Central Warehouse</td></tr>
               <tr><td>National SOH</td><td>Col 4 — National Branches</td></tr>
-              <tr><td>AMC</td><td>Col 5 — Central Warehouse</td></tr>
-              <tr><td>MOS Central</td><td>= Central SOH / AMC</td></tr>
-              <tr><td>Branch Forecast</td><td>Col 7 — Branch CDSS</td></tr>
+              <tr><td>Branch Forecast Qty</td><td>Col 7 — Branch CDSS</td></tr>
               <tr><td>Delivered Qty</td><td>Col 8 — Branch CDSS</td></tr>
-              <tr><td>Fill Rate Qty %</td><td>Col 9 — Auto-calc (Delivered/Forecast)</td></tr>
-              <tr><td>Forecast Value</td><td>Col 10 — Branch CDSS</td></tr>
-              <tr><td>Delivered Value</td><td>Col 11 — Branch CDSS</td></tr>
-              <tr><td>Fill Rate Value %</td><td>Col 12 — Auto-calc (Del.Val/Fore.Val)</td></tr>
+              <tr><td>Fill Rate Qty %</td><td>Auto-calc (Delivered/Forecast)</td></tr>
+              <tr><td>Branch Remaining Need</td><td>Auto-calc (Forecast − Delivered)</td></tr>
+              <tr><td>National Remaining Need</td><td>Auto-calc (sum across branches)</td></tr>
+              <tr><td>Recommended Allocation</td><td>Auto-calc (need vs. available stock)</td></tr>
+              <tr><td>Allocation Status</td><td>Auto-calc (Full/Partial/Rationed/etc.)</td></tr>
+              <tr><td>Comments</td><td>Branch CDSS / manual entry</td></tr>
+              <tr><td>Suggested Redistribution</td><td>Auto-calc (from overstock branches)</td></tr>
             </table>
           </div>
         </div>
