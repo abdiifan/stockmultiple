@@ -2517,8 +2517,12 @@ function renderBranch() {
     wrap.innerHTML = `
       <div id="branch-chart-wrap" style="margin-bottom:1.2rem"></div>
       <div id="branch-table-wrap-inner" style="margin-bottom:1rem">${buildTable(compareDf, bCols, r => r.PlantName === centralName ? "row-blue" : "")}</div>`;
-    document.getElementById("btn-dl-branch-csv").onclick  = () => downloadCSV(compareDf,   bCols, "branch_comparison.csv");
-    document.getElementById("btn-dl-branch-xlsx").onclick = () => downloadExcel(compareDf, bCols, "branch_comparison.xlsx");
+    // Export always includes every branch (branchAgg), independent of whatever
+    // subset is currently checked in the "Compare branches" filter — the
+    // on-screen table (compareDf) still respects that filter, only the
+    // download does not.
+    document.getElementById("btn-dl-branch-csv").onclick  = () => downloadCSV(branchAgg,   bCols, "branch_comparison.csv");
+    document.getElementById("btn-dl-branch-xlsx").onclick = () => downloadExcel(branchAgg, bCols, "branch_comparison.xlsx");
 
     // BUG-BRANCH-CHART FIX: render a grouped bar chart comparing branches by value category
     const sorted = [...compareDf].sort((a,b) => {
