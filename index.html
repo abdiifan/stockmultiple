@@ -584,7 +584,7 @@
   <div class="sidebar-divider"></div>
   <div class="nav-group expanded" data-group="pharma-alloc" style="margin-bottom:0">
     <a class="nav-btn" href="pharma-alloc.html" target="_blank" rel="noopener" style="text-decoration:none;">
-      <span class="nav-icon">🧮</span> AllocationTool <span style="margin-left:auto;font-size:0.7rem;opacity:0.55;">↗</span>
+      <span class="nav-icon">🧮</span> PharmaAlloc <span style="margin-left:auto;font-size:0.7rem;opacity:0.55;">↗</span>
     </a>
   </div>
 
@@ -593,9 +593,9 @@
     <div class="nav-group-title"><span class="nav-group-icon">🔍</span> Quick Lookup</div>
   </div>
 
-  <!-- Upload controls — always visible, grouped under a collapsible Data Source title -->
-  <div class="sidebar-divider"></div>
-  <div class="nav-group expanded" id="data-source-group">
+  <!-- Upload controls — admin only; whole group (title + divider) hides for viewers -->
+  <div class="sidebar-divider upload-admin-only viewer-hidden"></div>
+  <div class="nav-group expanded upload-admin-only viewer-hidden" id="data-source-group">
     <div class="nav-group-title" id="data-source-title" role="button" tabindex="0" aria-expanded="true" aria-controls="admin-upload-section">
       <span class="nav-group-icon">📁</span> Data Source
     </div>
