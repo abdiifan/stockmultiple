@@ -137,10 +137,83 @@ function buildRiskSnapshot(typeFilter, searchQ, plantFilter) {
   return out;
 }
 
+// ── ECONOMIC REDISTRIBUTION CORRIDORS ─────────────────────────────────────────
+// Ordered "sister branch" partners based on regional/economic proximity.
+// When an item is at risk at a plant, we try placing it with these partner
+// plants FIRST — one partner at a time, in the order listed below, filling
+// each partner's headroom before moving to the next — and only fall back to
+// the general national pool (proportional-by-AMC across all other eligible
+// plants, same logic as before) once every listed partner for that plant
+// has no headroom left.
+//
+// The redistribution engine otherwise only deals in plant CODES (from the
+// AMC file), which don't carry city names, so matching here is done against
+// each plant's display name ("Plant Name" from the inventory file),
+// case-insensitively, as a substring match.
+const ECONOMIC_PARTNERS = {
+  "gambella":      ["jimma"],
+  "jimma":         ["gambella"],
+  "nekemte":       ["assosa"],
+  "assosa":        ["nekemte"],
+  "shire":         ["mekelle"],
+  "mekelle":       ["shire"],
+  "addis ababa 1": ["addis ababa 2", "adama"],
+  "addis ababa 2": ["addis ababa 1"],
+  "negele borena": ["hawassa"],
+  "hawassa":       ["negele borena", "arba minch", "adama"],
+  "arba minch":    ["hawassa"],
+  "bahir dar":     ["gondar"],
+  "gondar":        ["bahir dar"],
+  "semera":        ["dessie"],
+  "dessie":        ["semera"],
+  "jijiga":        ["kebri dehar"],
+  "kebri dehar":   ["jijiga"],
+  "adama":         ["addis ababa 1", "hawassa"],
+};
+
+// Plant CODE → Plant NAME, built from rawDf (first non-empty name wins per
+// code). Needed because redistribution rows only carry plant codes.
+function buildPlantNameMap() {
+  const map = new Map();
+  const base = typeof rawDf !== "undefined" ? rawDf : [];
+  for (const row of base) {
+    const code = String(row["Plant"] || "").trim().toUpperCase();
+    const name = String(row["Plant Name"] || "").trim();
+    if (code && name && !map.has(code)) map.set(code, name);
+  }
+  return map;
+}
+
+// Returns the ECONOMIC_PARTNERS key that best matches a plant's display
+// name (longest matching key wins, so "addis ababa 1" isn't shadowed by a
+// shorter accidental match), or null if this plant isn't in any corridor.
+function economicKeyForPlantName(plantName) {
+  const p = String(plantName || "").trim().toLowerCase();
+  if (!p) return null;
+  let best = null;
+  for (const key of Object.keys(ECONOMIC_PARTNERS)) {
+    if (p.includes(key) && (!best || key.length > best.length)) best = key;
+  }
+  return best;
+}
+
+function plantNameMatchesPartner(plantName, partnerKey) {
+  return String(plantName || "").trim().toLowerCase().includes(partnerKey);
+}
+
 // ── REDISTRIBUTION ENGINE ─────────────────────────────────────────────────────
 // Works per material code: sources = at-risk rows (any plant incl. HO01),
 // recipients = non-at-risk rows at OTHER plants for the SAME material,
 // excluding HO01 as a recipient.
+//
+// Each source's excess is placed in two tiers:
+//   TIER 1 (route: "economic") — the source plant's listed economic-corridor
+//     partners, tried one at a time in order; each partner absorbs as much
+//     as its headroom allows before the next partner is tried.
+//   TIER 2 (route: "national") — whatever's left after tier 1 (or the whole
+//     amount, if the plant has no listed partners) is split proportionally
+//     by AMC across all other eligible recipients, same as before.
+// Anything still unplaced after both tiers becomes RESIDUAL RISK.
 function computeRedistribution(snapshot) {
   const byCode = new Map();
   for (const row of snapshot) {
@@ -148,8 +221,58 @@ function computeRedistribution(snapshot) {
     byCode.get(row.code).push(row);
   }
 
-  const transfers = [];          // individual source→recipient moves
-  const residualByKey = new Map(); // `${code}|${plant}` → remaining unplaced qty/val
+  const plantNameMap  = buildPlantNameMap();
+  const transfers      = [];          // individual source→recipient moves
+  const residualByKey  = new Map();   // `${code}|${plant}` → remaining unplaced qty/val
+
+  // Proportionally allocates `toPlace` units of `src`'s excess across `pool`
+  // (eligible recipients with remaining headroom), capping each recipient at
+  // its own headroom, re-allocating any leftover headroom across additional
+  // rounds until either the amount is fully placed or the pool is exhausted.
+  // Mutates each recipient's `.headroom` in place and pushes transfer
+  // records tagged with `route`. Returns whatever couldn't be placed.
+  function allocate(src, code, pool, toPlace, route) {
+    pool = pool.filter(rc => rc.headroom > 0);
+    while (pool.length && toPlace > 1e-9) {
+      const totalAmc = pool.reduce((s, rc) => s + rc.amc, 0);
+      let placedThisRound = 0;
+
+      for (const rc of pool) {
+        const share = totalAmc > 0 ? (rc.amc / totalAmc) * toPlace : toPlace / pool.length;
+        const alloc = Math.min(share, rc.headroom);
+        if (alloc <= 0) continue;
+
+        transfers.push({
+          code, desc: src.desc, type: src.type,
+          fromPlant: src.plant, fromIsHub: src.isHub,
+          toPlant: rc.plant,
+          qty: alloc, val: alloc * src.unitVal,
+          toMosAfter: rc.amc > 0 ? (rc.soh + alloc) / rc.amc : null,
+          toShelfLeftMo: rc.shelfLeftMo,
+          route,
+        });
+        rc.headroom -= alloc;
+        placedThisRound += alloc;
+      }
+
+      toPlace -= placedThisRound;
+      pool = pool.filter(rc => rc.headroom > 1e-9);
+      // Safety valve: if a round places nothing (shouldn't happen given the
+      // headroom>0 filter, but guards against float edge cases), stop.
+      if (placedThisRound <= 1e-9) break;
+    }
+    return Math.max(0, toPlace);
+  }
+
+  function stashResidual(code, src, qty) {
+    const key = `${code}|${src.plant}`;
+    residualByKey.set(key, {
+      code, desc: src.desc, type: src.type,
+      plant: src.plant, isHub: src.isHub,
+      qty, val: qty * src.unitVal,
+      unitVal: src.unitVal,
+    });
+  }
 
   for (const [code, rows] of byCode) {
     const sources    = rows.filter(r => r.atRisk && r.atRiskQty > 0)
@@ -161,57 +284,33 @@ function computeRedistribution(snapshot) {
       const eligible = recipients.filter(rc => rc.plant !== src.plant);
       let remaining = src.atRiskQty;
 
-      if (eligible.length && remaining > 0) {
-        // Iterative proportional-by-AMC allocation, capped at each recipient's
-        // remaining headroom. A single pass can strand usable headroom when one
-        // recipient's cap is hit early (its unused share doesn't automatically
-        // flow to recipients who still have room) — so we keep re-allocating
-        // the leftover among recipients that still have headroom until either
-        // the source's excess is fully placed or no recipient has room left.
-        let pool = eligible.filter(rc => rc.headroom > 0);
-        let toPlace = remaining;
+      if (!eligible.length || remaining <= 1e-9) {
+        if (remaining > 0) stashResidual(code, src, remaining);
+        continue;
+      }
 
-        while (pool.length && toPlace > 1e-9) {
-          const totalAmc = pool.reduce((s, rc) => s + rc.amc, 0);
-          let placedThisRound = 0;
-
-          for (const rc of pool) {
-            const share = totalAmc > 0 ? (rc.amc / totalAmc) * toPlace : toPlace / pool.length;
-            const alloc = Math.min(share, rc.headroom);
-            if (alloc <= 0) continue;
-
-            transfers.push({
-              code, desc: src.desc, type: src.type,
-              fromPlant: src.plant, fromIsHub: src.isHub,
-              toPlant: rc.plant,
-              qty: alloc, val: alloc * src.unitVal,
-              toMosAfter: rc.amc > 0 ? (rc.soh + alloc) / rc.amc : null,
-              toShelfLeftMo: rc.shelfLeftMo,
-            });
-            rc.headroom -= alloc;
-            placedThisRound += alloc;
-          }
-
-          toPlace -= placedThisRound;
-          pool = pool.filter(rc => rc.headroom > 1e-9);
-          // Safety valve: if a round places nothing (shouldn't happen given the
-          // headroom>0 filter, but guards against float edge cases), stop.
-          if (placedThisRound <= 1e-9) break;
+      // ── TIER 1: economic-corridor partners, one at a time, in order ──
+      const srcName = plantNameMap.get(src.plant) || "";
+      const econKey = economicKeyForPlantName(srcName);
+      if (econKey) {
+        for (const partnerKey of ECONOMIC_PARTNERS[econKey]) {
+          if (remaining <= 1e-9) break;
+          const partnerPool = eligible.filter(rc =>
+            rc.headroom > 0 && plantNameMatchesPartner(plantNameMap.get(rc.plant) || "", partnerKey)
+          );
+          if (!partnerPool.length) continue;
+          remaining = allocate(src, code, partnerPool, remaining, "economic");
         }
+      }
 
-        remaining = Math.max(0, toPlace);
+      // ── TIER 2: national pool — any remaining eligible recipient ──
+      if (remaining > 1e-9) {
+        const nationalPool = eligible.filter(rc => rc.headroom > 0);
+        remaining = allocate(src, code, nationalPool, remaining, "national");
       }
 
       remaining = Math.max(0, remaining);
-      if (remaining > 0) {
-        const key = `${code}|${src.plant}`;
-        residualByKey.set(key, {
-          code, desc: src.desc, type: src.type,
-          plant: src.plant, isHub: src.isHub,
-          qty: remaining, val: remaining * src.unitVal,
-          unitVal: src.unitVal,
-        });
-      }
+      if (remaining > 0) stashResidual(code, src, remaining);
     }
   }
 
@@ -389,6 +488,10 @@ async function renderExpiryRisk() {
       fmt: (v, r) => r.fromIsHub ? `<b style="color:var(--purple)">${escHtml(v)} (Hub)</b>` : `<b style="color:var(--amber)">${escHtml(v)}</b>`,
       raw: true },
     { key: "toPlant", label: "To", fmt: v => `<b style="color:var(--blue)">${escHtml(v)}</b>`, raw: true },
+    { key: "route", label: "Route", raw: true,
+      fmt: v => v === "economic"
+        ? `<span class="badge badge-green">🔗 Economic Partner</span>`
+        : `<span class="badge badge-blue">🌐 National Pool</span>` },
     { key: "qty", label: "Transfer Qty", fmt: fmtQty },
     { key: "val", label: "Transfer Value", fmt: fmtETB },
     { key: "toMosAfter", label: "Recipient MOS After", fmt: v => v===null ? "—" : `${v.toFixed(1)} mo`, raw: true },
@@ -405,6 +508,7 @@ async function renderExpiryRisk() {
     { key: "code", label: "Material Code" }, { key: "desc", label: "Description" },
     { key: "fromPlant", label: "From Plant" }, { key: "fromIsHub", label: "From Is Hub?", fmt: v => v ? "Yes" : "No" },
     { key: "toPlant", label: "To Plant" },
+    { key: "route", label: "Route", fmt: v => v === "economic" ? "Economic Partner" : "National Pool" },
     { key: "qty", label: "Transfer Qty (units)", fmt: v => Number(v).toFixed(2) },
     { key: "val", label: "Transfer Value (ETB)", fmt: v => Number(v).toFixed(2) },
     { key: "toMosAfter", label: "Recipient MOS After (months)", fmt: v => v===null ? "" : Number(v).toFixed(2) },
