@@ -972,10 +972,10 @@ function renderDashboard() {
   const totalQty   = df.reduce((s,r) => s + getMappedQty(r,"Unrestricted Stock"), 0) + transitQty + df.reduce((s,r) => s + getMappedQty(r,"Stock in Quality Inspection"), 0);
 
   setKpis("dash-kpis", [
-    ["Total Inventory Value",    fmtETB(totalVal),   `${fmtQty(totalQty)} total units`,      "blue"],
-    ["Stock in Transit Value",   fmtETB(transitVal), `${fmtQty(transitQty)} units`, "amber"],
-    ["Value in QC",              fmtETB(qcVal),      `${fmtQty(df.reduce((s,r) => s+getMappedQty(r,"Stock in Quality Inspection"),0))} units`, "red"],
-    ["Available (Unrestricted)", fmtETB(availVal),   `${fmtQty(df.reduce((s,r) => s+getMappedQty(r,"Unrestricted Stock"),0))} units`, "green"],
+    ["Total Inventory Value",    fmtETB(totalVal),   "",      "blue"],
+    ["Stock in Transit Value",   fmtETB(transitVal), "", "amber"],
+    ["Value in QC",              fmtETB(qcVal),      "", "red"],
+    ["Available (Unrestricted)", fmtETB(availVal),   "", "green"],
     ["Unique Materials",         new Set(df.map(r=>r._mappedMaterial||r["Material"])).size.toLocaleString(), `${new Set(df.map(r=>r["Plant"])).size} plants`, "purple"],
   ]);
 
