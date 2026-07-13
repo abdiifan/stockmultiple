@@ -921,22 +921,18 @@ function exportAsCSV() {
   if (!state.filteredData.length) { showToast('No data to export', 'warn'); return; }
   const headers = [
     'Material Code','Description','Material Type','Branch SOH','Central SOH','National SOH',
-    'AMC','MOS Central','Branch Forecast Qty','Delivered Qty','Fill Rate Qty %',
-    'Forecast Value','Delivered Value','Fill Rate Value %',
-    'Branch Remaining Need','National Remaining Need','Recommended Allocation','Allocation %',
-    'Allocation Status','Overstock Flag (Central)','Comments','Suggested Redistribution'
+    'Branch Forecast Qty','Delivered Qty','Fill Rate Qty %',
+    'Branch Remaining Need','National Remaining Need','Recommended Allocation',
+    'Allocation Status','Comments','Suggested Redistribution'
   ];
   const rows = state.filteredData.map(r => [
     r.materialCode, r.description, r.materialType,
     r.branchSOH, r.centralSOH, r.nationalSOH,
-    r.amc, r.mosCentral, r.branchForecast, r.deliveredQty,
+    r.branchForecast, r.deliveredQty,
     r.fillRateQtyPct !== null ? (r.fillRateQtyPct*100).toFixed(2)+'%' : '',
-    r.branchForecastValue, r.branchDeliveredValue,
-    r.fillRateValuePct !== null ? (r.fillRateValuePct*100).toFixed(2)+'%' : '',
     r.branchRemainingNeed, r.nationalRemainingNeed,
     r.recommendedAllocation,
-    r.allocationPct !== null ? (r.allocationPct*100).toFixed(2)+'%' : '',
-    r.allocationStatus, r.overstockFlag, r.comments, r.suggestedRedistribution
+    r.allocationStatus, r.comments, r.suggestedRedistribution
   ]);
   const csv = [headers, ...rows].map(r => r.map(v => `"${v ?? ''}"`).join(',')).join('\n');
   downloadFile(csv, 'pharma-allocation-report.csv', 'text/csv');
@@ -947,28 +943,24 @@ function exportAsExcel() {
   if (!state.filteredData.length) { showToast('No data to export', 'warn'); return; }
   const headers = [
     'Material Code','Description','Material Type','Branch SOH','Central SOH','National SOH',
-    'AMC','MOS Central','Branch Forecast Qty','Delivered Qty','Fill Rate Qty %',
-    'Forecast Value','Delivered Value','Fill Rate Value %',
-    'Branch Remaining Need','National Remaining Need','Recommended Allocation','Allocation %',
-    'Allocation Status','Overstock Flag','Comments','Suggested Redistribution'
+    'Branch Forecast Qty','Delivered Qty','Fill Rate Qty %',
+    'Branch Remaining Need','National Remaining Need','Recommended Allocation',
+    'Allocation Status','Comments','Suggested Redistribution'
   ];
   const rows = state.filteredData.map(r => [
     r.materialCode, r.description, r.materialType,
     r.branchSOH ?? '', r.centralSOH ?? '', r.nationalSOH ?? '',
-    r.amc ?? '', r.mosCentral ?? '', r.branchForecast ?? '', r.deliveredQty ?? '',
+    r.branchForecast ?? '', r.deliveredQty ?? '',
     r.fillRateQtyPct !== null ? r.fillRateQtyPct : '',
-    r.branchForecastValue ?? '', r.branchDeliveredValue ?? '',
-    r.fillRateValuePct !== null ? r.fillRateValuePct : '',
     r.branchRemainingNeed ?? '', r.nationalRemainingNeed ?? '',
     r.recommendedAllocation ?? '',
-    r.allocationPct !== null ? r.allocationPct : '',
-    r.allocationStatus, r.overstockFlag, r.comments, r.suggestedRedistribution ?? ''
+    r.allocationStatus, r.comments, r.suggestedRedistribution ?? ''
   ]);
 
   const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
 
   // Column widths
-  ws['!cols'] = [14,28,8,10,10,10,8,10,12,12,10,14,14,12,18,20,18,10,16,14,40,20].map(w => ({wch:w}));
+  ws['!cols'] = [14,28,8,10,10,10,12,12,10,18,20,18,16,40,20].map(w => ({wch:w}));
 
   // Freeze top row
   ws['!freeze'] = { xSplit: 0, ySplit: 1 };
