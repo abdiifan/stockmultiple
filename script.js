@@ -445,16 +445,22 @@ function loadFile(file) {
         rawDf  = df;
         filtDf = df;
 
-        // Apply material standardization mapping if already loaded
-        if (mappingTable.size > 0) applyMaterialMapping();
-
         // FIX BUG-3: clear stale page filters from the previous file
         resetPageFilters();
         // FIX-STFILTER: also reset transit-section filter state on new main file load
         // so stale PO/supplying-plant selections from the previous dataset don't persist
 
-        // If transit file was already loaded, stamp phantom flags on the new dataset
+        // FIX-PHANTOM-MAP-ORDER: stamp phantom/unverified transit flags on rawDf
+        // BEFORE applying material mapping. applyMaterialMapping() builds mappedDf
+        // via a shallow copy of each rawDf row ({...row, ...}); if it ran first,
+        // rawDf wouldn't have _phantomTransitQty/_phantomTransitVal yet, so those
+        // fields would never make it onto mappedDf. Since getReconciledBase() reads
+        // from mappedDf whenever a mapping is loaded, the Unverified Transit tab
+        // would silently show nothing for any dataset loaded alongside a mapping file.
         stampUnverifiedTransit(); // stamp unverified amounts from hardcoded list
+
+        // Apply material standardization mapping if already loaded
+        if (mappingTable.size > 0) applyMaterialMapping();
 
         showSuccess(file.name, df.length);
         clearError();
