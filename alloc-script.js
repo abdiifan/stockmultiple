@@ -713,6 +713,7 @@ function drawAllocationTbody(data) {
       <td class="text-mono mat-code">${esc(r.materialCode)}</td>
       <td>${esc(r.description)}</td>
       <td>${typeBadge(r.materialType)}</td>
+      <td class="num"><strong>${fmt(r.recommendedAllocation)}</strong></td>
       <td class="num">${fmt(r.branchSOH)}</td>
       <td class="num">${fmt(r.centralSOH)}</td>
       <td class="num">${fmt(r.nationalSOH)}</td>
@@ -721,7 +722,6 @@ function drawAllocationTbody(data) {
       <td class="num">${fillRateCell(r.fillRateQtyPct)}</td>
       <td class="num ${r.branchRemainingNeed > 0 ? 'text-danger' : ''}">${fmt(r.branchRemainingNeed)}</td>
       <td class="num">${fmt(r.nationalRemainingNeed)}</td>
-      <td class="num"><strong>${fmt(r.recommendedAllocation)}</strong></td>
       <td>${statusChip(r.allocationStatus)}</td>
       <td style="max-width:220px;font-size:.72rem;color:var(--text-3)">${esc(r.comments)}</td>
       <td class="num">${fmt(r.suggestedRedistribution)}</td>
@@ -913,18 +913,18 @@ function clearAllData() {
 function exportAsCSV() {
   if (!state.filteredData.length) { showToast('No data to export', 'warn'); return; }
   const headers = [
-    'Material Code','Description','Material Type','Branch SOH','Central SOH','National SOH',
+    'Material Code','Description','Material Type','Recommended Allocation',
+    'Branch SOH','Central SOH','National SOH',
     'Branch Forecast Qty','Delivered Qty','Fill Rate Qty %',
-    'Branch Remaining Need','National Remaining Need','Recommended Allocation',
+    'Branch Remaining Need','National Remaining Need',
     'Allocation Status','Comments','Suggested Redistribution'
   ];
   const rows = state.filteredData.map(r => [
-    r.materialCode, r.description, r.materialType,
+    r.materialCode, r.description, r.materialType, r.recommendedAllocation,
     r.branchSOH, r.centralSOH, r.nationalSOH,
     r.branchForecast, r.deliveredQty,
     r.fillRateQtyPct !== null ? (r.fillRateQtyPct*100).toFixed(2)+'%' : '',
     r.branchRemainingNeed, r.nationalRemainingNeed,
-    r.recommendedAllocation,
     r.allocationStatus, r.comments, r.suggestedRedistribution
   ]);
   const csv = [headers, ...rows].map(r => r.map(v => `"${v ?? ''}"`).join(',')).join('\n');
@@ -935,25 +935,25 @@ function exportAsCSV() {
 function exportAsExcel() {
   if (!state.filteredData.length) { showToast('No data to export', 'warn'); return; }
   const headers = [
-    'Material Code','Description','Material Type','Branch SOH','Central SOH','National SOH',
+    'Material Code','Description','Material Type','Recommended Allocation',
+    'Branch SOH','Central SOH','National SOH',
     'Branch Forecast Qty','Delivered Qty','Fill Rate Qty %',
-    'Branch Remaining Need','National Remaining Need','Recommended Allocation',
+    'Branch Remaining Need','National Remaining Need',
     'Allocation Status','Comments','Suggested Redistribution'
   ];
   const rows = state.filteredData.map(r => [
-    r.materialCode, r.description, r.materialType,
+    r.materialCode, r.description, r.materialType, r.recommendedAllocation ?? '',
     r.branchSOH ?? '', r.centralSOH ?? '', r.nationalSOH ?? '',
     r.branchForecast ?? '', r.deliveredQty ?? '',
     r.fillRateQtyPct !== null ? r.fillRateQtyPct : '',
     r.branchRemainingNeed ?? '', r.nationalRemainingNeed ?? '',
-    r.recommendedAllocation ?? '',
     r.allocationStatus, r.comments, r.suggestedRedistribution ?? ''
   ]);
 
   const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
 
   // Column widths
-  ws['!cols'] = [14,28,8,10,10,10,12,12,10,18,20,18,16,40,20].map(w => ({wch:w}));
+  ws['!cols'] = [14,28,8,18,10,10,10,12,12,10,18,20,16,40,20].map(w => ({wch:w}));
 
   // Freeze top row
   ws['!freeze'] = { xSplit: 0, ySplit: 1 };
