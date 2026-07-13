@@ -351,11 +351,11 @@ function applyRoleToUI() {
     if (sidebar) sidebar.appendChild(badge);
   }
   if (window.APP_USER) {
+    // Sign out lives in ⚙️ Settings now (see settings-menu.js) — no need to
+    // duplicate it here, so the sidebar badge is just the role/email label.
     badge.innerHTML = `
       <span>${window.isAdmin ? "🛡️ Admin" : "👁️ Viewer"} · ${escapeHtml(window.APP_USER.email)}</span>
-      <button id="logout-btn" style="background:none;border:1px solid var(--border,#1e2e3d);color:var(--muted,#7a97b0);border-radius:6px;padding:3px 8px;cursor:pointer;font-size:0.7rem">Sign out</button>
     `;
-    document.getElementById("logout-btn").addEventListener("click", () => supabaseClient.auth.signOut());
   }
 }
 
