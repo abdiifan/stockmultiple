@@ -1164,10 +1164,21 @@ function renderDashboard() {
     r._expiry >= nearToday && r._expiry <= nearCutoff &&
     (r["Unrestricted Stock"] || 0) > 0
   );
-  const nearByPlant = sortBy(
-    groupBy(nearExpiry, "Plant Name", [["val","Value of Unrestricted Stock"]]),
-    "val"
-  );
+  // FIX-DASH-EXPORT-MISMATCH: was groupBy(nearExpiry, "Plant Name", [["val","Value of
+  // Unrestricted Stock"]]) — that sums the RAW SAP column directly, bypassing
+  // getMappedVal(). Every other Dashboard aggregate (KPIs, chart-plant-val) goes
+  // through getMappedVal so material-mapping conversion factors are respected, and
+  // the drilldown modal's export (buildDrillRows -> getMappedVal) does too. Left as
+  // a raw sum, this bar's height silently disagreed with the CSV/Excel exported from
+  // clicking it whenever a mapping file was active. Aggregating with getMappedVal
+  // here makes the bar and its export agree again.
+  const nearByPlantMap = {};
+  nearExpiry.forEach(r => {
+    const k = r["Plant Name"] || "(Blank)";
+    if (!nearByPlantMap[k]) nearByPlantMap[k] = { "Plant Name": k, val: 0 };
+    nearByPlantMap[k].val += getMappedVal(r, "Value of Unrestricted Stock");
+  });
+  const nearByPlant = sortBy(Object.values(nearByPlantMap), "val");
   const uniqByPlantNear = countUniqueMaterialsByGroup(nearExpiry, "Plant Name");
   nearByPlant.forEach(r => { r.uniqMat = uniqByPlantNear[r["Plant Name"]] || 0; });
   if (nearByPlant.length) {
