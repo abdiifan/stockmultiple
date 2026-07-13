@@ -956,7 +956,12 @@ function pl(extra={}) {
 function renderDashboard() {
   const df = applyPageFilter("dashboard");
 
-  renderPhantomAlert("dash-phantom-alert", df);
+  // FIX-NO-DASH-PHANTOM-ALERT: the "Unverified Transit Stock Excluded" banner
+  // is no longer shown on the Dashboard — it now only appears on the Transit
+  // page itself. Dashboard totals still exclude unverified amounts (see
+  // getVerifiedTransitVal/Qty below), just without the inline banner.
+  const dashPhantomEl = document.getElementById("dash-phantom-alert");
+  if (dashPhantomEl) dashPhantomEl.innerHTML = "";
 
   // Exclude unverified transit amounts (hardcoded list) from Dashboard totals.
   const transitVal = df.reduce((s,r) => s + getVerifiedTransitVal(r), 0);
@@ -1733,9 +1738,8 @@ function renderPhantomTable(df) {
         <div>
           <div class="section-header" style="margin:0;color:#d29922">⚠️ Unverified Transit Items</div>
           <div style="font-size:0.76rem;color:var(--muted);margin-top:3px">
-            These items appear in the SAP <em>Stock in Transit</em> column but have <strong>no matching entry</strong> in the
-            the unverified transit list — excluded from all totals.
-            They are <strong>excluded from all inventory totals</strong> until verified.
+            These items appear in the SAP <em>Stock in Transit</em> column but <strong>do not have a detail document</strong>
+            (PO / supplying-plant confirmation) on file. They are <strong>excluded from all inventory totals</strong> until verified.
           </div>
         </div>
         <button class="dl-btn" id="${dlId}">⬇ Download CSV</button>
