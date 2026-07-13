@@ -342,21 +342,8 @@ function applyRoleToUI() {
   const adminSection = document.getElementById("admin-upload-section");
   if (adminSection) adminSection.style.display = window.isAdmin ? "" : "none";
 
-  let badge = document.getElementById("user-badge");
-  if (!badge) {
-    badge = document.createElement("div");
-    badge.id = "user-badge";
-    badge.style.cssText = "padding:0.6rem 0.9rem;font-size:0.75rem;color:var(--muted,#7a97b0);display:flex;align-items:center;justify-content:space-between;gap:0.5rem;";
-    const sidebar = document.getElementById("sidebar");
-    if (sidebar) sidebar.appendChild(badge);
-  }
-  if (window.APP_USER) {
-    // Sign out lives in ⚙️ Settings now (see settings-menu.js) — no need to
-    // duplicate it here, so the sidebar badge is just the role/email label.
-    badge.innerHTML = `
-      <span>${window.isAdmin ? "🛡️ Admin" : "👁️ Viewer"} · ${escapeHtml(window.APP_USER.email)}</span>
-    `;
-  }
+  // Sidebar user badge (role/email) removed — that info already lives in
+  // ⚙️ Settings (see settings-menu.js), no need to duplicate it here.
 }
 
 function escapeHtml(s) {
