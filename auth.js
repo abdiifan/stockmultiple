@@ -58,7 +58,6 @@ function injectAuthOverlay() {
               <a href="#auth-features" class="auth-btn-secondary">ⓘ Learn More</a>
             </div>
             <div class="auth-hero-pills">
-              <span class="auth-pill">📊 Real-time Analytics</span>
               <span class="auth-pill">⏰ Expiry Tracking</span>
               <span class="auth-pill">🏢 Branch Comparison</span>
               <span class="auth-pill">🗂️ National MOS</span>
