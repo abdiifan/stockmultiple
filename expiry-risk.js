@@ -543,8 +543,13 @@ async function renderExpiryRisk() {
     { key: "val", label: "Residual Value", fmt: v => `<b style="color:var(--red)">${fmtETB(v)}</b>`, raw: true },
     { key: "unitVal", label: "Unit Value", fmt: v => fmtETB(v) },
   ];
-  const sortedResidual = [...visResidual].sort((a,b)=>b.val-a.val);
-  document.getElementById("exprisk-table-after").innerHTML = visResidual.length
+  // Exclude rows that round to 0 units when displayed (fmtQty has no decimal
+  // places) — these are floating-point dust from the allocation math, not
+  // real residual risk, so they'd just clutter the item list. The KPI totals
+  // above are computed from the full unfiltered visResidual, so they still
+  // reflect the true (negligible) leftover amount.
+  const sortedResidual = [...visResidual].filter(r => Math.round(r.qty) !== 0).sort((a,b)=>b.val-a.val);
+  document.getElementById("exprisk-table-after").innerHTML = sortedResidual.length
     ? buildTable(sortedResidual, afterCols, () => "", "", {id:"exprisk-export", title:""})
     : '<div class="alert-info" style="margin:0.5rem 0">✓ Nothing left over — redistribution fully resolves the at-risk stock for the current filters.</div>';
 
