@@ -190,6 +190,7 @@
       branchesWithStock: withStock,
       branchesTotal: branchPlants.size,
       nationalMos: nat ? nat.mos : null,
+      nationalSoh: nat ? nat.totalSoh : null,
       atRiskCount: atRisk ? atRisk.materialCount : null,
       atRiskVal: atRisk ? atRisk.totalVal : null,
     };
@@ -249,9 +250,8 @@
             <div class="who-resp-stat-value">${mosDisplay}</div>
           </div>
           <div class="who-resp-stat">
-            <div class="who-resp-stat-label">⚠️ At-Risk Items (this person)</div>
-            <div class="who-resp-stat-value">${data.atRiskCount === null ? "—" : data.atRiskCount}</div>
-            ${data.atRiskCount ? `<div class="who-resp-stat-sub">${fmtETB(data.atRiskVal)} exposure</div>` : ""}
+            <div class="who-resp-stat-label">🏦 National SOH</div>
+            <div class="who-resp-stat-value">${data.nationalSoh === null ? "—" : fmtQty(data.nationalSoh)}</div>
           </div>
         </div>
         ${data.person
