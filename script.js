@@ -1853,7 +1853,18 @@ function renderTransit() {
 
   // Wire chart
   if (df.length) {
-    const plantAgg  = sortBy(groupBy(df, "Plant Name", [["val","Value of Stock in Transit"]]), "val");
+    // FIX-TRANSIT-EXPORT-MISMATCH: was groupBy(df, "Plant Name", [["val","Value of
+    // Stock in Transit"]]) — raw unmapped sum, while the drilldown export (below,
+    // via buildDrillRows -> getMappedVal) is mapped. Same class of bug as the
+    // Dashboard near-expiry chart. Aggregating with getMappedVal here keeps the
+    // bar and its exported CSV/Excel in agreement.
+    const plantAggMap = {};
+    df.forEach(r => {
+      const k = r["Plant Name"] || "(Blank)";
+      if (!plantAggMap[k]) plantAggMap[k] = { "Plant Name": k, val: 0 };
+      plantAggMap[k].val += getMappedVal(r, "Value of Stock in Transit");
+    });
+    const plantAgg = sortBy(Object.values(plantAggMap), "val");
     const uniqByPlant = countUniqueMaterialsByGroup(df, "Plant Name");
     plantAgg.forEach(r => { r.uniqMat = uniqByPlant[r["Plant Name"]] || 0; });
     Plotly.newPlot("chart-transit-plant", [
@@ -2104,7 +2115,18 @@ function renderQC() {
 
   if (!df.length) { document.getElementById("qc-table-wrap").innerHTML = `<div class="alert-info">✓ No items in quality inspection.</div>`; return; }
 
-  const plantQC   = sortBy(groupBy(rawFiltered, "Plant Name", [["val","Value of Stock in Quality Inspection"]]), "val");
+  // FIX-QC-EXPORT-MISMATCH: was groupBy(rawFiltered, "Plant Name", [["val","Value of
+  // Stock in Quality Inspection"]]) — raw unmapped sum. This disagreed with BOTH the
+  // KPI cards above (which sum df, already mapped via aggregateByMappedMaterial) and
+  // the drilldown export (buildDrillRows -> getMappedVal). Aggregating with
+  // getMappedVal here brings all three into agreement.
+  const plantQCMap = {};
+  rawFiltered.forEach(r => {
+    const k = r["Plant Name"] || "(Blank)";
+    if (!plantQCMap[k]) plantQCMap[k] = { "Plant Name": k, val: 0 };
+    plantQCMap[k].val += getMappedVal(r, "Value of Stock in Quality Inspection");
+  });
+  const plantQC = sortBy(Object.values(plantQCMap), "val");
   const uniqByPlantQC = countUniqueMaterialsByGroup(rawFiltered, "Plant Name");
   plantQC.forEach(r => { r.uniqMat = uniqByPlantQC[r["Plant Name"]] || 0; });
   Plotly.newPlot("chart-qc-plant", [
