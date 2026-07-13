@@ -912,24 +912,34 @@ const CHART_DRILL_COLS = [
   {key:"Material Group Name", label:"Material Group"},
   {key:"Plant Name",          label:"Plant"},
   {key:"_expiryStr",          label:"Expiry Date"},
+  {key:"_daysLeftStr",        label:"Days to Expiry"},
   {key:"_drillQty",           label:"Qty",         fmt:fmtQty, rawKey:"_drillQty", cellClass:"col-qty"},
   {key:"_drillVal",           label:"Value (ETB)", fmt:fmtETB, rawKey:"_drillVal", cellClass:"col-val"},
 ];
 
 // Builds a row set for the drilldown modal, stamping in the qty/value fields
 // relevant to whichever stock status the click came from (Unrestricted,
-// Transit, or QC), plus a readable expiry date string. qtyKey/valKey may be a
-// field name (looked up via getMappedQty/getMappedVal) or a function(row) for
-// cases like Transit that need the phantom-exclusion-aware calculation.
+// Transit, or QC), plus a readable expiry date string and days-remaining
+// count (negative = already expired) for the "Days to Expiry" column.
 function buildDrillRows(items, qtyKey, valKey) {
   const qtyFn = typeof qtyKey === "function" ? qtyKey : (r => qtyKey ? getMappedQty(r, qtyKey) : 0);
   const valFn = typeof valKey === "function" ? valKey : (r => valKey ? getMappedVal(r, valKey) : 0);
-  return sortBy(items.map(r => ({
-    ...r,
-    _expiryStr: r._expiry instanceof Date && !isNaN(r._expiry) ? fmtLocalDate(r._expiry) : "—",
-    _drillQty:  qtyFn(r),
-    _drillVal:  valFn(r),
-  })), "_drillVal");
+  const today = new Date(); today.setHours(0,0,0,0);
+  return sortBy(items.map(r => {
+    let daysLeftStr = "—";
+    if (r._expiry instanceof Date && !isNaN(r._expiry)) {
+      const exp = new Date(r._expiry); exp.setHours(0,0,0,0);
+      const days = Math.round((exp - today) / 86400000);
+      daysLeftStr = days < 0 ? `Expired ${Math.abs(days)}d ago` : `${days}d`;
+    }
+    return {
+      ...r,
+      _expiryStr: r._expiry instanceof Date && !isNaN(r._expiry) ? fmtLocalDate(r._expiry) : "—",
+      _daysLeftStr: daysLeftStr,
+      _drillQty:  qtyFn(r),
+      _drillVal:  valFn(r),
+    };
+  }), "_drillVal");
 }
 
 // ── PLOTLY LAYOUT MERGE ────────────────────────────────────────────────────
