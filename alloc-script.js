@@ -705,7 +705,7 @@ function sortTable(col) {
 function drawAllocationTbody(data) {
   const tbody = document.getElementById('allocationTbody');
   if (!data.length) {
-    tbody.innerHTML = `<tr><td colspan="22" class="empty-state"><div class="empty-icon">🔍</div><p>No matching records found.</p></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="15" class="empty-state"><div class="empty-icon">🔍</div><p>No matching records found.</p></td></tr>`;
     return;
   }
   tbody.innerHTML = data.map(r => `
@@ -716,20 +716,13 @@ function drawAllocationTbody(data) {
       <td class="num">${fmt(r.branchSOH)}</td>
       <td class="num">${fmt(r.centralSOH)}</td>
       <td class="num">${fmt(r.nationalSOH)}</td>
-      <td class="num">${fmt(r.amc)}</td>
-      <td class="num">${mosCell(r.mosCentral)}</td>
       <td class="num">${fmt(r.branchForecast)}</td>
       <td class="num">${fmt(r.deliveredQty)}</td>
       <td class="num">${fillRateCell(r.fillRateQtyPct)}</td>
-      <td class="num">${fmt(r.branchForecastValue)}</td>
-      <td class="num">${fmt(r.branchDeliveredValue)}</td>
-      <td class="num">${fillRateCell(r.fillRateValuePct)}</td>
       <td class="num ${r.branchRemainingNeed > 0 ? 'text-danger' : ''}">${fmt(r.branchRemainingNeed)}</td>
       <td class="num">${fmt(r.nationalRemainingNeed)}</td>
       <td class="num"><strong>${fmt(r.recommendedAllocation)}</strong></td>
-      <td class="num">${allocPctCell(r.allocationPct)}</td>
       <td>${statusChip(r.allocationStatus)}</td>
-      <td>${r.overstockFlag === 'OVERSTOCK' ? '<span class="status-chip overstock-yes">OVERSTOCK</span>' : '<span class="overstock-no">OK</span>'}</td>
       <td style="max-width:220px;font-size:.72rem;color:var(--text-3)">${esc(r.comments)}</td>
       <td class="num">${fmt(r.suggestedRedistribution)}</td>
     </tr>
@@ -906,7 +899,7 @@ function clearAllData() {
     document.getElementById(`preview-${t}`).classList.remove('visible');
   });
   document.getElementById('allocationTbody').innerHTML = `
-    <tr><td colspan="22" class="empty-state">
+    <tr><td colspan="15" class="empty-state">
       <div class="empty-icon">📋</div>
       <p>No allocation data yet.</p>
       <p>Go to <strong>Data Input</strong> to load your source data.</p>
