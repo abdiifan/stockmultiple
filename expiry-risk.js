@@ -20,19 +20,6 @@
 //   atRiskVal = atRiskQty * unitValue   (unitValue = Value of Unrestricted
 //               Stock ÷ Unrestricted Stock, from the inventory file)
 //
-// HO01 (the hub) SPECIAL CASE — HO01 never sells directly, it only
-// distributes. Its raw MOS calc (SOH ÷ total branch demand) still flags it
-// using the same formula as branches internally (buildRiskSnapshot doesn't
-// change), but that raw number is NOT what gets shown to the user as HO01's
-// risk. Since HO01's stock can still move to any branch with real capacity,
-// renderExpiryRisk() replaces HO01's displayed atRisk/atRiskQty/atRiskVal
-// with its post-redistribution RESIDUAL (the same number the "after" /
-// marketing-director section reports) — HO01 only counts as genuinely at
-// risk once distribution has already failed to place it. Branch rows are
-// never adjusted this way: a branch's own overstock is real regardless of
-// what other branches could theoretically take, and branches still can't
-// receive stock while they are themselves at risk.
-//
 // REDISTRIBUTION (per item, independently — see design discussion):
 //   Source  = any plant (including HO01) with atRiskQty > 0.
 //   Recipient = any OTHER plant (HO01 excluded — it never receives) that is
@@ -372,51 +359,16 @@ async function renderExpiryRisk() {
   // ── Build snapshot (unfiltered by plant, so redistribution can see all plants
   // for each item) then apply plant filter only to the BEFORE view ──────────────
   const fullSnapshot = buildRiskSnapshot(typeVal, searchQ, "");
-
-  // Redistribution is computed here (early) rather than only in the AFTER
-  // section, because HO01's displayed risk (below) needs it.
-  const { transfers, residual } = computeRedistribution(fullSnapshot);
-  const residualByKey = new Map(residual.map(r => [`${r.code}|${r.plant}`, r]));
-
-  // ── HO01 SPECIAL CASE ─────────────────────────────────────────────────────
-  // HO01 never sells directly — it only distributes. Its raw MOS-based number
-  // (SOH ÷ total branch demand vs. shelf life) overstates risk on its own,
-  // because that stock isn't "stuck" the way a branch's overstock is: it can
-  // still move to any branch that has real capacity for it. So for display/
-  // KPI purposes, HO01's at-risk qty/value is replaced with whatever is left
-  // AFTER attempting to place it with eligible branches (same residual figure
-  // the AFTER section reports) — i.e. HO01 only "counts" as at risk once
-  // redistribution has already failed to place it. Branch rows are left
-  // untouched: a branch's own overstock is real risk regardless of what other
-  // branches could theoretically absorb, and branches remain ineligible to
-  // receive stock while they are themselves at risk (unchanged rule).
-  const displaySnapshot = fullSnapshot.map(r => {
-    if (!r.isHub) return r;
-    const res = residualByKey.get(`${r.code}|${r.plant}`);
-    const atRiskQty = res ? res.qty : 0;
-    const atRiskVal = res ? res.val : 0;
-    return { ...r, atRisk: atRiskQty > 1e-6, atRiskQty, atRiskVal };
-  });
-
-  const beforeRows   = plantVal ? displaySnapshot.filter(r => r.plant === plantVal) : displaySnapshot;
+  const beforeRows   = plantVal ? fullSnapshot.filter(r => r.plant === plantVal) : fullSnapshot;
   const atRiskBefore = beforeRows.filter(r => r.atRisk && r.atRiskQty > 0);
 
   // ── KPIs: BEFORE ──────────────────────────────────────────────────────────────
   const totalAtRiskQtyBefore = atRiskBefore.reduce((s, r) => s + r.atRiskQty, 0);
   const totalAtRiskValBefore = atRiskBefore.reduce((s, r) => s + r.atRiskVal, 0);
   exprKpiRow("exprisk-kpis-before", [
-    exprKpiCard("Plant-Item Pairs At Risk", atRiskBefore.length.toLocaleString(), `MOS > shelf-life remaining (HO01: net of branch distribution capacity)`, "red"),
+    exprKpiCard("Plant-Item Pairs At Risk", atRiskBefore.length.toLocaleString(), `MOS > shelf-life remaining`, "red"),
     exprKpiCard("At-Risk Value", fmtETB(totalAtRiskValBefore), "Ethiopian Birr exposure", "red"),
   ]);
-
-  // Separate, UNADJUSTED network-wide naive total — used only for the
-  // "Recovered by Redistribution %" KPI below, so that metric still reflects
-  // true redistribution impact rather than being shrunk by the HO01 display
-  // adjustment above (which would otherwise make it look like less was
-  // recovered than actually was).
-  const naiveAtRiskRowsForRecovery = (plantVal ? fullSnapshot.filter(r => r.plant === plantVal) : fullSnapshot)
-    .filter(r => r.atRisk && r.atRiskQty > 0);
-  const naiveAtRiskQtyBefore = naiveAtRiskRowsForRecovery.reduce((s, r) => s + r.atRiskQty, 0);
 
   // ── CHART: BEFORE — items at risk aggregated across all plants (line chart) ──
   // Collapse plant-level rows into one entry per material (sum qty & val, keep
@@ -521,9 +473,9 @@ async function renderExpiryRisk() {
   ];
   if (sortedAtRiskBefore.length) wireTableExport("exprisk-before-export", sortedAtRiskBefore, beforeExportCols, "expiry_risk_at_risk_before");
 
-  // ── REDISTRIBUTION (already computed above, on the FULL unfiltered snapshot,
-  //    so the plan is correct regardless of the plant filter applied to the view;
-  //    reused here rather than recomputed) ──────────────────────────────────────
+  // ── REDISTRIBUTION (always computed on the FULL unfiltered snapshot, so the
+  //    plan is correct regardless of the plant filter applied to the view) ──────
+  const { transfers, residual } = computeRedistribution(fullSnapshot);
   const visTransfers = plantVal ? transfers.filter(t => t.fromPlant === plantVal || t.toPlant === plantVal) : transfers;
 
   const redistCols = [
@@ -567,11 +519,9 @@ async function renderExpiryRisk() {
   const totalResidualVal = visResidual.reduce((s, r) => s + r.val, 0);
   const hubResidual = visResidual.filter(r => r.isHub);
 
-  // Uses naiveAtRiskQtyBefore (pre-HO01-display-adjustment, network-wide) so
-  // this % reflects true redistribution impact — see note where it's defined.
-  const recoveredQty = naiveAtRiskQtyBefore - residual.reduce((s,r)=>s+r.qty,0); // network-wide, for context
-  const recoveredPct = naiveAtRiskQtyBefore > 0
-    ? (((naiveAtRiskQtyBefore - residual.reduce((s,r)=>s+r.qty,0)) / naiveAtRiskQtyBefore) * 100).toFixed(1)
+  const recoveredQty = totalAtRiskQtyBefore - residual.reduce((s,r)=>s+r.qty,0); // network-wide, for context
+  const recoveredPct = totalAtRiskQtyBefore > 0
+    ? (((totalAtRiskQtyBefore - residual.reduce((s,r)=>s+r.qty,0)) / totalAtRiskQtyBefore) * 100).toFixed(1)
     : "0.0";
 
   exprKpiRow("exprisk-kpis-after", [
