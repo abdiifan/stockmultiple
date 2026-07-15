@@ -437,19 +437,6 @@ async function renderExpiryRisk() {
     document.getElementById("chart-exprisk-before").innerHTML = "";
   }
 
-  // ── NATIONAL (ALL-PLANTS) ROLLUP — one total per material, independent of the
-  // Plant filter, so the detail table can show "this material's true nationwide
-  // at-risk exposure" alongside its per-plant row without switching plants. ──────
-  const nationalAtRiskMap = new Map();
-  for (const r of fullSnapshot) {
-    if (!r.atRisk || r.atRiskQty <= 0) continue;
-    if (!nationalAtRiskMap.has(r.code)) nationalAtRiskMap.set(r.code, { qty: 0, val: 0, plants: 0 });
-    const e = nationalAtRiskMap.get(r.code);
-    e.qty += r.atRiskQty;
-    e.val += r.atRiskVal;
-    e.plants += 1;
-  }
-
   // ── TABLE: BEFORE ──────────────────────────────────────────────────────────────
   const beforeCols = [
     { key: "code", label: "Material Code",
@@ -458,13 +445,6 @@ async function renderExpiryRisk() {
         : `<span class="col-mat-code">${escHtml(v)}</span>`,
       raw: true, cellClass: "col-mat-code-wrap" },
     { key: "desc", label: "Description", cellClass: "col-mat-desc-wrap" },
-    { key: "code", label: "🌍 National At-Risk (All Plants)", raw: true, cellClass: "col-natl-risk-wrap",
-      fmt: (v, r) => {
-        const nat = nationalAtRiskMap.get(v);
-        if (!nat) return "—";
-        const plantNote = nat.plants > 1 ? ` <span style="font-size:0.72em;color:var(--muted)">(${nat.plants} plants)</span>` : "";
-        return `<b style="color:var(--red)">${fmtQty(nat.qty)}</b>${plantNote}<br><span style="font-size:0.78em;color:var(--muted)">${fmtETB(nat.val)}</span>`;
-      } },
     { key: "type", label: "Type" },
     { key: "plant", label: "Plant", fmt: (v, r) => r.isHub ? `<b>${escHtml(v)}</b> <span style="font-size:0.75em;color:var(--purple)">(Hub)</span>` : escHtml(v), raw: true },
     { key: "soh", label: "SOH", fmt: fmtQty },
@@ -490,8 +470,6 @@ async function renderExpiryRisk() {
     { key: "shelfLeftMo", label: "Shelf Life Left (months)", fmt: v => Number(v).toFixed(2) },
     { key: "atRiskQty", label: "At-Risk Qty (units)", fmt: v => Number(v).toFixed(2) },
     { key: "atRiskVal", label: "At-Risk Value (ETB)", fmt: v => Number(v).toFixed(2) },
-    { key: "code", label: "National At-Risk Qty — All Plants (units)", fmt: v => Number(nationalAtRiskMap.get(v)?.qty || 0).toFixed(2) },
-    { key: "code", label: "National At-Risk Value — All Plants (ETB)", fmt: v => Number(nationalAtRiskMap.get(v)?.val || 0).toFixed(2) },
   ];
   if (sortedAtRiskBefore.length) wireTableExport("exprisk-before-export", sortedAtRiskBefore, beforeExportCols, "expiry_risk_at_risk_before");
 
