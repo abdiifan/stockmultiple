@@ -458,6 +458,13 @@ async function renderExpiryRisk() {
         : `<span class="col-mat-code">${escHtml(v)}</span>`,
       raw: true, cellClass: "col-mat-code-wrap" },
     { key: "desc", label: "Description", cellClass: "col-mat-desc-wrap" },
+    { key: "code", label: "🌍 National At-Risk (All Plants)", raw: true, cellClass: "col-natl-risk-wrap",
+      fmt: (v, r) => {
+        const nat = nationalAtRiskMap.get(v);
+        if (!nat) return "—";
+        const plantNote = nat.plants > 1 ? ` <span style="font-size:0.72em;color:var(--muted)">(${nat.plants} plants)</span>` : "";
+        return `<b style="color:var(--red)">${fmtQty(nat.qty)}</b>${plantNote}<br><span style="font-size:0.78em;color:var(--muted)">${fmtETB(nat.val)}</span>`;
+      } },
     { key: "type", label: "Type" },
     { key: "plant", label: "Plant", fmt: (v, r) => r.isHub ? `<b>${escHtml(v)}</b> <span style="font-size:0.75em;color:var(--purple)">(Hub)</span>` : escHtml(v), raw: true },
     { key: "soh", label: "SOH", fmt: fmtQty },
@@ -466,13 +473,6 @@ async function renderExpiryRisk() {
     { key: "shelfLeftMo", label: "Shelf Life Left", fmt: v => v < 0 ? `<b style="color:var(--red)">EXPIRED</b>` : `<b>${v.toFixed(1)}</b> mo`, raw: true },
     { key: "atRiskQty", label: "At-Risk Qty", fmt: v => `<b style="color:var(--red)">${fmtQty(v)}</b>`, raw: true },
     { key: "atRiskVal", label: "At-Risk Value", fmt: v => `<b style="color:var(--red)">${fmtETB(v)}</b>`, raw: true },
-    { key: "code", label: "🌍 National At-Risk (All Plants)", raw: true,
-      fmt: (v, r) => {
-        const nat = nationalAtRiskMap.get(v);
-        if (!nat) return "—";
-        const plantNote = nat.plants > 1 ? ` <span style="font-size:0.72em;color:var(--muted)">(${nat.plants} plants)</span>` : "";
-        return `<b style="color:var(--red)">${fmtQty(nat.qty)}</b>${plantNote}<br><span style="font-size:0.78em;color:var(--muted)">${fmtETB(nat.val)}</span>`;
-      } },
   ];
   const sortedAtRiskBefore = [...atRiskBefore].sort((a,b)=>b.atRiskVal-a.atRiskVal);
   document.getElementById("exprisk-table-before").innerHTML = buildTable(
