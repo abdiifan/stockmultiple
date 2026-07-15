@@ -365,12 +365,9 @@ async function renderExpiryRisk() {
   // ── KPIs: BEFORE ──────────────────────────────────────────────────────────────
   const totalAtRiskQtyBefore = atRiskBefore.reduce((s, r) => s + r.atRiskQty, 0);
   const totalAtRiskValBefore = atRiskBefore.reduce((s, r) => s + r.atRiskVal, 0);
-  const hubAtRiskBefore      = atRiskBefore.filter(r => r.isHub);
   exprKpiRow("exprisk-kpis-before", [
     exprKpiCard("Plant-Item Pairs At Risk", atRiskBefore.length.toLocaleString(), `MOS > shelf-life remaining`, "red"),
-    exprKpiCard("At-Risk Quantity", fmtQty(totalAtRiskQtyBefore), "units that may expire unused", "orange"),
     exprKpiCard("At-Risk Value", fmtETB(totalAtRiskValBefore), "Ethiopian Birr exposure", "red"),
-    exprKpiCard(`${HUB_PLANT} Share`, fmtQty(hubAtRiskBefore.reduce((s,r)=>s+r.atRiskQty,0)), `${hubAtRiskBefore.length} hub item(s) at risk`, "purple"),
   ]);
 
   // ── CHART: BEFORE — items at risk aggregated across all plants (line chart) ──
