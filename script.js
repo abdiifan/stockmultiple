@@ -154,15 +154,24 @@ let _lastSpreadDrilldown = null;   // { plantCount, matCodes[] } | null
 // MOS by Plant, and Overstock & Expiry Risk.
 let personFilter = new Set();   // empty = show all persons
 
-// Returns the Set of material codes that belong to the currently-selected persons.
-// Built on demand from mosAmcRaw so it always reflects the latest AMC data.
-// Returns null when no person filter is active (show everything).
+// Returns the Set of canonical (mapping-aware) material codes that belong to
+// the currently-selected persons. Built on demand from mosMerged so it always
+// reflects the latest AMC data. Returns null when no person filter is active
+// (show everything).
 function getPersonFilteredCodes() {
   if (personFilter.size === 0) return null;
-  if (typeof mosAmcRaw === "undefined" || !mosAmcRaw.length) return null;
+  // FIX-PERSON-MAP: use mosMerged (canonical/target codes, mapping-aware) rather
+  // than mosAmcRaw (raw, pre-mapping AMC codes). getReconciledBase() below now
+  // matches inventory rows on their canonical _mappedMaterial code, so the
+  // allow-list here must be in that same canonical code space — otherwise a
+  // merged material (several original SAP codes → one target code) only keeps
+  // the rows whose raw code happens to equal the AMC file's literal code
+  // string, silently dropping the rest of that material's stock everywhere
+  // the person filter is active (Branch Comparison, Who's Responsible, etc.).
+  if (typeof mosMerged === "undefined" || !mosMerged.length) return null;
   const codes = new Set();
-  mosAmcRaw.forEach(r => {
-    if (r.person && personFilter.has(r.person)) codes.add(r.code);
+  mosMerged.forEach(r => {
+    if (r.person && personFilter.has(r.person)) codes.add(String(r.code || "").trim().toUpperCase());
   });
   return codes;
 }
@@ -210,8 +219,14 @@ function getReconciledBase() {
   const base = mappingTable.size > 0 ? mappedDf : rawDf;
   const codes = getPersonFilteredCodes();
   if (!codes) return base;
+  // FIX-PERSON-MAP: match on the row's CANONICAL code (_mappedMaterial, same
+  // code merged/split materials are grouped by everywhere else — Branch
+  // Comparison, National Table, Who's Responsible), not the raw pre-mapping
+  // "Material" code. Falls back to "Material" when no mapping is loaded
+  // (rawDf rows have no _mappedMaterial), which keeps prior behavior for
+  // users without a mapping file.
   return base.filter(r => {
-    const mat = String(r["Material"] || "").trim().toUpperCase();
+    const mat = String(r._mappedMaterial || r["Material"] || "").trim().toUpperCase();
     return codes.has(mat);
   });
 }
