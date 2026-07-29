@@ -103,6 +103,35 @@
       border-color: var(--blue);
     }
 
+    /* ── Expiry window quick-nav pills (Expiry Risk Exposure panel) ── */
+    .topperf-window-nav {
+      display: flex;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+      margin: 0.2rem 0 1.4rem;
+    }
+    .topperf-window-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.4rem 1rem;
+      border-radius: 999px;
+      border: 1.5px solid var(--border2, var(--border));
+      color: var(--text, inherit);
+      font-weight: 600;
+      font-size: 0.82rem;
+      text-decoration: none;
+      background: var(--card-bg, transparent);
+      transition: border-color 0.15s, transform 0.1s;
+    }
+    .topperf-window-chip:hover { transform: translateY(-1px); }
+    .topperf-window-chip.lt3    { border-color: #f85149; }
+    .topperf-window-chip.m3to6  { border-color: #ffa657; }
+    .topperf-window-chip.m6to12 { border-color: #d29922; }
+    #topperf-window-lt3, #topperf-window-m3to6, #topperf-window-m6to12 {
+      scroll-margin-top: 80px;
+    }
+
     /* ── Global Person Assigned filter (in-page filter bars) ── */
     .person-filter-chip {
       display: inline-flex;
@@ -1250,19 +1279,25 @@
         <div class="page-subtitle" style="margin-bottom:0.6rem">Stock that will outlive its shelf life before it can be consumed.</div>
         <div class="kpi-row" id="topperf-kpis" style="margin-bottom:1rem"></div>
 
-        <div class="section-header" style="margin-top:1.2rem">🔴 Expiry Window: &lt; 3 Months</div>
+        <div class="topperf-window-nav">
+          <a href="#topperf-window-lt3" class="topperf-window-chip lt3">🔴 &lt; 3 Months</a>
+          <a href="#topperf-window-m3to6" class="topperf-window-chip m3to6">🟠 3 – 6 Months</a>
+          <a href="#topperf-window-m6to12" class="topperf-window-chip m6to12">🟡 6 – 12 Months</a>
+        </div>
+
+        <div class="section-header" id="topperf-window-lt3" style="margin-top:1.2rem">🔴 Expiry Window: &lt; 3 Months</div>
         <div class="chart-box full"><div id="chart-topperf-plants-lt3" style="min-height:320px"></div></div>
         <div id="topperf-table-plants-lt3" style="margin-top:0.6rem"></div>
 
         <div class="sidebar-divider" style="margin:1.6rem 0"></div>
 
-        <div class="section-header" style="margin-top:1.2rem">🟠 Expiry Window: 3 – 6 Months</div>
+        <div class="section-header" id="topperf-window-m3to6" style="margin-top:1.2rem">🟠 Expiry Window: 3 – 6 Months</div>
         <div class="chart-box full"><div id="chart-topperf-plants-m3to6" style="min-height:320px"></div></div>
         <div id="topperf-table-plants-m3to6" style="margin-top:0.6rem"></div>
 
         <div class="sidebar-divider" style="margin:1.6rem 0"></div>
 
-        <div class="section-header" style="margin-top:1.2rem">🟡 Expiry Window: 6 – 12 Months</div>
+        <div class="section-header" id="topperf-window-m6to12" style="margin-top:1.2rem">🟡 Expiry Window: 6 – 12 Months</div>
         <div class="chart-box full"><div id="chart-topperf-plants-m6to12" style="min-height:320px"></div></div>
         <div id="topperf-table-plants-m6to12" style="margin-top:0.6rem"></div>
       </div>
