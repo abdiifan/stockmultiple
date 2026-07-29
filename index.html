@@ -1217,26 +1217,66 @@
       <div class="page-subtitle" style="margin-bottom:0.6rem">Stock that will outlive its shelf life before it can be consumed.</div>
       <div class="kpi-row" id="topperf-kpis" style="margin-bottom:1rem"></div>
 
-      <div class="section-header">🏢 Top 10 Plants by At-Risk Value</div>
-      <div class="chart-box full"><div id="chart-topperf-plants" style="min-height:320px"></div></div>
-      <div id="topperf-table-plants" style="margin-top:0.6rem"></div>
+      <div class="section-header" style="margin-top:1.2rem">🔴 Expiry Window: &lt; 3 Months</div>
 
-      <div class="section-header" style="margin-top:1.6rem">📍 Top 10 At-Risk Items per Plant</div>
+      <div class="section-header" style="margin-top:0.8rem;font-size:0.95rem">🏢 Top 10 Plants by At-Risk Value</div>
+      <div class="chart-box full"><div id="chart-topperf-plants-lt3" style="min-height:320px"></div></div>
+      <div id="topperf-table-plants-lt3" style="margin-top:0.6rem"></div>
+
+      <div class="section-header" style="margin-top:1.6rem;font-size:0.95rem">📍 Top 10 At-Risk Items per Plant</div>
       <div class="filter-bar" style="gap:0.6rem;flex-wrap:wrap;align-items:center;margin-bottom:0.6rem">
-        <select id="topperf-plant" class="filter-select">
+        <select id="topperf-plant-lt3" class="filter-select">
           <option value="">All Plants (combined)</option>
         </select>
-        <button class="apply-btn small" id="topperf-apply">Apply</button>
-        <button class="apply-btn secondary small" id="topperf-clear">Clear</button>
+        <button class="apply-btn small" id="topperf-apply-lt3">Apply</button>
+        <button class="apply-btn secondary small" id="topperf-clear-lt3">Clear</button>
       </div>
-      <div id="topperf-table-plant-items"></div>
+      <div id="topperf-table-plant-items-lt3"></div>
 
-      <div class="section-header" style="margin-top:1.6rem">🌍 Top 10 At-Risk Items Nationally</div>
-      <div id="topperf-table-national"></div>
+      <div class="section-header" style="margin-top:1.6rem;font-size:0.95rem">🌍 Top 10 At-Risk Items Nationally</div>
+      <div id="topperf-table-national-lt3"></div>
 
-      <div class="section-header" style="margin-top:1.6rem">📅 Expiry Timing by Plant</div>
-      <div class="page-subtitle" style="margin-bottom:0.6rem">Sorted ascending by total at-risk value (lowest-risk plants first).</div>
-      <div id="topperf-table-timing"></div>
+      <div class="sidebar-divider" style="margin:1.6rem 0"></div>
+
+      <div class="section-header" style="margin-top:1.2rem">🟠 Expiry Window: 3 – 6 Months</div>
+
+      <div class="section-header" style="margin-top:0.8rem;font-size:0.95rem">🏢 Top 10 Plants by At-Risk Value</div>
+      <div class="chart-box full"><div id="chart-topperf-plants-m3to6" style="min-height:320px"></div></div>
+      <div id="topperf-table-plants-m3to6" style="margin-top:0.6rem"></div>
+
+      <div class="section-header" style="margin-top:1.6rem;font-size:0.95rem">📍 Top 10 At-Risk Items per Plant</div>
+      <div class="filter-bar" style="gap:0.6rem;flex-wrap:wrap;align-items:center;margin-bottom:0.6rem">
+        <select id="topperf-plant-m3to6" class="filter-select">
+          <option value="">All Plants (combined)</option>
+        </select>
+        <button class="apply-btn small" id="topperf-apply-m3to6">Apply</button>
+        <button class="apply-btn secondary small" id="topperf-clear-m3to6">Clear</button>
+      </div>
+      <div id="topperf-table-plant-items-m3to6"></div>
+
+      <div class="section-header" style="margin-top:1.6rem;font-size:0.95rem">🌍 Top 10 At-Risk Items Nationally</div>
+      <div id="topperf-table-national-m3to6"></div>
+
+      <div class="sidebar-divider" style="margin:1.6rem 0"></div>
+
+      <div class="section-header" style="margin-top:1.2rem">🟡 Expiry Window: 6 – 12 Months</div>
+
+      <div class="section-header" style="margin-top:0.8rem;font-size:0.95rem">🏢 Top 10 Plants by At-Risk Value</div>
+      <div class="chart-box full"><div id="chart-topperf-plants-m6to12" style="min-height:320px"></div></div>
+      <div id="topperf-table-plants-m6to12" style="margin-top:0.6rem"></div>
+
+      <div class="section-header" style="margin-top:1.6rem;font-size:0.95rem">📍 Top 10 At-Risk Items per Plant</div>
+      <div class="filter-bar" style="gap:0.6rem;flex-wrap:wrap;align-items:center;margin-bottom:0.6rem">
+        <select id="topperf-plant-m6to12" class="filter-select">
+          <option value="">All Plants (combined)</option>
+        </select>
+        <button class="apply-btn small" id="topperf-apply-m6to12">Apply</button>
+        <button class="apply-btn secondary small" id="topperf-clear-m6to12">Clear</button>
+      </div>
+      <div id="topperf-table-plant-items-m6to12"></div>
+
+      <div class="section-header" style="margin-top:1.6rem;font-size:0.95rem">🌍 Top 10 At-Risk Items Nationally</div>
+      <div id="topperf-table-national-m6to12"></div>
 
       <div class="sidebar-divider" style="margin:2rem 0"></div>
 
