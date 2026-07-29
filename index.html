@@ -1208,11 +1208,13 @@
     <div class="page-header-row">
       <div>
         <div class="page-title">🏆 Top Risk Exposure</div>
-        <div class="page-subtitle">Ranks plants and materials by at-risk exposure, and breaks down risk timing by urgency window.</div>
+        <div class="page-subtitle">Ranks plants and materials by risk exposure — expiry timing and overstock, tracked separately.</div>
       </div>
     </div>
     <div id="topperf-no-data" class="alert-info" style="margin-bottom:1rem">Upload the <b>main inventory Excel</b> and <b>AMC.xlsx</b> (📐 AMC upload in the sidebar) to enable this analysis.</div>
     <div id="topperf-content" style="display:none">
+      <div class="section-header" style="font-size:1.05rem">📉 Expiry Risk Exposure</div>
+      <div class="page-subtitle" style="margin-bottom:0.6rem">Stock that will outlive its shelf life before it can be consumed.</div>
       <div class="kpi-row" id="topperf-kpis" style="margin-bottom:1rem"></div>
 
       <div class="section-header">🏢 Top 10 Plants by At-Risk Value</div>
@@ -1232,9 +1234,36 @@
       <div class="section-header" style="margin-top:1.6rem">🌍 Top 10 At-Risk Items Nationally</div>
       <div id="topperf-table-national"></div>
 
-      <div class="section-header" style="margin-top:1.6rem">📅 Risk Timing by Plant</div>
+      <div class="section-header" style="margin-top:1.6rem">📅 Expiry Timing by Plant</div>
       <div class="page-subtitle" style="margin-bottom:0.6rem">Sorted ascending by total at-risk value (lowest-risk plants first).</div>
       <div id="topperf-table-timing"></div>
+
+      <div class="sidebar-divider" style="margin:2rem 0"></div>
+
+      <div class="section-header" style="font-size:1.05rem">📦 Overstock Risk Exposure</div>
+      <div class="page-subtitle" style="margin-bottom:0.6rem">Materials with more than 6 months of stock on hand at a plant — independent of expiry timing.</div>
+      <div class="kpi-row" id="topperf-ov-kpis" style="margin-bottom:1rem"></div>
+
+      <div class="section-header">🏢 Top 10 Plants by Overstock Value</div>
+      <div class="chart-box full"><div id="chart-topperf-ov-plants" style="min-height:320px"></div></div>
+      <div id="topperf-ov-table-plants" style="margin-top:0.6rem"></div>
+
+      <div class="section-header" style="margin-top:1.6rem">📍 Top 10 Overstocked Items per Plant</div>
+      <div class="filter-bar" style="gap:0.6rem;flex-wrap:wrap;align-items:center;margin-bottom:0.6rem">
+        <select id="topperf-ov-plant" class="filter-select">
+          <option value="">All Plants (combined)</option>
+        </select>
+        <button class="apply-btn small" id="topperf-ov-apply">Apply</button>
+        <button class="apply-btn secondary small" id="topperf-ov-clear">Clear</button>
+      </div>
+      <div id="topperf-ov-table-plant-items"></div>
+
+      <div class="section-header" style="margin-top:1.6rem">🌍 Top 10 Overstocked Items Nationally</div>
+      <div id="topperf-ov-table-national"></div>
+
+      <div class="section-header" style="margin-top:1.6rem">📅 Overstock Severity by Plant</div>
+      <div class="page-subtitle" style="margin-bottom:0.6rem">6–9 / 9–12 / 12+ months of stock on hand, sorted ascending by total overstock value (lowest-risk plants first).</div>
+      <div id="topperf-ov-table-timing"></div>
     </div>
   </section>
 
