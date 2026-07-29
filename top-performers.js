@@ -379,6 +379,22 @@ async function renderTopPerformers() {
     };
 
     document.body.addEventListener("click", (e) => {
+      const windowBtn = e.target.closest(".topperf-window-chip");
+      if (windowBtn) {
+        const win = windowBtn.dataset.window;
+        document.querySelectorAll(".topperf-window-chip").forEach(b => {
+          b.classList.toggle("active", b.dataset.window === win);
+        });
+        document.querySelectorAll(".topperf-window-panel").forEach(p => {
+          p.style.display = p.id === "topperf-window-" + win ? "block" : "none";
+        });
+        if (typeof Plotly !== "undefined") {
+          const el = document.getElementById("chart-topperf-plants-" + win);
+          if (el && el.data) { try { Plotly.Plots.resize(el); } catch (e) {} }
+        }
+        return;
+      }
+
       const tabBtn = e.target.closest(".topperf-tab-btn");
       if (tabBtn) {
         const tab = tabBtn.dataset.tab;
