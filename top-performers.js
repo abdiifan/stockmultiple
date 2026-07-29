@@ -117,30 +117,22 @@ function renderExpiryRiskExposure() {
   }
 }
 
-// Renders one expiry window's independent report set: Top 10 Plants,
-// Top 10 Items per Plant (with its own plant filter), Top 10 Items
-// Nationally — all scoped to `rows` (the at-risk rows already filtered
-// down to this window).
+// Renders one expiry window's report: Top 10 Plants by total at-risk
+// value, scoped to `rows` (the at-risk rows already filtered down to
+// this window).
 function renderExpiryWindowSection(w, rows) {
-  const chartId      = `chart-topperf-plants-${w.key}`;
+  const chartId       = `chart-topperf-plants-${w.key}`;
   const plantsTableId = `topperf-table-plants-${w.key}`;
-  const plantSelectId = `topperf-plant-${w.key}`;
-  const itemsTableId  = `topperf-table-plant-items-${w.key}`;
-  const nationalTableId = `topperf-table-national-${w.key}`;
-
-  const plantVal = populatePlantSelect(plantSelectId);
 
   if (!rows.length) {
-    [plantsTableId, itemsTableId, nationalTableId].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.innerHTML = `<div class="alert-info">No at-risk items in this window.</div>`;
-    });
+    const el = document.getElementById(plantsTableId);
+    if (el) el.innerHTML = `<div class="alert-info">No at-risk items in this window.</div>`;
     const chartEl = document.getElementById(chartId);
     if (chartEl) chartEl.innerHTML = "";
     return;
   }
 
-  // 1. Top 10 plants by total at-risk value (this window)
+  // Top 10 plants by total at-risk value (this window)
   const plantMap = new Map();
   for (const r of rows) {
     if (!plantMap.has(r.plant)) plantMap.set(r.plant, { plant: r.plant, isHub: r.isHub, atRiskVal: 0, atRiskQty: 0, items: new Set() });
@@ -185,56 +177,6 @@ function renderExpiryWindowSection(w, rows) {
     plantRankRows, plantCols, () => "", "", { id: `topperf-plants-export-${w.key}`, title: "" }
   );
   wireTableExport(`topperf-plants-export-${w.key}`, plantRankRows, plantCols.map(c => ({ key: c.key, label: c.label })), `top10_plants_at_risk_${w.key}`);
-
-  // 2. Top 10 at-risk items at a chosen plant (or all combined), this window
-  const perPlantPool = plantVal ? rows.filter(r => r.plant === plantVal) : rows;
-  const topItemsPerPlant = [...perPlantPool].sort((a, b) => b.atRiskVal - a.atRiskVal).slice(0, 10);
-  const itemRankRows = topItemsPerPlant.map((r, i) => ({ ...r, rank: i + 1 }));
-  const itemCols = [
-    { key: "rank", label: "#" },
-    { key: "code", label: "Material Code" },
-    { key: "desc", label: "Description", cellClass: "col-mat-desc-wrap" },
-    { key: "plant", label: "Plant",
-      fmt: (v, r) => r.isHub ? `<b>${escHtml(v)}</b> <span style="font-size:0.75em;color:var(--purple)">(Hub)</span>` : escHtml(v), raw: true },
-    { key: "shelfLeftMo", label: "Shelf Life Left", fmt: v => v < 0 ? `<b style="color:var(--red)">EXPIRED</b>` : `<b>${v.toFixed(1)}</b> mo`, raw: true },
-    { key: "atRiskQty", label: "At-Risk Qty", fmt: fmtQty },
-    { key: "atRiskVal", label: "At-Risk Value", fmt: v => `<b style="color:var(--red)">${fmtETB(v)}</b>`, raw: true },
-  ];
-  document.getElementById(itemsTableId).innerHTML = itemRankRows.length
-    ? buildTable(itemRankRows, itemCols, () => "", "", { id: `topperf-planitems-export-${w.key}`, title: "" })
-    : `<div class="alert-info">No at-risk items ${plantVal ? `at <b>${escHtml(plantVal)}</b>` : ""} in this window.</div>`;
-  if (itemRankRows.length) {
-    wireTableExport(`topperf-planitems-export-${w.key}`, itemRankRows, itemCols.map(c => ({ key: c.key, label: c.label })), `top10_items_${w.key}_${plantVal || "all_plants"}`);
-  }
-
-  // 3. Top 10 at-risk items nationally, this window
-  const itemMap = new Map();
-  for (const r of rows) {
-    if (!itemMap.has(r.code)) itemMap.set(r.code, { code: r.code, desc: r.desc, atRiskVal: 0, atRiskQty: 0, plants: new Set(), shelfLeftMo: r.shelfLeftMo });
-    const e = itemMap.get(r.code);
-    e.atRiskVal += r.atRiskVal;
-    e.atRiskQty += r.atRiskQty;
-    e.plants.add(r.plant);
-    if (r.shelfLeftMo !== null && (e.shelfLeftMo === null || r.shelfLeftMo < e.shelfLeftMo)) e.shelfLeftMo = r.shelfLeftMo;
-  }
-  const topNational = [...itemMap.values()]
-    .map(e => ({ code: e.code, desc: e.desc, atRiskVal: e.atRiskVal, atRiskQty: e.atRiskQty, plantCount: e.plants.size, shelfLeftMo: e.shelfLeftMo }))
-    .sort((a, b) => b.atRiskVal - a.atRiskVal)
-    .slice(0, 10);
-  const natRankRows = topNational.map((r, i) => ({ ...r, rank: i + 1 }));
-  const natCols = [
-    { key: "rank", label: "#" },
-    { key: "code", label: "Material Code" },
-    { key: "desc", label: "Description", cellClass: "col-mat-desc-wrap" },
-    { key: "plantCount", label: "Plants Affected" },
-    { key: "shelfLeftMo", label: "Worst Shelf Life Left", fmt: v => v < 0 ? `<b style="color:var(--red)">EXPIRED</b>` : `<b>${v.toFixed(1)}</b> mo`, raw: true },
-    { key: "atRiskQty", label: "At-Risk Qty", fmt: fmtQty },
-    { key: "atRiskVal", label: "At-Risk Value", fmt: v => `<b style="color:var(--red)">${fmtETB(v)}</b>`, raw: true },
-  ];
-  document.getElementById(nationalTableId).innerHTML = buildTable(
-    natRankRows, natCols, () => "", "", { id: `topperf-national-export-${w.key}`, title: "" }
-  );
-  wireTableExport(`topperf-national-export-${w.key}`, natRankRows, natCols.map(c => ({ key: c.key, label: c.label })), `top10_items_nationally_${w.key}`);
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -429,21 +371,6 @@ async function renderTopPerformers() {
     };
 
     const filterMap = {
-      "topperf-apply-lt3": renderExpiryRiskExposure,
-      "topperf-clear-lt3": () => {
-        const p = document.getElementById("topperf-plant-lt3"); if (p) p.value = "";
-        renderExpiryRiskExposure();
-      },
-      "topperf-apply-m3to6": renderExpiryRiskExposure,
-      "topperf-clear-m3to6": () => {
-        const p = document.getElementById("topperf-plant-m3to6"); if (p) p.value = "";
-        renderExpiryRiskExposure();
-      },
-      "topperf-apply-m6to12": renderExpiryRiskExposure,
-      "topperf-clear-m6to12": () => {
-        const p = document.getElementById("topperf-plant-m6to12"); if (p) p.value = "";
-        renderExpiryRiskExposure();
-      },
       "topperf-ov-apply": renderOverstockRiskExposure,
       "topperf-ov-clear": () => {
         const p = document.getElementById("topperf-ov-plant"); if (p) p.value = "";
