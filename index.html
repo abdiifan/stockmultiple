@@ -562,6 +562,9 @@
       <button class="nav-btn" data-page="expiry">
         <span class="nav-icon">⏰</span> Expiry Watchlist
       </button>
+      <button class="nav-btn" data-page="top-performers">
+        <span class="nav-icon">🏆</span> Top Performers
+      </button>
       <button class="nav-btn" data-page="qc">
         <span class="nav-icon">🔬</span> Quality Inspection
       </button>
@@ -1200,6 +1203,41 @@
     </div>
   </section>
 
+  <!-- ── TOP PERFORMERS (EXPIRY RISK) ── -->
+  <section id="page-top-performers" class="page" style="display:none">
+    <div class="page-header-row">
+      <div>
+        <div class="page-title">🏆 Top Performers — Expiry Risk</div>
+        <div class="page-subtitle">Ranks plants and materials by at-risk exposure, and breaks down risk timing by urgency window.</div>
+      </div>
+    </div>
+    <div id="topperf-no-data" class="alert-info" style="margin-bottom:1rem">Upload the <b>main inventory Excel</b> and <b>AMC.xlsx</b> (📐 AMC upload in the sidebar) to enable this analysis.</div>
+    <div id="topperf-content" style="display:none">
+      <div class="kpi-row" id="topperf-kpis" style="margin-bottom:1rem"></div>
+
+      <div class="section-header">🏢 Top 10 Plants by At-Risk Value</div>
+      <div class="chart-box full"><div id="chart-topperf-plants" style="min-height:320px"></div></div>
+      <div id="topperf-table-plants" style="margin-top:0.6rem"></div>
+
+      <div class="section-header" style="margin-top:1.6rem">📍 Top 10 At-Risk Items per Plant</div>
+      <div class="filter-bar" style="gap:0.6rem;flex-wrap:wrap;align-items:center;margin-bottom:0.6rem">
+        <select id="topperf-plant" class="filter-select">
+          <option value="">All Plants (combined)</option>
+        </select>
+        <button class="apply-btn small" id="topperf-apply">Apply</button>
+        <button class="apply-btn secondary small" id="topperf-clear">Clear</button>
+      </div>
+      <div id="topperf-table-plant-items"></div>
+
+      <div class="section-header" style="margin-top:1.6rem">🌍 Top 10 At-Risk Items Nationally</div>
+      <div id="topperf-table-national"></div>
+
+      <div class="section-header" style="margin-top:1.6rem">📅 Risk Timing by Plant</div>
+      <div class="page-subtitle" style="margin-bottom:0.6rem">Sorted ascending by total at-risk value (lowest-risk plants first).</div>
+      <div id="topperf-table-timing"></div>
+    </div>
+  </section>
+
   <!-- ── NATIONAL STOCK & MOS ── -->
   <section id="page-natl-table" class="page" style="display:none">
     <div class="page-header-row">
@@ -1404,6 +1442,7 @@ document.querySelectorAll('.overview-card[data-goto]').forEach(card => {
 <script src="mos.js" defer></script>
 <script src="national-table.js" defer></script>
 <script src="expiry-risk.js" defer></script>
+<script src="top-performers.js" defer></script>
 <script src="who-responsible.js" defer></script>
 <script src="shelf-life.js" defer></script>
 <script>
