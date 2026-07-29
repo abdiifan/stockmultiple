@@ -117,20 +117,22 @@
       padding: 0.4rem 1rem;
       border-radius: 999px;
       border: 1.5px solid var(--border2, var(--border));
-      color: var(--text, inherit);
+      color: var(--muted, inherit);
       font-weight: 600;
       font-size: 0.82rem;
-      text-decoration: none;
+      font-family: inherit;
+      cursor: pointer;
       background: var(--card-bg, transparent);
-      transition: border-color 0.15s, transform 0.1s;
+      transition: border-color 0.15s, color 0.15s, background 0.15s, transform 0.1s;
     }
     .topperf-window-chip:hover { transform: translateY(-1px); }
     .topperf-window-chip.lt3    { border-color: #f85149; }
     .topperf-window-chip.m3to6  { border-color: #ffa657; }
     .topperf-window-chip.m6to12 { border-color: #d29922; }
-    #topperf-window-lt3, #topperf-window-m3to6, #topperf-window-m6to12 {
-      scroll-margin-top: 80px;
-    }
+    .topperf-window-chip.active { color: #fff; }
+    .topperf-window-chip.lt3.active    { background: #f85149; }
+    .topperf-window-chip.m3to6.active  { background: #ffa657; }
+    .topperf-window-chip.m6to12.active { background: #d29922; }
 
     /* ── Global Person Assigned filter (in-page filter bars) ── */
     .person-filter-chip {
@@ -1280,26 +1282,28 @@
         <div class="kpi-row" id="topperf-kpis" style="margin-bottom:1rem"></div>
 
         <div class="topperf-window-nav">
-          <a href="#topperf-window-lt3" class="topperf-window-chip lt3">🔴 &lt; 3 Months</a>
-          <a href="#topperf-window-m3to6" class="topperf-window-chip m3to6">🟠 3 – 6 Months</a>
-          <a href="#topperf-window-m6to12" class="topperf-window-chip m6to12">🟡 6 – 12 Months</a>
+          <button type="button" class="topperf-window-chip lt3 active" data-window="lt3">🔴 &lt; 3 Months</button>
+          <button type="button" class="topperf-window-chip m3to6" data-window="m3to6">🟠 3 – 6 Months</button>
+          <button type="button" class="topperf-window-chip m6to12" data-window="m6to12">🟡 6 – 12 Months</button>
         </div>
 
-        <div class="section-header" id="topperf-window-lt3" style="margin-top:1.2rem">🔴 Expiry Window: &lt; 3 Months</div>
-        <div class="chart-box full"><div id="chart-topperf-plants-lt3" style="min-height:320px"></div></div>
-        <div id="topperf-table-plants-lt3" style="margin-top:0.6rem"></div>
+        <div class="topperf-window-panel" id="topperf-window-lt3" style="display:block">
+          <div class="section-header" style="margin-top:1.2rem">🔴 Expiry Window: &lt; 3 Months</div>
+          <div class="chart-box full"><div id="chart-topperf-plants-lt3" style="min-height:320px"></div></div>
+          <div id="topperf-table-plants-lt3" style="margin-top:0.6rem"></div>
+        </div>
 
-        <div class="sidebar-divider" style="margin:1.6rem 0"></div>
+        <div class="topperf-window-panel" id="topperf-window-m3to6" style="display:none">
+          <div class="section-header" style="margin-top:1.2rem">🟠 Expiry Window: 3 – 6 Months</div>
+          <div class="chart-box full"><div id="chart-topperf-plants-m3to6" style="min-height:320px"></div></div>
+          <div id="topperf-table-plants-m3to6" style="margin-top:0.6rem"></div>
+        </div>
 
-        <div class="section-header" id="topperf-window-m3to6" style="margin-top:1.2rem">🟠 Expiry Window: 3 – 6 Months</div>
-        <div class="chart-box full"><div id="chart-topperf-plants-m3to6" style="min-height:320px"></div></div>
-        <div id="topperf-table-plants-m3to6" style="margin-top:0.6rem"></div>
-
-        <div class="sidebar-divider" style="margin:1.6rem 0"></div>
-
-        <div class="section-header" id="topperf-window-m6to12" style="margin-top:1.2rem">🟡 Expiry Window: 6 – 12 Months</div>
-        <div class="chart-box full"><div id="chart-topperf-plants-m6to12" style="min-height:320px"></div></div>
-        <div id="topperf-table-plants-m6to12" style="margin-top:0.6rem"></div>
+        <div class="topperf-window-panel" id="topperf-window-m6to12" style="display:none">
+          <div class="section-header" style="margin-top:1.2rem">🟡 Expiry Window: 6 – 12 Months</div>
+          <div class="chart-box full"><div id="chart-topperf-plants-m6to12" style="min-height:320px"></div></div>
+          <div id="topperf-table-plants-m6to12" style="margin-top:0.6rem"></div>
+        </div>
       </div>
 
       <div class="topperf-tab-panel" id="topperf-panel-overstock" style="display:none">
