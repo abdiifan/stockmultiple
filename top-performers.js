@@ -379,6 +379,31 @@ async function renderTopPerformers() {
     };
 
     document.body.addEventListener("click", (e) => {
+      const tabBtn = e.target.closest(".topperf-tab-btn");
+      if (tabBtn) {
+        const tab = tabBtn.dataset.tab;
+        document.querySelectorAll(".topperf-tab-btn").forEach(b => {
+          b.classList.toggle("active", b.dataset.tab === tab);
+        });
+        const expiryPanel    = document.getElementById("topperf-panel-expiry");
+        const overstockPanel = document.getElementById("topperf-panel-overstock");
+        if (expiryPanel)    expiryPanel.style.display    = tab === "expiry"    ? "block" : "none";
+        if (overstockPanel) overstockPanel.style.display = tab === "overstock" ? "block" : "none";
+
+        // Plotly charts rendered while their panel was display:none end up
+        // with zero width; force a resize now that the panel is visible.
+        if (typeof Plotly !== "undefined") {
+          const chartIds = tab === "expiry"
+            ? ["chart-topperf-plants-lt3", "chart-topperf-plants-m3to6", "chart-topperf-plants-m6to12"]
+            : ["chart-topperf-ov-plants"];
+          chartIds.forEach(id => {
+            const el = document.getElementById(id);
+            if (el && el.data) { try { Plotly.Plots.resize(el); } catch (e) {} }
+          });
+        }
+        return;
+      }
+
       const btn = e.target.closest("button[id]");
       if (!btn) return;
       const fn = filterMap[btn.id];
