@@ -88,9 +88,16 @@ function populatePlantSelect(id) {
 // ═════════════════════════════════════════════════════════════════════════
 // SECTION 1 — EXPIRY RISK EXPOSURE
 // ═════════════════════════════════════════════════════════════════════════
-function renderExpiryRiskExposure() {
-  const plantVal = populatePlantSelect("topperf-plant");
+// Expiry windows the "at-risk" pool is split into. Each gets its own
+// independent Top 10 Plants / Top 10 Items per Plant / Top 10 Items
+// Nationally report set (see renderExpiryWindowSection below).
+const EXPIRY_WINDOWS = [
+  { key: "lt3",    label: "< 3 Months",   test: m => m < 3,               color: "#f85149" },
+  { key: "m3to6",  label: "3 – 6 Months", test: m => m >= 3 && m < 6,     color: "#ffa657" },
+  { key: "m6to12", label: "6 – 12 Months",test: m => m >= 6 && m < 12,    color: "#d29922" },
+];
 
+function renderExpiryRiskExposure() {
   const snapshot = buildRiskSnapshot("", "", "");
   const atRisk   = snapshot.filter(r => r.atRisk && r.atRiskQty > 0);
 
@@ -104,16 +111,38 @@ function renderExpiryRiskExposure() {
     ["Materials Affected", itemsAffected.toLocaleString(), "distinct at-risk SKUs", "amber"],
   ]);
 
-  if (!atRisk.length) {
-    ["topperf-table-plants", "topperf-table-plant-items", "topperf-table-national", "topperf-table-timing"]
-      .forEach(id => { document.getElementById(id).innerHTML = `<div class="alert-info">No at-risk items found.</div>`; });
-    document.getElementById("chart-topperf-plants").innerHTML = "";
+  for (const w of EXPIRY_WINDOWS) {
+    const rows = atRisk.filter(r => w.test(r.shelfLeftMo));
+    renderExpiryWindowSection(w, rows);
+  }
+}
+
+// Renders one expiry window's independent report set: Top 10 Plants,
+// Top 10 Items per Plant (with its own plant filter), Top 10 Items
+// Nationally — all scoped to `rows` (the at-risk rows already filtered
+// down to this window).
+function renderExpiryWindowSection(w, rows) {
+  const chartId      = `chart-topperf-plants-${w.key}`;
+  const plantsTableId = `topperf-table-plants-${w.key}`;
+  const plantSelectId = `topperf-plant-${w.key}`;
+  const itemsTableId  = `topperf-table-plant-items-${w.key}`;
+  const nationalTableId = `topperf-table-national-${w.key}`;
+
+  const plantVal = populatePlantSelect(plantSelectId);
+
+  if (!rows.length) {
+    [plantsTableId, itemsTableId, nationalTableId].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = `<div class="alert-info">No at-risk items in this window.</div>`;
+    });
+    const chartEl = document.getElementById(chartId);
+    if (chartEl) chartEl.innerHTML = "";
     return;
   }
 
-  // 1. Top 10 plants by total at-risk value
+  // 1. Top 10 plants by total at-risk value (this window)
   const plantMap = new Map();
-  for (const r of atRisk) {
+  for (const r of rows) {
     if (!plantMap.has(r.plant)) plantMap.set(r.plant, { plant: r.plant, isHub: r.isHub, atRiskVal: 0, atRiskQty: 0, items: new Set() });
     const e = plantMap.get(r.plant);
     e.atRiskVal += r.atRiskVal;
@@ -125,21 +154,22 @@ function renderExpiryRiskExposure() {
     .sort((a, b) => b.atRiskVal - a.atRiskVal)
     .slice(0, 10);
 
-  if (topPlants.length) {
+  const chartEl = document.getElementById(chartId);
+  if (topPlants.length && chartEl) {
     const chartRows = [...topPlants].reverse();
-    Plotly.newPlot("chart-topperf-plants", [{
+    Plotly.newPlot(chartId, [{
       type: "bar", orientation: "h",
       x: chartRows.map(p => p.atRiskVal),
       y: chartRows.map(p => p.isHub ? `${p.plant} (Hub)` : p.plant),
-      marker: { color: "#f85149" },
+      marker: { color: w.color },
       hovertemplate: "<b>%{y}</b><br>At-risk value: ETB %{x:,.0f}<extra></extra>",
     }], {
       ...PLOTLY_LAYOUT, height: 360,
       margin: { l: 90, r: 30, t: 20, b: 40 },
       xaxis: { title: "At-Risk Value (ETB)", tickformat: "~s" },
     }, PLOTLY_CONFIG);
-  } else {
-    document.getElementById("chart-topperf-plants").innerHTML = "";
+  } else if (chartEl) {
+    chartEl.innerHTML = "";
   }
 
   const plantRankRows = topPlants.map((p, i) => ({ ...p, rank: i + 1 }));
@@ -151,13 +181,13 @@ function renderExpiryRiskExposure() {
     { key: "atRiskQty", label: "At-Risk Qty", fmt: fmtQty },
     { key: "atRiskVal", label: "At-Risk Value", fmt: v => `<b style="color:var(--red)">${fmtETB(v)}</b>`, raw: true },
   ];
-  document.getElementById("topperf-table-plants").innerHTML = buildTable(
-    plantRankRows, plantCols, () => "", "", { id: "topperf-plants-export", title: "" }
+  document.getElementById(plantsTableId).innerHTML = buildTable(
+    plantRankRows, plantCols, () => "", "", { id: `topperf-plants-export-${w.key}`, title: "" }
   );
-  wireTableExport("topperf-plants-export", plantRankRows, plantCols.map(c => ({ key: c.key, label: c.label })), "top10_plants_at_risk");
+  wireTableExport(`topperf-plants-export-${w.key}`, plantRankRows, plantCols.map(c => ({ key: c.key, label: c.label })), `top10_plants_at_risk_${w.key}`);
 
-  // 2. Top 10 at-risk items at a chosen plant (or all combined)
-  const perPlantPool = plantVal ? atRisk.filter(r => r.plant === plantVal) : atRisk;
+  // 2. Top 10 at-risk items at a chosen plant (or all combined), this window
+  const perPlantPool = plantVal ? rows.filter(r => r.plant === plantVal) : rows;
   const topItemsPerPlant = [...perPlantPool].sort((a, b) => b.atRiskVal - a.atRiskVal).slice(0, 10);
   const itemRankRows = topItemsPerPlant.map((r, i) => ({ ...r, rank: i + 1 }));
   const itemCols = [
@@ -170,16 +200,16 @@ function renderExpiryRiskExposure() {
     { key: "atRiskQty", label: "At-Risk Qty", fmt: fmtQty },
     { key: "atRiskVal", label: "At-Risk Value", fmt: v => `<b style="color:var(--red)">${fmtETB(v)}</b>`, raw: true },
   ];
-  document.getElementById("topperf-table-plant-items").innerHTML = itemRankRows.length
-    ? buildTable(itemRankRows, itemCols, () => "", "", { id: "topperf-planitems-export", title: "" })
-    : `<div class="alert-info">No at-risk items ${plantVal ? `at <b>${escHtml(plantVal)}</b>` : ""}.</div>`;
+  document.getElementById(itemsTableId).innerHTML = itemRankRows.length
+    ? buildTable(itemRankRows, itemCols, () => "", "", { id: `topperf-planitems-export-${w.key}`, title: "" })
+    : `<div class="alert-info">No at-risk items ${plantVal ? `at <b>${escHtml(plantVal)}</b>` : ""} in this window.</div>`;
   if (itemRankRows.length) {
-    wireTableExport("topperf-planitems-export", itemRankRows, itemCols.map(c => ({ key: c.key, label: c.label })), `top10_items_${plantVal || "all_plants"}`);
+    wireTableExport(`topperf-planitems-export-${w.key}`, itemRankRows, itemCols.map(c => ({ key: c.key, label: c.label })), `top10_items_${w.key}_${plantVal || "all_plants"}`);
   }
 
-  // 3. Top 10 at-risk items nationally
+  // 3. Top 10 at-risk items nationally, this window
   const itemMap = new Map();
-  for (const r of atRisk) {
+  for (const r of rows) {
     if (!itemMap.has(r.code)) itemMap.set(r.code, { code: r.code, desc: r.desc, atRiskVal: 0, atRiskQty: 0, plants: new Set(), shelfLeftMo: r.shelfLeftMo });
     const e = itemMap.get(r.code);
     e.atRiskVal += r.atRiskVal;
@@ -201,35 +231,10 @@ function renderExpiryRiskExposure() {
     { key: "atRiskQty", label: "At-Risk Qty", fmt: fmtQty },
     { key: "atRiskVal", label: "At-Risk Value", fmt: v => `<b style="color:var(--red)">${fmtETB(v)}</b>`, raw: true },
   ];
-  document.getElementById("topperf-table-national").innerHTML = buildTable(
-    natRankRows, natCols, () => "", "", { id: "topperf-national-export", title: "" }
+  document.getElementById(nationalTableId).innerHTML = buildTable(
+    natRankRows, natCols, () => "", "", { id: `topperf-national-export-${w.key}`, title: "" }
   );
-  wireTableExport("topperf-national-export", natRankRows, natCols.map(c => ({ key: c.key, label: c.label })), "top10_items_nationally");
-
-  // 4. Expiry timing by plant — <3mo / 3-6mo / 6-12mo, ascending by total value
-  const timingMap = new Map();
-  for (const r of atRisk) {
-    if (!timingMap.has(r.plant)) timingMap.set(r.plant, { plant: r.plant, isHub: r.isHub, lt3: 0, m3to6: 0, m6to12: 0, total: 0 });
-    const e = timingMap.get(r.plant);
-    const m = r.shelfLeftMo;
-    if (m < 3) e.lt3 += r.atRiskVal;
-    else if (m < 6) e.m3to6 += r.atRiskVal;
-    else if (m < 12) e.m6to12 += r.atRiskVal;
-    e.total += r.atRiskVal;
-  }
-  const timingRows = [...timingMap.values()].sort((a, b) => a.total - b.total);
-  const timingCols = [
-    { key: "plant", label: "Plant",
-      fmt: (v, r) => r.isHub ? `<b>${escHtml(v)}</b> <span style="font-size:0.75em;color:var(--purple)">(Hub)</span>` : escHtml(v), raw: true },
-    { key: "lt3", label: "< 3 Months", fmt: v => v > 0 ? `<b style="color:var(--red)">${fmtETB(v)}</b>` : "—", raw: true },
-    { key: "m3to6", label: "3 – 6 Months", fmt: v => v > 0 ? `<b style="color:var(--amber)">${fmtETB(v)}</b>` : "—", raw: true },
-    { key: "m6to12", label: "6 – 12 Months", fmt: v => v > 0 ? fmtETB(v) : "—", raw: true },
-    { key: "total", label: "Total At-Risk Value", fmt: v => `<b>${fmtETB(v)}</b>`, raw: true },
-  ];
-  document.getElementById("topperf-table-timing").innerHTML = buildTable(
-    timingRows, timingCols, () => "", "", { id: "topperf-timing-export", title: "" }
-  );
-  wireTableExport("topperf-timing-export", timingRows, timingCols.map(c => ({ key: c.key, label: c.label })), "at_risk_timing_by_plant");
+  wireTableExport(`topperf-national-export-${w.key}`, natRankRows, natCols.map(c => ({ key: c.key, label: c.label })), `top10_items_nationally_${w.key}`);
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -424,9 +429,19 @@ async function renderTopPerformers() {
     };
 
     const filterMap = {
-      "topperf-apply": renderExpiryRiskExposure,
-      "topperf-clear": () => {
-        const p = document.getElementById("topperf-plant"); if (p) p.value = "";
+      "topperf-apply-lt3": renderExpiryRiskExposure,
+      "topperf-clear-lt3": () => {
+        const p = document.getElementById("topperf-plant-lt3"); if (p) p.value = "";
+        renderExpiryRiskExposure();
+      },
+      "topperf-apply-m3to6": renderExpiryRiskExposure,
+      "topperf-clear-m3to6": () => {
+        const p = document.getElementById("topperf-plant-m3to6"); if (p) p.value = "";
+        renderExpiryRiskExposure();
+      },
+      "topperf-apply-m6to12": renderExpiryRiskExposure,
+      "topperf-clear-m6to12": () => {
+        const p = document.getElementById("topperf-plant-m6to12"); if (p) p.value = "";
         renderExpiryRiskExposure();
       },
       "topperf-ov-apply": renderOverstockRiskExposure,
