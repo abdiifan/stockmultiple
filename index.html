@@ -1210,10 +1210,21 @@
 
   <!-- ── STOCKOUT RISK (national only) ── -->
   <section id="page-stockout-risk" class="page" style="display:none">
+    <style>
+      #page-stockout-risk .row-stocked-out td { background: rgba(220,38,38,0.14) !important; }
+      #page-stockout-risk .row-critical td    { background: rgba(220,38,38,0.06) !important; }
+      #page-stockout-risk .stko-badge {
+        display:inline-block; padding:0.15rem 0.55rem; border-radius:999px;
+        font-size:0.72rem; font-weight:700; letter-spacing:0.02em; white-space:nowrap;
+      }
+      #page-stockout-risk .stko-badge-out  { background:var(--red);   color:#fff; }
+      #page-stockout-risk .stko-badge-risk { background:rgba(220,38,38,0.14); color:var(--red); }
+      #page-stockout-risk .stko-badge-ok   { background:rgba(120,120,120,0.14); color:var(--muted); }
+    </style>
     <div class="page-header-row">
       <div>
         <div class="page-title">📉 Stockout Risk</div>
-        <div class="page-subtitle">Materials where National MOS is below 4 months — network-wide, not per-branch. Scoped to ZME, ZMS, and ZLC only. A branch running low isn't flagged here if the network overall still has enough stock (that's a redistribution problem, see Overstock &amp; Expiry Risk).</div>
+        <div class="page-subtitle">Materials where National MOS is below 4 months — network-wide, not per-branch. Scoped to ZME, ZMS, and ZLC only. Split into <b>Currently Stocked Out</b> (MOS &lt; 1mo) and <b>At Risk</b> (1–4mo). A branch running low isn't flagged here if the network overall still has enough stock (that's a redistribution problem, see Overstock &amp; Expiry Risk).</div>
       </div>
       <div id="stko-dl-row" style="display:flex;gap:0.6rem"></div>
     </div>
@@ -1233,9 +1244,6 @@
           <option value="ZME">ZME (Medicines)</option>
           <option value="ZMS">ZMS (Medical Supplies)</option>
           <option value="ZLC">ZLC</option>
-        </select>
-        <select id="stko-group" class="filter-select">
-          <option value="">All Material Groups</option>
         </select>
         <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;color:var(--muted);white-space:nowrap">
           <input type="checkbox" id="stko-at-risk-only" checked />
