@@ -568,6 +568,9 @@
       <button class="nav-btn" data-page="expiry-risk">
         <span class="nav-icon">🧯</span> Overstock &amp; Expiry Risk
       </button>
+      <button class="nav-btn" data-page="stockout-risk">
+        <span class="nav-icon">📉</span> Stockout Risk
+      </button>
     </div>
 
     <div class="nav-group" data-group="analytics">
@@ -774,6 +777,11 @@
         <div class="overview-card-icon">🧯</div>
         <div class="overview-card-title">Overstock &amp; Expiry Risk</div>
         <div class="overview-card-desc">Cross-references overstocked materials against their expiry timeline to spot value at risk.</div>
+      </div>
+      <div class="overview-card" data-goto="stockout-risk">
+        <div class="overview-card-icon">📉</div>
+        <div class="overview-card-title">Stockout Risk</div>
+        <div class="overview-card-desc">Network-wide check: materials with less than 4 months of National MOS, network-wide — no stock anywhere fast enough to cover demand.</div>
       </div>
     </div>
   
@@ -1200,6 +1208,57 @@
     </div>
   </section>
 
+  <!-- ── STOCKOUT RISK (national only) ── -->
+  <section id="page-stockout-risk" class="page" style="display:none">
+    <div class="page-header-row">
+      <div>
+        <div class="page-title">📉 Stockout Risk</div>
+        <div class="page-subtitle">Materials where National MOS is below 4 months — network-wide, not per-branch. A branch running low isn't flagged here if the network overall still has enough stock (that's a redistribution problem, see Overstock &amp; Expiry Risk).</div>
+      </div>
+      <div id="stko-dl-row" style="display:flex;gap:0.6rem"></div>
+    </div>
+    <div id="stko-no-data" class="alert-info" style="margin-bottom:1rem">Upload the <b>main inventory Excel</b> and <b>AMC.xlsx</b> (📐 AMC upload in the sidebar) to enable this analysis.</div>
+    <div id="stko-content" style="display:none">
+      <div class="filter-bar" style="gap:0.6rem;flex-wrap:wrap;align-items:center">
+        <input
+          type="text"
+          id="stko-search"
+          placeholder="Material code or name…"
+          autocomplete="off"
+          spellcheck="false"
+          class="filter-input"
+        />
+        <select id="stko-type" class="filter-select">
+          <option value="">All Types</option>
+          <option value="ZME">ZME (Medicines)</option>
+          <option value="ZMS">ZMS (Medical Supplies)</option>
+        </select>
+        <input
+          type="number"
+          id="stko-min-value"
+          placeholder="Min. National SOH Value (ETB)"
+          min="0"
+          step="1000"
+          class="filter-input"
+          style="max-width:220px"
+        />
+        <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;color:var(--muted);white-space:nowrap">
+          <input type="checkbox" id="stko-at-risk-only" checked />
+          At-risk only (&lt;4mo)
+        </label>
+        <button class="apply-btn small" id="stko-apply">Apply</button>
+        <button class="apply-btn secondary small" id="stko-clear">Clear</button>
+      </div>
+
+      <div class="kpi-row" id="stko-kpis" style="margin:1rem 0"></div>
+
+      <div class="section-header">📉 National MOS — Lowest First</div>
+      <div class="chart-box full"><div id="chart-stko" style="min-height:320px"></div></div>
+
+      <div id="stko-table" style="margin-top:1rem"></div>
+    </div>
+  </section>
+
   <!-- ── NATIONAL STOCK & MOS ── -->
   <section id="page-natl-table" class="page" style="display:none">
     <div class="page-header-row">
@@ -1404,6 +1463,7 @@ document.querySelectorAll('.overview-card[data-goto]').forEach(card => {
 <script src="mos.js" defer></script>
 <script src="national-table.js" defer></script>
 <script src="expiry-risk.js" defer></script>
+<script src="stockout-risk.js" defer></script>
 <script src="who-responsible.js" defer></script>
 <script src="shelf-life.js" defer></script>
 <script>
