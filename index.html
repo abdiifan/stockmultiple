@@ -1233,15 +1233,6 @@
           <option value="ZME">ZME (Medicines)</option>
           <option value="ZMS">ZMS (Medical Supplies)</option>
         </select>
-        <input
-          type="number"
-          id="stko-min-value"
-          placeholder="Min. National SOH Value (ETB)"
-          min="0"
-          step="1000"
-          class="filter-input"
-          style="max-width:220px"
-        />
         <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;color:var(--muted);white-space:nowrap">
           <input type="checkbox" id="stko-at-risk-only" checked />
           At-risk only (&lt;4mo)
@@ -1251,9 +1242,6 @@
       </div>
 
       <div class="kpi-row" id="stko-kpis" style="margin:1rem 0"></div>
-
-      <div class="section-header">📉 National MOS — Lowest First</div>
-      <div class="chart-box full"><div id="chart-stko" style="min-height:320px"></div></div>
 
       <div id="stko-table" style="margin-top:1rem"></div>
     </div>
