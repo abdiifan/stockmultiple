@@ -1213,7 +1213,7 @@
     <div class="page-header-row">
       <div>
         <div class="page-title">📉 Stockout Risk</div>
-        <div class="page-subtitle">Materials where National MOS is below 4 months — network-wide, not per-branch. A branch running low isn't flagged here if the network overall still has enough stock (that's a redistribution problem, see Overstock &amp; Expiry Risk).</div>
+        <div class="page-subtitle">Materials where National MOS is below 4 months — network-wide, not per-branch. Scoped to ZME, ZMS, and ZLC only. A branch running low isn't flagged here if the network overall still has enough stock (that's a redistribution problem, see Overstock &amp; Expiry Risk).</div>
       </div>
       <div id="stko-dl-row" style="display:flex;gap:0.6rem"></div>
     </div>
@@ -1229,9 +1229,13 @@
           class="filter-input"
         />
         <select id="stko-type" class="filter-select">
-          <option value="">All Types</option>
+          <option value="">All Types (ZME/ZMS/ZLC)</option>
           <option value="ZME">ZME (Medicines)</option>
           <option value="ZMS">ZMS (Medical Supplies)</option>
+          <option value="ZLC">ZLC</option>
+        </select>
+        <select id="stko-group" class="filter-select">
+          <option value="">All Material Groups</option>
         </select>
         <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;color:var(--muted);white-space:nowrap">
           <input type="checkbox" id="stko-at-risk-only" checked />
