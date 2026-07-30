@@ -267,11 +267,22 @@ function renderStockoutRisk() {
   ]);
 
   // ── TABLE ──────────────────────────────────────────────────────────────────
-  // "At-risk only" scopes to MOS < 4 as before. "Stock out only" narrows that
-  // further to just status === "out" (National MOS < 1mo) — the materials
-  // that are currently exhausted, not merely trending toward a stockout.
-  let baseRows = riskOnly ? atRiskRows : snapshot;
-  if (stockOutOnly) baseRows = baseRows.filter(r => r.status === "out");
+  // "At-risk only" and "Stock out only" are independent filters over the two
+  // distinct status bands, not a nested "narrow further" pair:
+  //   riskOnly     → status "risk" only  (1 ≤ MOS < 4)
+  //   stockOutOnly → status "out"  only  (MOS < 1)
+  // Checking both shows the union of the two bands (equivalent to the old
+  // atRisk flag, MOS < 4). Checking neither shows everything, "ok" included.
+  let baseRows;
+  if (riskOnly && stockOutOnly) {
+    baseRows = atRiskRows;
+  } else if (riskOnly) {
+    baseRows = riskOnlyRows;
+  } else if (stockOutOnly) {
+    baseRows = outRows;
+  } else {
+    baseRows = snapshot;
+  }
 
   // ── Apply the active KPI-card filter (if any) on top of the above ──────────
   // "all" (Materials Screened) always resets to the full snapshot, regardless
