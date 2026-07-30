@@ -236,17 +236,33 @@ function renderStockoutRisk() {
   const exprAdjRows    = snapshot.filter(r => r.exprAdjustedRisk);  // "ok" today, but not once near-expiry stock excluded
 
   // ── Per-type breakdown (ZME / ZMS / ZLC), split by status ──────────────────
-  const countByType = { ZME: 0, ZMS: 0, ZLC: 0 };
-  atRiskRows.forEach(r => { if (countByType[r.type] !== undefined) countByType[r.type]++; });
+  const countByType = {
+    ZME: { out: 0, risk: 0 },
+    ZMS: { out: 0, risk: 0 },
+    ZLC: { out: 0, risk: 0 },
+  };
+  atRiskRows.forEach(r => {
+    const t = countByType[r.type];
+    if (!t) return;
+    if (r.status === "out") t.out++;
+    else if (r.status === "risk") t.risk++;
+  });
+  const totalByType = {
+    ZME: countByType.ZME.out + countByType.ZME.risk,
+    ZMS: countByType.ZMS.out + countByType.ZMS.risk,
+    ZLC: countByType.ZLC.out + countByType.ZLC.risk,
+  };
+  const TYPE_LABELS = { ZME: "Medicines", ZMS: "Medical Supplies", ZLC: "ZLC" };
+  const typeSub = (t) => `${TYPE_LABELS[t]} · ${countByType[t].out.toLocaleString()} out · ${countByType[t].risk.toLocaleString()} at risk`;
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
   stkoKpiRow([
     stkoKpiCard("Materials Screened", screenedCount.toLocaleString(), "ZME · ZMS · ZLC · National MOS only", "blue", "all"),
     stkoKpiCard(`Currently Stocked Out (<${STOCKOUT_OUT_THRESHOLD}mo)`, outRows.length.toLocaleString(), "Needs emergency action now", "red", "out"),
     stkoKpiCard(`At Risk (${STOCKOUT_OUT_THRESHOLD}–${STOCKOUT_MOS_THRESHOLD}mo)`, riskOnlyRows.length.toLocaleString(), "Window to act before it runs out", "amber", "risk"),
-    stkoKpiCard("ZME Flagged", countByType.ZME.toLocaleString(), "Medicines · stocked out + at risk", "amber", "ZME"),
-    stkoKpiCard("ZMS Flagged", countByType.ZMS.toLocaleString(), "Medical Supplies · stocked out + at risk", "purple", "ZMS"),
-    stkoKpiCard("ZLC Flagged", countByType.ZLC.toLocaleString(), "ZLC · stocked out + at risk", "blue", "ZLC"),
+    stkoKpiCard("ZME Flagged", totalByType.ZME.toLocaleString(), typeSub("ZME"), "amber", "ZME"),
+    stkoKpiCard("ZMS Flagged", totalByType.ZMS.toLocaleString(), typeSub("ZMS"), "purple", "ZMS"),
+    stkoKpiCard("ZLC Flagged", totalByType.ZLC.toLocaleString(), typeSub("ZLC"), "blue", "ZLC"),
     stkoKpiCard("⚠ Expiry-Adjusted Risk", exprAdjRows.length.toLocaleString(), `MOS ≥ ${STOCKOUT_MOS_THRESHOLD}mo today, but drops below once near-expiry stock is excluded`, "amber", "exprAdj"),
   ]);
 
