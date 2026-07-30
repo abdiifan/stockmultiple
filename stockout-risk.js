@@ -10,6 +10,16 @@
 //       National MOS = (SOH at every plant, including HO01)
 //                     ÷ (AMC at every BRANCH plant, excluding HO01)
 //
+//   Within that <4mo band, rows are split by urgency (status field):
+//       status = "out"  → National MOS < 1 month  → CURRENTLY STOCKED OUT
+//                          (already exhausted or nearly so — not a future
+//                          "risk," this needs emergency action now)
+//       status = "risk" → 1 ≤ National MOS < 4     → AT RISK (forward-looking
+//                          window to act before it becomes a stockout)
+//       status = "ok"   → National MOS ≥ 4         → not flagged
+//   atRisk (boolean) = status is "out" or "risk", i.e. MOS < 4 — kept for
+//   backward compatibility with filtering/sorting logic that predates the split.
+//
 // SCOPE DECISIONS (confirmed)
 // ---------------------------
 //   - Threshold is a fixed constant (STOCKOUT_MOS_THRESHOLD = 4), not a UI input.
@@ -21,9 +31,7 @@
 //     excluded from this page entirely, even under "All Types."
 //   - Materials with National MOS = null (no branch committed at all) or
 //     = Infinity (stock but zero branch demand) are EXCLUDED from this page.
-//   - A Material Group filter is available (from the inventory file's
-//     "Material Group Name" column), same non-medical exclusion rule
-//     (isNonMedicalGroup) the rest of the app already uses.
+//   - No Material Group filter — removed per product decision.
 //   - NO ETB value anywhere on this page, NO chart — KPIs + table only.
 //   - KPI row shows a per-type at-risk breakdown (ZME / ZMS / ZLC counts)
 //     instead of an average-MOS figure.
@@ -33,61 +41,24 @@
 //           currentPage, personFilter, rawDf)
 //           mos.js (HUB_PLANT, mosMerged, mosPlants, buildMosSohMap,
 //           computeNationalMOS, getMosFilteredRows, fmtMosVal)
-//           filters.js (isNonMedicalGroup)
 // Must be loaded AFTER both script.js and mos.js.
 // =============================================================================
 
-const STOCKOUT_MOS_THRESHOLD = 4; // months — fixed per product decision, network-wide only
+const STOCKOUT_MOS_THRESHOLD = 4; // months — "at risk" ceiling, fixed per product decision, network-wide only
+const STOCKOUT_OUT_THRESHOLD = 1; // months — below this, treated as CURRENTLY STOCKED OUT, not merely "at risk"
 const STOCKOUT_ALLOWED_TYPES = new Set(["ZME", "ZMS", "ZLC"]); // page scope is fixed to these three
 
-// ── MATERIAL GROUP LOOKUP (materialCode → Material Group Name) ───────────────
-// Built from the main inventory file — mosMerged (AMC-derived) has no group
-// info of its own, so this cross-references rawDf/mappedDf the same way
-// expiry-risk.js's buildExpiryMap() and buildPlantNameMap() look up fields
-// that only exist on the inventory side. First non-blank group per code wins.
-function buildMaterialGroupMap() {
-  const map = new Map();
-  const base = (typeof getReconciledBase === "function") ? getReconciledBase() : (typeof rawDf !== "undefined" ? rawDf : []);
-  if (!base.length) return map;
-
-  for (const row of base) {
-    const mat = String(row._mappedMaterial || row["Material"] || "").trim();
-    const grp = String(row["Material Group Name"] || "").trim();
-    if (!mat || !grp) continue;
-    if (!map.has(mat)) map.set(mat, grp);
-  }
-  return map;
-}
-
-// Populate the Material Group dropdown once, from groups actually present in
-// the loaded inventory file (excluding non-medical groups, same rule used
-// everywhere else in the app).
-function stkoPopulateGroupDropdown() {
-  const sel = document.getElementById("stko-group");
-  if (!sel || sel.options.length > 1) return; // already populated
-  if (typeof rawDf === "undefined" || !rawDf.length) return;
-
-  const groups = [...new Set(rawDf.map(r => r["Material Group Name"]))]
-    .filter(Boolean)
-    .filter(name => typeof isNonMedicalGroup !== "function" || !isNonMedicalGroup(name))
-    .sort();
-
-  groups.forEach(g => {
-    const opt = document.createElement("option");
-    opt.value = g; opt.text = g;
-    sel.appendChild(opt);
-  });
-}
-
 // ── BUILD THE NATIONAL STOCKOUT-RISK SNAPSHOT ─────────────────────────────────
-// Returns an array of { code, desc, type, group, totalSoh, totalAmc, mos, atRisk }
+// Returns an array of { code, desc, type, totalSoh, totalAmc, mos, atRisk, status }
+// status: "out"  → MOS < 1   (currently stocked out, not merely "at risk")
+//         "risk" → 1 ≤ MOS < 4 (at risk of stocking out)
+//         "ok"   → MOS ≥ 4   (not flagged; only ever appears when "at-risk only" is unchecked)
 // Only ZME/ZMS/ZLC types are ever included, and only materials where National
 // MOS is a real, finite number (null/Infinity dropped).
-function buildStockoutSnapshot(typeFilter, searchQ, groupFilter) {
+function buildStockoutSnapshot(typeFilter, searchQ) {
   if (typeof mosMerged === "undefined" || !mosMerged.length) return [];
 
-  const sohMap   = buildMosSohMap();          // from mos.js
-  const groupMap = buildMaterialGroupMap();
+  const sohMap = buildMosSohMap();          // from mos.js
 
   // getMosFilteredRows() already applies the global personFilter before
   // type/search, exactly like MOS by Plant / Expiry Risk.
@@ -105,14 +76,15 @@ function buildStockoutSnapshot(typeFilter, searchQ, groupFilter) {
     const nat = computeNationalMOS(r, sohMap); // from mos.js
     if (nat.mos === null || nat.mos === Infinity) continue; // no basis / no real demand
 
-    const group = groupMap.get(r.code) || "";
-    if (groupFilter && group !== groupFilter) continue;
+    const status = nat.mos < STOCKOUT_OUT_THRESHOLD ? "out"
+                  : nat.mos < STOCKOUT_MOS_THRESHOLD ? "risk"
+                  : "ok";
 
     out.push({
-      code: r.code, desc: r.desc, type: r.type, group,
+      code: r.code, desc: r.desc, type: r.type,
       isMerged: r.isMerged, origCodes: r.origCodes,
       totalSoh: nat.totalSoh, totalAmc: nat.totalAmc, mos: nat.mos,
-      atRisk: nat.mos < STOCKOUT_MOS_THRESHOLD,
+      atRisk: nat.mos < STOCKOUT_MOS_THRESHOLD, status,
     });
   }
   return out;
@@ -126,9 +98,22 @@ function stkoKpiRow(cards) {
   const el = document.getElementById("stko-kpis");
   if (el) el.innerHTML = cards.join("");
 }
-function stkoMosCellStyle(mos) {
-  return mos < STOCKOUT_MOS_THRESHOLD ? "color:var(--red);font-weight:700" : "color:var(--text)";
+// MOS cell text color: "out" (< 1mo) gets the strongest red, "risk" (1–4mo)
+// gets standard red, "ok" (≥4mo) is left neutral.
+function stkoMosCellStyle(status) {
+  if (status === "out")  return "color:var(--red);font-weight:800";
+  if (status === "risk") return "color:var(--red);font-weight:700";
+  return "color:var(--text)";
 }
+function stkoStatusBadge(status) {
+  if (status === "out")  return '<span class="stko-badge stko-badge-out">STOCKED OUT</span>';
+  if (status === "risk") return '<span class="stko-badge stko-badge-risk">AT RISK</span>';
+  return '<span class="stko-badge stko-badge-ok">OK</span>';
+}
+function stkoStatusLabel(status) {
+  return status === "out" ? "Stocked Out" : status === "risk" ? "At Risk" : "OK";
+}
+
 
 // ── MAIN RENDER ────────────────────────────────────────────────────────────────
 function renderStockoutRisk() {
@@ -153,34 +138,33 @@ function renderStockoutRisk() {
   document.getElementById("stko-no-data").style.display  = "none";
   document.getElementById("stko-content").style.display  = "block";
 
-  stkoPopulateGroupDropdown();
-
   const searchEl   = document.getElementById("stko-search");
   const typeEl     = document.getElementById("stko-type");
-  const groupEl    = document.getElementById("stko-group");
   const atRiskOnly = document.getElementById("stko-at-risk-only");
 
   const searchQ  = searchEl ? searchEl.value.trim() : "";
   const typeVal  = typeEl   ? typeEl.value.trim()   : "";
-  const groupVal = groupEl  ? groupEl.value.trim()  : "";
   const riskOnly = atRiskOnly ? atRiskOnly.checked : true;
 
-  const snapshot = buildStockoutSnapshot(typeVal, searchQ, groupVal);
+  const snapshot = buildStockoutSnapshot(typeVal, searchQ);
 
   const screenedCount = snapshot.length;
-  const atRiskRows    = snapshot.filter(r => r.atRisk);
+  const atRiskRows     = snapshot.filter(r => r.atRisk);           // MOS < 4 (out + risk combined)
+  const outRows        = snapshot.filter(r => r.status === "out"); // MOS < 1
+  const riskOnlyRows   = snapshot.filter(r => r.status === "risk"); // 1 ≤ MOS < 4
 
-  // ── Per-type at-risk breakdown (ZME / ZMS / ZLC) ───────────────────────────
+  // ── Per-type breakdown (ZME / ZMS / ZLC), split by status ──────────────────
   const countByType = { ZME: 0, ZMS: 0, ZLC: 0 };
   atRiskRows.forEach(r => { if (countByType[r.type] !== undefined) countByType[r.type]++; });
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
   stkoKpiRow([
     stkoKpiCard("Materials Screened", screenedCount.toLocaleString(), "ZME · ZMS · ZLC · National MOS only", "blue"),
-    stkoKpiCard(`At Risk of Stockout (<${STOCKOUT_MOS_THRESHOLD}mo)`, atRiskRows.length.toLocaleString(), `of ${screenedCount.toLocaleString()} screened nationally`, "red"),
-    stkoKpiCard("ZME At Risk", countByType.ZME.toLocaleString(), "Medicines", "amber"),
-    stkoKpiCard("ZMS At Risk", countByType.ZMS.toLocaleString(), "Medical Supplies", "purple"),
-    stkoKpiCard("ZLC At Risk", countByType.ZLC.toLocaleString(), "ZLC", "blue"),
+    stkoKpiCard(`Currently Stocked Out (<${STOCKOUT_OUT_THRESHOLD}mo)`, outRows.length.toLocaleString(), "Needs emergency action now", "red"),
+    stkoKpiCard(`At Risk (${STOCKOUT_OUT_THRESHOLD}–${STOCKOUT_MOS_THRESHOLD}mo)`, riskOnlyRows.length.toLocaleString(), "Window to act before it runs out", "amber"),
+    stkoKpiCard("ZME Flagged", countByType.ZME.toLocaleString(), "Medicines · stocked out + at risk", "amber"),
+    stkoKpiCard("ZMS Flagged", countByType.ZMS.toLocaleString(), "Medical Supplies · stocked out + at risk", "purple"),
+    stkoKpiCard("ZLC Flagged", countByType.ZLC.toLocaleString(), "ZLC · stocked out + at risk", "blue"),
   ]);
 
   // ── TABLE ──────────────────────────────────────────────────────────────────
@@ -194,24 +178,24 @@ function renderStockoutRisk() {
       raw: true, cellClass: "col-mat-code-wrap" },
     { key: "desc", label: "Description", cellClass: "col-mat-desc-wrap" },
     { key: "type", label: "Type" },
-    { key: "group", label: "Material Group", fmt: v => v || "—" },
     { key: "totalSoh", label: "National SOH", fmt: fmtQty },
     { key: "totalAmc", label: "National AMC (branches)", fmt: fmtQty },
     { key: "mos", label: "National MOS",
-      fmt: v => `<span style="${stkoMosCellStyle(v)}">${fmtMosVal(v)}</span>`, raw: true },
+      fmt: (v, r) => `<span style="${stkoMosCellStyle(r.status)}">${fmtMosVal(v)}</span>`, raw: true },
+    { key: "status", label: "Status", fmt: (v) => stkoStatusBadge(v), raw: true },
   ];
 
   document.getElementById("stko-table").innerHTML = tableRows.length
-    ? buildTable(tableRows, cols, (row) => row.atRisk ? "row-critical" : "", "", { id: "stko-export", title: "" })
+    ? buildTable(tableRows, cols, (row) => row.status === "out" ? "row-stocked-out" : row.atRisk ? "row-critical" : "", "", { id: "stko-export", title: "" })
     : '<div class="alert-info" style="margin:0.5rem 0">✓ No materials match the current filters at national stockout risk.</div>';
 
   // ── EXPORT ────────────────────────────────────────────────────────────────
   const exportCols = [
     { key: "code", label: "Material Code" }, { key: "desc", label: "Description" }, { key: "type", label: "Type" },
-    { key: "group", label: "Material Group" },
     { key: "totalSoh", label: "National SOH", fmt: v => Number(v || 0).toFixed(2) },
     { key: "totalAmc", label: "National AMC (branches only)", fmt: v => Number(v || 0).toFixed(2) },
     { key: "mos", label: "National MOS (months)", fmt: v => Number(v).toFixed(2) },
+    { key: "status", label: "Status", fmt: v => stkoStatusLabel(v) },
     { key: "atRisk", label: `At Risk (<${STOCKOUT_MOS_THRESHOLD}mo)?`, fmt: v => v ? "Yes" : "No" },
   ];
   if (tableRows.length) wireTableExport("stko-export", tableRows, exportCols, "national_stockout_risk");
@@ -251,7 +235,6 @@ function renderStockoutRisk() {
       "stko-clear": () => {
         const s = document.getElementById("stko-search");        if (s) s.value = "";
         const t = document.getElementById("stko-type");          if (t) t.value = "";
-        const g = document.getElementById("stko-group");         if (g) g.value = "";
         const c = document.getElementById("stko-at-risk-only");  if (c) c.checked = true;
         renderStockoutRisk();
       },
