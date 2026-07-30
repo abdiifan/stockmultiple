@@ -48,6 +48,45 @@ const STOCKOUT_MOS_THRESHOLD = 4; // months — "at risk" ceiling, fixed per pro
 const STOCKOUT_OUT_THRESHOLD = 1; // months — below this, treated as CURRENTLY STOCKED OUT, not merely "at risk"
 const STOCKOUT_ALLOWED_TYPES = new Set(["ZME", "ZMS", "ZLC"]); // page scope is fixed to these three
 
+// ── EXPIRY-ADJUSTED RISK (extra cross-check signal, does NOT alter the core
+//    National MOS rule or "confirmed" status thresholds above) ───────────────
+// National MOS is pure quantity ÷ consumption — it has no idea how much of
+// that SOH is about to expire. A material can show MOS >= 4 ("ok") today and
+// still be quietly heading toward a stockout the moment a big batch expires.
+//
+// This reuses buildExpiryMap()/monthsUntil() from expiry-risk.js — the SAME
+// earliest-batch-per-plant expiry basis used on the Overstock & Expiry Risk
+// page — so the two pages agree on what "expiring soon" means.
+//
+//   expiringQty  = national SOH (all plants incl. HO01) whose earliest-
+//                  expiring batch falls within the next STOCKOUT_MOS_THRESHOLD
+//                  months (already-expired batches count too — they're gone).
+//   adjustedMos  = (totalSoh - expiringQty) ÷ totalAmc
+//                  → what National MOS becomes once that soon-to-expire
+//                  stock is excluded from the count.
+//   exprAdjustedRisk = true ONLY when a material is currently "ok"
+//                  (MOS >= 4) but adjustedMos < STOCKOUT_MOS_THRESHOLD —
+//                  i.e. looks safe today, won't be once that batch expires.
+function buildNationalExpiringQtyMap(thresholdMonths) {
+  const map = new Map(); // code -> national qty expiring within thresholdMonths
+  if (typeof buildExpiryMap !== "function") return map; // expiry-risk.js not loaded
+  const expiryMap = buildExpiryMap(); // from expiry-risk.js: code -> plant -> {expiry, qtySum, valSum}
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  for (const [code, plantMap] of expiryMap.entries()) {
+    let expiringQty = 0;
+    for (const plant in plantMap) {
+      const entry = plantMap[plant];
+      if (!entry.expiry) continue; // no expiry data at this plant — can't judge, skip
+      const left = monthsUntil(entry.expiry, today); // from expiry-risk.js
+      if (left !== null && left < thresholdMonths) expiringQty += entry.qtySum;
+    }
+    if (expiringQty > 0) map.set(code, expiringQty);
+  }
+  return map;
+}
+
 // ── BUILD THE NATIONAL STOCKOUT-RISK SNAPSHOT ─────────────────────────────────
 // Returns an array of { code, desc, type, totalSoh, totalAmc, mos, atRisk, status }
 // status: "out"  → MOS < 1   (currently stocked out, not merely "at risk")
@@ -71,6 +110,8 @@ function buildStockoutSnapshot(typeFilter, searchQ) {
   // or anything else.
   rows = rows.filter(r => STOCKOUT_ALLOWED_TYPES.has(r.type));
 
+  const expiringQtyMap = buildNationalExpiringQtyMap(STOCKOUT_MOS_THRESHOLD);
+
   const out = [];
   for (const r of rows) {
     const nat = computeNationalMOS(r, sohMap); // from mos.js
@@ -80,11 +121,20 @@ function buildStockoutSnapshot(typeFilter, searchQ) {
                   : nat.mos < STOCKOUT_MOS_THRESHOLD ? "risk"
                   : "ok";
 
+    // Expiry-adjusted cross-check — doesn't affect status/atRisk above.
+    const rawExpiringQty = expiringQtyMap.get(r.code) || 0;
+    const expiringQty     = Math.min(rawExpiringQty, nat.totalSoh); // guard vs basis mismatch
+    const adjustedMos      = (expiringQty > 0 && nat.totalAmc > 0)
+      ? (nat.totalSoh - expiringQty) / nat.totalAmc
+      : null;
+    const exprAdjustedRisk = status === "ok" && adjustedMos !== null && adjustedMos < STOCKOUT_MOS_THRESHOLD;
+
     out.push({
       code: r.code, desc: r.desc, type: r.type,
       isMerged: r.isMerged, origCodes: r.origCodes,
       totalSoh: nat.totalSoh, totalAmc: nat.totalAmc, mos: nat.mos,
       atRisk: nat.mos < STOCKOUT_MOS_THRESHOLD, status,
+      expiringQty, adjustedMos, exprAdjustedRisk,
     });
   }
   return out;
@@ -113,6 +163,18 @@ function stkoStatusBadge(status) {
 function stkoStatusLabel(status) {
   return status === "out" ? "Stocked Out" : status === "risk" ? "At Risk" : "OK";
 }
+// Expiry-adjusted MOS cell: shows "—" when there's no expiry basis to judge,
+// the adjusted figure in neutral text when it's informational only, or a
+// flagged amber badge when a currently-"ok" material would drop below the
+// threshold once its soon-to-expire stock is excluded.
+function stkoExprAdjCell(r) {
+  if (r.adjustedMos === null) return '<span style="color:var(--muted)">—</span>';
+  const style = r.exprAdjustedRisk ? "color:var(--amber);font-weight:700" : "color:var(--text)";
+  const badge = r.exprAdjustedRisk
+    ? ` <span class="stko-badge stko-badge-expadj" title="${fmtQty(r.expiringQty)} units expire within ${STOCKOUT_MOS_THRESHOLD}mo nationally">⚠ EXPIRY-ADJUSTED</span>`
+    : "";
+  return `<span style="${style}">${fmtMosVal(r.adjustedMos)}</span>${badge}`;
+}
 
 
 // ── MAIN RENDER ────────────────────────────────────────────────────────────────
@@ -138,13 +200,15 @@ function renderStockoutRisk() {
   document.getElementById("stko-no-data").style.display  = "none";
   document.getElementById("stko-content").style.display  = "block";
 
-  const searchEl   = document.getElementById("stko-search");
-  const typeEl     = document.getElementById("stko-type");
-  const atRiskOnly = document.getElementById("stko-at-risk-only");
+  const searchEl     = document.getElementById("stko-search");
+  const typeEl       = document.getElementById("stko-type");
+  const atRiskOnly   = document.getElementById("stko-at-risk-only");
+  const exprAdjOnly  = document.getElementById("stko-expiry-adjusted");
 
-  const searchQ  = searchEl ? searchEl.value.trim() : "";
-  const typeVal  = typeEl   ? typeEl.value.trim()   : "";
-  const riskOnly = atRiskOnly ? atRiskOnly.checked : true;
+  const searchQ    = searchEl ? searchEl.value.trim() : "";
+  const typeVal    = typeEl   ? typeEl.value.trim()   : "";
+  const riskOnly   = atRiskOnly  ? atRiskOnly.checked  : true;
+  const showExprAdj = exprAdjOnly ? exprAdjOnly.checked : false;
 
   const snapshot = buildStockoutSnapshot(typeVal, searchQ);
 
@@ -152,6 +216,7 @@ function renderStockoutRisk() {
   const atRiskRows     = snapshot.filter(r => r.atRisk);           // MOS < 4 (out + risk combined)
   const outRows        = snapshot.filter(r => r.status === "out"); // MOS < 1
   const riskOnlyRows   = snapshot.filter(r => r.status === "risk"); // 1 ≤ MOS < 4
+  const exprAdjRows    = snapshot.filter(r => r.exprAdjustedRisk);  // "ok" today, but not once near-expiry stock excluded
 
   // ── Per-type breakdown (ZME / ZMS / ZLC), split by status ──────────────────
   const countByType = { ZME: 0, ZMS: 0, ZLC: 0 };
@@ -165,10 +230,19 @@ function renderStockoutRisk() {
     stkoKpiCard("ZME Flagged", countByType.ZME.toLocaleString(), "Medicines · stocked out + at risk", "amber"),
     stkoKpiCard("ZMS Flagged", countByType.ZMS.toLocaleString(), "Medical Supplies · stocked out + at risk", "purple"),
     stkoKpiCard("ZLC Flagged", countByType.ZLC.toLocaleString(), "ZLC · stocked out + at risk", "blue"),
+    stkoKpiCard("⚠ Expiry-Adjusted Risk", exprAdjRows.length.toLocaleString(), `MOS ≥ ${STOCKOUT_MOS_THRESHOLD}mo today, but drops below once near-expiry stock is excluded`, "amber"),
   ]);
 
   // ── TABLE ──────────────────────────────────────────────────────────────────
-  const tableRows = (riskOnly ? atRiskRows : snapshot).sort((a, b) => a.mos - b.mos); // most urgent first
+  // "At-risk only" scopes to MOS < 4 as before. When "Include Expiry-Adjusted
+  // Risk" is also checked, materials that are "ok" by pure MOS but flagged by
+  // the expiry cross-check are pulled into the view too (they're MOS >= 4 so
+  // atRiskOnly alone would otherwise hide them). With at-risk-only unchecked,
+  // the full snapshot already includes them — the checkbox has no extra effect.
+  const baseRows = riskOnly
+    ? (showExprAdj ? snapshot.filter(r => r.atRisk || r.exprAdjustedRisk) : atRiskRows)
+    : snapshot;
+  const tableRows = baseRows.sort((a, b) => a.mos - b.mos); // most urgent first
 
   const cols = [
     { key: "code", label: "Material Code",
@@ -183,10 +257,12 @@ function renderStockoutRisk() {
     { key: "mos", label: "National MOS",
       fmt: (v, r) => `<span style="${stkoMosCellStyle(r.status)}">${fmtMosVal(v)}</span>`, raw: true },
     { key: "status", label: "Status", fmt: (v) => stkoStatusBadge(v), raw: true },
+    { key: "adjustedMos", label: "Expiry-Adjusted MOS",
+      fmt: (v, r) => stkoExprAdjCell(r), raw: true },
   ];
 
   document.getElementById("stko-table").innerHTML = tableRows.length
-    ? buildTable(tableRows, cols, (row) => row.status === "out" ? "row-stocked-out" : row.atRisk ? "row-critical" : "", "", { id: "stko-export", title: "" })
+    ? buildTable(tableRows, cols, (row) => row.status === "out" ? "row-stocked-out" : row.atRisk ? "row-critical" : row.exprAdjustedRisk ? "row-expiry-adjusted" : "", "", { id: "stko-export", title: "" })
     : '<div class="alert-info" style="margin:0.5rem 0">✓ No materials match the current filters at national stockout risk.</div>';
 
   // ── EXPORT ────────────────────────────────────────────────────────────────
@@ -197,6 +273,9 @@ function renderStockoutRisk() {
     { key: "mos", label: "National MOS (months)", fmt: v => Number(v).toFixed(2) },
     { key: "status", label: "Status", fmt: v => stkoStatusLabel(v) },
     { key: "atRisk", label: `At Risk (<${STOCKOUT_MOS_THRESHOLD}mo)?`, fmt: v => v ? "Yes" : "No" },
+    { key: "expiringQty", label: `National Qty Expiring (<${STOCKOUT_MOS_THRESHOLD}mo)`, fmt: v => Number(v || 0).toFixed(2) },
+    { key: "adjustedMos", label: "Expiry-Adjusted MOS (months)", fmt: v => v === null ? "" : Number(v).toFixed(2) },
+    { key: "exprAdjustedRisk", label: "Expiry-Adjusted Risk?", fmt: v => v ? "Yes" : "No" },
   ];
   if (tableRows.length) wireTableExport("stko-export", tableRows, exportCols, "national_stockout_risk");
 
@@ -233,9 +312,10 @@ function renderStockoutRisk() {
     const filterMap = {
       "stko-apply": renderStockoutRisk,
       "stko-clear": () => {
-        const s = document.getElementById("stko-search");        if (s) s.value = "";
-        const t = document.getElementById("stko-type");          if (t) t.value = "";
-        const c = document.getElementById("stko-at-risk-only");  if (c) c.checked = true;
+        const s = document.getElementById("stko-search");            if (s) s.value = "";
+        const t = document.getElementById("stko-type");              if (t) t.value = "";
+        const c = document.getElementById("stko-at-risk-only");      if (c) c.checked = true;
+        const e = document.getElementById("stko-expiry-adjusted");   if (e) e.checked = false;
         renderStockoutRisk();
       },
     };
@@ -249,6 +329,9 @@ function renderStockoutRisk() {
 
     const atRiskToggle = document.getElementById("stko-at-risk-only");
     if (atRiskToggle) atRiskToggle.addEventListener("change", () => { if (mosMerged.length) renderStockoutRisk(); });
+
+    const exprAdjToggle = document.getElementById("stko-expiry-adjusted");
+    if (exprAdjToggle) exprAdjToggle.addEventListener("change", () => { if (mosMerged.length) renderStockoutRisk(); });
 
     // Enter-to-apply in the search box, same UX as other search filters
     const searchInput = document.getElementById("stko-search");
