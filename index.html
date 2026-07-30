@@ -1220,11 +1220,13 @@
       #page-stockout-risk .stko-badge-out  { background:var(--red);   color:#fff; }
       #page-stockout-risk .stko-badge-risk { background:rgba(220,38,38,0.14); color:var(--red); }
       #page-stockout-risk .stko-badge-ok   { background:rgba(120,120,120,0.14); color:var(--muted); }
+      #page-stockout-risk .stko-badge-expadj { background:rgba(245,158,11,0.16); color:var(--amber); margin-left:0.35rem; }
+      #page-stockout-risk .row-expiry-adjusted td { background: rgba(245,158,11,0.08) !important; }
     </style>
     <div class="page-header-row">
       <div>
         <div class="page-title">📉 Stockout Risk</div>
-        <div class="page-subtitle">Materials where National MOS is below 4 months — network-wide, not per-branch. Scoped to ZME, ZMS, and ZLC only. Split into <b>Currently Stocked Out</b> (MOS &lt; 1mo) and <b>At Risk</b> (1–4mo). A branch running low isn't flagged here if the network overall still has enough stock (that's a redistribution problem, see Overstock &amp; Expiry Risk).</div>
+        <div class="page-subtitle">Materials where National MOS is below 4 months — network-wide, not per-branch. Scoped to ZME, ZMS, and ZLC only. Split into <b>Currently Stocked Out</b> (MOS &lt; 1mo) and <b>At Risk</b> (1–4mo). A branch running low isn't flagged here if the network overall still has enough stock (that's a redistribution problem, see Overstock &amp; Expiry Risk). The <b>Expiry-Adjusted MOS</b> column is an extra cross-check: it doesn't change the core status above, but flags materials that look safe today (MOS ≥ 4mo) purely because soon-to-expire stock is still being counted.</div>
       </div>
       <div id="stko-dl-row" style="display:flex;gap:0.6rem"></div>
     </div>
@@ -1248,6 +1250,10 @@
         <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;color:var(--muted);white-space:nowrap">
           <input type="checkbox" id="stko-at-risk-only" checked />
           At-risk only (&lt;4mo)
+        </label>
+        <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;color:var(--muted);white-space:nowrap" title="Also include materials that look safe today (MOS ≥ 4mo) but would drop below 4mo once soon-to-expire stock is excluded">
+          <input type="checkbox" id="stko-expiry-adjusted" />
+          Include ⚠ Expiry-Adjusted Risk
         </label>
         <button class="apply-btn small" id="stko-apply">Apply</button>
         <button class="apply-btn secondary small" id="stko-clear">Clear</button>
