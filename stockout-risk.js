@@ -140,9 +140,26 @@ function buildStockoutSnapshot(typeFilter, searchQ) {
   return out;
 }
 
+// ── CLICKABLE KPI CARDS ────────────────────────────────────────────────────────
+// Clicking a KPI card on this page filters the table below to just the
+// materials behind that number. Clicking the same (active) card again clears
+// the filter. filterKey values: "out" | "risk" | "ZME" | "ZMS" | "ZLC" |
+// "exprAdj" | "all" (the "Materials Screened" card, which always resets).
+let stkoCardFilter = null;
+
 // ── FORMATTING HELPERS ────────────────────────────────────────────────────────
-function stkoKpiCard(label, value, sub, color) {
-  return `<div class="kpi-card"><div class="kpi-label">${escHtml(label)}</div><div class="kpi-value" style="color:var(--${color||'blue'})">${value}</div>${sub ? `<div class="kpi-sub">${sub}</div>` : ""}</div>`;
+function stkoKpiCard(label, value, sub, color, filterKey) {
+  if (!filterKey) {
+    return `<div class="kpi-card"><div class="kpi-label">${escHtml(label)}</div><div class="kpi-value" style="color:var(--${color||'blue'})">${value}</div>${sub ? `<div class="kpi-sub">${sub}</div>` : ""}</div>`;
+  }
+  const isActive = stkoCardFilter === filterKey;
+  const activeStyle = isActive ? `border-color:var(--${color||'blue'});box-shadow:0 0 0 1px var(--${color||'blue'})` : "";
+  return `<div class="kpi-card" data-stko-filter="${escHtml(filterKey)}" role="button" tabindex="0"
+      style="cursor:pointer;${activeStyle}" title="Click to show these items in the table below">
+    <div class="kpi-label">${escHtml(label)}</div>
+    <div class="kpi-value" style="color:var(--${color||'blue'})">${value}</div>
+    ${sub ? `<div class="kpi-sub">${sub}</div>` : ""}
+  </div>`;
 }
 function stkoKpiRow(cards) {
   const el = document.getElementById("stko-kpis");
@@ -224,13 +241,13 @@ function renderStockoutRisk() {
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
   stkoKpiRow([
-    stkoKpiCard("Materials Screened", screenedCount.toLocaleString(), "ZME · ZMS · ZLC · National MOS only", "blue"),
-    stkoKpiCard(`Currently Stocked Out (<${STOCKOUT_OUT_THRESHOLD}mo)`, outRows.length.toLocaleString(), "Needs emergency action now", "red"),
-    stkoKpiCard(`At Risk (${STOCKOUT_OUT_THRESHOLD}–${STOCKOUT_MOS_THRESHOLD}mo)`, riskOnlyRows.length.toLocaleString(), "Window to act before it runs out", "amber"),
-    stkoKpiCard("ZME Flagged", countByType.ZME.toLocaleString(), "Medicines · stocked out + at risk", "amber"),
-    stkoKpiCard("ZMS Flagged", countByType.ZMS.toLocaleString(), "Medical Supplies · stocked out + at risk", "purple"),
-    stkoKpiCard("ZLC Flagged", countByType.ZLC.toLocaleString(), "ZLC · stocked out + at risk", "blue"),
-    stkoKpiCard("⚠ Expiry-Adjusted Risk", exprAdjRows.length.toLocaleString(), `MOS ≥ ${STOCKOUT_MOS_THRESHOLD}mo today, but drops below once near-expiry stock is excluded`, "amber"),
+    stkoKpiCard("Materials Screened", screenedCount.toLocaleString(), "ZME · ZMS · ZLC · National MOS only", "blue", "all"),
+    stkoKpiCard(`Currently Stocked Out (<${STOCKOUT_OUT_THRESHOLD}mo)`, outRows.length.toLocaleString(), "Needs emergency action now", "red", "out"),
+    stkoKpiCard(`At Risk (${STOCKOUT_OUT_THRESHOLD}–${STOCKOUT_MOS_THRESHOLD}mo)`, riskOnlyRows.length.toLocaleString(), "Window to act before it runs out", "amber", "risk"),
+    stkoKpiCard("ZME Flagged", countByType.ZME.toLocaleString(), "Medicines · stocked out + at risk", "amber", "ZME"),
+    stkoKpiCard("ZMS Flagged", countByType.ZMS.toLocaleString(), "Medical Supplies · stocked out + at risk", "purple", "ZMS"),
+    stkoKpiCard("ZLC Flagged", countByType.ZLC.toLocaleString(), "ZLC · stocked out + at risk", "blue", "ZLC"),
+    stkoKpiCard("⚠ Expiry-Adjusted Risk", exprAdjRows.length.toLocaleString(), `MOS ≥ ${STOCKOUT_MOS_THRESHOLD}mo today, but drops below once near-expiry stock is excluded`, "amber", "exprAdj"),
   ]);
 
   // ── TABLE ──────────────────────────────────────────────────────────────────
@@ -242,7 +259,41 @@ function renderStockoutRisk() {
   const baseRows = riskOnly
     ? (showExprAdj ? snapshot.filter(r => r.atRisk || r.exprAdjustedRisk) : atRiskRows)
     : snapshot;
-  const tableRows = baseRows.sort((a, b) => a.mos - b.mos); // most urgent first
+
+  // ── Apply the active KPI-card filter (if any) on top of the above ──────────
+  // "all" (Materials Screened) always resets to the full snapshot, regardless
+  // of the at-risk-only checkbox, since it represents everything screened.
+  let cardFilteredRows = baseRows;
+  let cardFilterLabel = null;
+  if (stkoCardFilter === "all") {
+    cardFilteredRows = snapshot;
+  } else if (stkoCardFilter === "out") {
+    cardFilteredRows = outRows;
+    cardFilterLabel = `Currently Stocked Out (<${STOCKOUT_OUT_THRESHOLD}mo)`;
+  } else if (stkoCardFilter === "risk") {
+    cardFilteredRows = riskOnlyRows;
+    cardFilterLabel = `At Risk (${STOCKOUT_OUT_THRESHOLD}–${STOCKOUT_MOS_THRESHOLD}mo)`;
+  } else if (stkoCardFilter === "ZME" || stkoCardFilter === "ZMS" || stkoCardFilter === "ZLC") {
+    cardFilteredRows = atRiskRows.filter(r => r.type === stkoCardFilter);
+    cardFilterLabel = `${stkoCardFilter} Flagged (stocked out + at risk)`;
+  } else if (stkoCardFilter === "exprAdj") {
+    // Pull straight from the full snapshot — these rows are "ok" by status
+    // and may not be in baseRows unless the expiry-adjusted checkbox is on.
+    cardFilteredRows = exprAdjRows;
+    cardFilterLabel = "Expiry-Adjusted Risk";
+  }
+
+  const tableRows = cardFilteredRows.slice().sort((a, b) => a.mos - b.mos); // most urgent first
+
+  const cardFilterBanner = document.getElementById("stko-card-filter-banner");
+  if (cardFilterBanner) {
+    cardFilterBanner.innerHTML = cardFilterLabel
+      ? `<div class="alert-info" style="margin:0 0 0.5rem;display:flex;align-items:center;justify-content:space-between;gap:0.6rem">
+           <span>Showing <b>${tableRows.length.toLocaleString()}</b> item${tableRows.length === 1 ? "" : "s"} for: <b>${escHtml(cardFilterLabel)}</b></span>
+           <button type="button" id="stko-clear-card-filter" class="apply-btn secondary small" style="padding:0.2rem 0.6rem">✕ Clear</button>
+         </div>`
+      : "";
+  }
 
   const cols = [
     { key: "code", label: "Material Code",
@@ -316,6 +367,7 @@ function renderStockoutRisk() {
         const t = document.getElementById("stko-type");              if (t) t.value = "";
         const c = document.getElementById("stko-at-risk-only");      if (c) c.checked = true;
         const e = document.getElementById("stko-expiry-adjusted");   if (e) e.checked = false;
+        stkoCardFilter = null;
         renderStockoutRisk();
       },
     };
@@ -326,6 +378,32 @@ function renderStockoutRisk() {
       const fn = filterMap[btn.id];
       if (fn) { e.stopPropagation(); fn(); }
     }, true);
+
+    // ── Click on a Stockout Risk KPI card → filter the table to those items ──
+    // Clicking the already-active card (or its "✕ Clear" banner button) resets
+    // the filter back to the normal search/type/checkbox view.
+    function applyStkoCardFilter(el) {
+      const key = el.dataset.stkoFilter;
+      if (!key) return;
+      stkoCardFilter = (stkoCardFilter === key) ? null : key;
+      renderStockoutRisk();
+      const table = document.getElementById("stko-table");
+      if (table) table.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    document.body.addEventListener("click", (e) => {
+      if (e.target.closest("#stko-clear-card-filter")) {
+        stkoCardFilter = null;
+        renderStockoutRisk();
+        return;
+      }
+      const card = e.target.closest("#stko-kpis [data-stko-filter]");
+      if (card) applyStkoCardFilter(card);
+    });
+    document.body.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      const card = e.target.closest("#stko-kpis [data-stko-filter]");
+      if (card) { e.preventDefault(); applyStkoCardFilter(card); }
+    });
 
     const atRiskToggle = document.getElementById("stko-at-risk-only");
     if (atRiskToggle) atRiskToggle.addEventListener("change", () => { if (mosMerged.length) renderStockoutRisk(); });
