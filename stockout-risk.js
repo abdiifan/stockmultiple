@@ -307,13 +307,13 @@ function renderStockoutRisk() {
     { key: "totalAmc", label: "National AMC (branches)", fmt: fmtQty },
     { key: "mos", label: "National MOS",
       fmt: (v, r) => `<span style="${stkoMosCellStyle(r.status)}">${fmtMosVal(v)}</span>`, raw: true },
-    { key: "status", label: "Status", fmt: (v) => stkoStatusBadge(v), raw: true },
     { key: "adjustedMos", label: "Expiry-Adjusted MOS",
       fmt: (v, r) => stkoExprAdjCell(r), raw: true },
+    { key: "status", label: "Status", fmt: (v) => stkoStatusBadge(v), raw: true },
   ];
 
   document.getElementById("stko-table").innerHTML = tableRows.length
-    ? buildTable(tableRows, cols, (row) => row.status === "out" ? "row-stocked-out" : row.atRisk ? "row-critical" : row.exprAdjustedRisk ? "row-expiry-adjusted" : "", "", { id: "stko-export", title: "" })
+    ? buildTable(tableRows, cols, (row) => row.status === "out" ? "row-stocked-out" : row.atRisk ? "row-critical" : row.exprAdjustedRisk ? "row-expiry-adjusted" : "")
     : '<div class="alert-info" style="margin:0.5rem 0">✓ No materials match the current filters at national stockout risk.</div>';
 
   // ── EXPORT ────────────────────────────────────────────────────────────────
@@ -322,13 +322,12 @@ function renderStockoutRisk() {
     { key: "totalSoh", label: "National SOH", fmt: v => Number(v || 0).toFixed(2) },
     { key: "totalAmc", label: "National AMC (branches only)", fmt: v => Number(v || 0).toFixed(2) },
     { key: "mos", label: "National MOS (months)", fmt: v => Number(v).toFixed(2) },
-    { key: "status", label: "Status", fmt: v => stkoStatusLabel(v) },
-    { key: "atRisk", label: `At Risk (<${STOCKOUT_MOS_THRESHOLD}mo)?`, fmt: v => v ? "Yes" : "No" },
     { key: "expiringQty", label: `National Qty Expiring (<${STOCKOUT_MOS_THRESHOLD}mo)`, fmt: v => Number(v || 0).toFixed(2) },
     { key: "adjustedMos", label: "Expiry-Adjusted MOS (months)", fmt: v => v === null ? "" : Number(v).toFixed(2) },
     { key: "exprAdjustedRisk", label: "Expiry-Adjusted Risk?", fmt: v => v ? "Yes" : "No" },
+    { key: "status", label: "Status", fmt: v => stkoStatusLabel(v) },
+    { key: "atRisk", label: `At Risk (<${STOCKOUT_MOS_THRESHOLD}mo)?`, fmt: v => v ? "Yes" : "No" },
   ];
-  if (tableRows.length) wireTableExport("stko-export", tableRows, exportCols, "national_stockout_risk");
 
   const dlRow = document.getElementById("stko-dl-row");
   if (dlRow) {
