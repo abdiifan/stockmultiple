@@ -317,16 +317,19 @@ function renderStockoutRisk() {
     : '<div class="alert-info" style="margin:0.5rem 0">✓ No materials match the current filters at national stockout risk.</div>';
 
   // ── EXPORT ────────────────────────────────────────────────────────────────
+  // Export columns are kept in exact 1:1 lockstep with the on-screen `cols`
+  // above — same set, same order, same labels — so the download always
+  // matches what the user is looking at on the page. Nothing extra
+  // (no expiringQty, exprAdjustedRisk flag, or atRisk flag).
   const exportCols = [
-    { key: "code", label: "Material Code" }, { key: "desc", label: "Description" }, { key: "type", label: "Type" },
+    { key: "code", label: "Material Code" },
+    { key: "desc", label: "Description" },
+    { key: "type", label: "Type" },
     { key: "totalSoh", label: "National SOH", fmt: v => Number(v || 0).toFixed(2) },
-    { key: "totalAmc", label: "National AMC (branches only)", fmt: v => Number(v || 0).toFixed(2) },
-    { key: "mos", label: "National MOS (months)", fmt: v => Number(v).toFixed(2) },
-    { key: "expiringQty", label: `National Qty Expiring (<${STOCKOUT_MOS_THRESHOLD}mo)`, fmt: v => Number(v || 0).toFixed(2) },
-    { key: "adjustedMos", label: "Expiry-Adjusted MOS (months)", fmt: v => v === null ? "" : Number(v).toFixed(2) },
-    { key: "exprAdjustedRisk", label: "Expiry-Adjusted Risk?", fmt: v => v ? "Yes" : "No" },
+    { key: "totalAmc", label: "National AMC (branches)", fmt: v => Number(v || 0).toFixed(2) },
+    { key: "mos", label: "National MOS", fmt: v => Number(v).toFixed(2) },
+    { key: "adjustedMos", label: "Expiry-Adjusted MOS", fmt: v => v === null ? "" : Number(v).toFixed(2) },
     { key: "status", label: "Status", fmt: v => stkoStatusLabel(v) },
-    { key: "atRisk", label: `At Risk (<${STOCKOUT_MOS_THRESHOLD}mo)?`, fmt: v => v ? "Yes" : "No" },
   ];
 
   const dlRow = document.getElementById("stko-dl-row");
