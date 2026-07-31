@@ -2,9 +2,10 @@
 // settings-menu.js — top-right ⚙️ Settings dropdown
 //
 // Sections:
-//   • Appearance  — 5 named themes (Belize, Belize Deep, High Contrast
-//                   Black, High Contrast White, Horizon) as swatches,
-//                   plus a quick Dark/Light switch for the common case.
+//   • Appearance  — 6 named themes (Belize, Belize Deep, High Contrast
+//                   Black, High Contrast White, Horizon, Quartz Dark) as
+//                   swatches, plus a quick Dark/Light switch for the
+//                   common case.
 //   • Font style & size — applies to the whole app (root font-family /
 //                   font-size; nearly everything else uses `inherit`
 //                   or rem units, so this cascades everywhere).
