@@ -220,12 +220,12 @@ function renderStockoutRisk() {
   const searchEl     = document.getElementById("stko-search");
   const typeEl       = document.getElementById("stko-type");
   const atRiskOnly   = document.getElementById("stko-at-risk-only");
-  const stockOutOnlyEl = document.getElementById("stko-stockout-only");
+  const exprAdjOnly  = document.getElementById("stko-expiry-adjusted");
 
   const searchQ    = searchEl ? searchEl.value.trim() : "";
   const typeVal    = typeEl   ? typeEl.value.trim()   : "";
   const riskOnly   = atRiskOnly  ? atRiskOnly.checked  : true;
-  const stockOutOnly = stockOutOnlyEl ? stockOutOnlyEl.checked : false;
+  const showExprAdj = exprAdjOnly ? exprAdjOnly.checked : false;
 
   const snapshot = buildStockoutSnapshot(typeVal, searchQ);
 
@@ -267,22 +267,14 @@ function renderStockoutRisk() {
   ]);
 
   // ── TABLE ──────────────────────────────────────────────────────────────────
-  // "At-risk only" and "Stock out only" are independent filters over the two
-  // distinct status bands, not a nested "narrow further" pair:
-  //   riskOnly     → status "risk" only  (1 ≤ MOS < 4)
-  //   stockOutOnly → status "out"  only  (MOS < 1)
-  // Checking both shows the union of the two bands (equivalent to the old
-  // atRisk flag, MOS < 4). Checking neither shows everything, "ok" included.
-  let baseRows;
-  if (riskOnly && stockOutOnly) {
-    baseRows = atRiskRows;
-  } else if (riskOnly) {
-    baseRows = riskOnlyRows;
-  } else if (stockOutOnly) {
-    baseRows = outRows;
-  } else {
-    baseRows = snapshot;
-  }
+  // "At-risk only" scopes to MOS < 4 as before. When "Include Expiry-Adjusted
+  // Risk" is also checked, materials that are "ok" by pure MOS but flagged by
+  // the expiry cross-check are pulled into the view too (they're MOS >= 4 so
+  // atRiskOnly alone would otherwise hide them). With at-risk-only unchecked,
+  // the full snapshot already includes them — the checkbox has no extra effect.
+  const baseRows = riskOnly
+    ? (showExprAdj ? snapshot.filter(r => r.atRisk || r.exprAdjustedRisk) : atRiskRows)
+    : snapshot;
 
   // ── Apply the active KPI-card filter (if any) on top of the above ──────────
   // "all" (Materials Screened) always resets to the full snapshot, regardless
@@ -307,7 +299,7 @@ function renderStockoutRisk() {
     cardFilterLabel = "Expiry-Adjusted Risk";
   }
 
-  const tableRows = cardFilteredRows.slice().sort((a, b) => a.mos - b.mos); // most urgent first
+  const tableRows = cardFilteredRows.slice().sort((a, b) => (a.desc || "").localeCompare(b.desc || "")); // alphabetical by description, default
 
   const cardFilterBanner = document.getElementById("stko-card-filter-banner");
   if (cardFilterBanner) {
@@ -392,7 +384,7 @@ function renderStockoutRisk() {
         const s = document.getElementById("stko-search");            if (s) s.value = "";
         const t = document.getElementById("stko-type");              if (t) t.value = "";
         const c = document.getElementById("stko-at-risk-only");      if (c) c.checked = true;
-        const e = document.getElementById("stko-stockout-only");     if (e) e.checked = false;
+        const e = document.getElementById("stko-expiry-adjusted");   if (e) e.checked = false;
         stkoCardFilter = null;
         renderStockoutRisk();
       },
@@ -434,8 +426,8 @@ function renderStockoutRisk() {
     const atRiskToggle = document.getElementById("stko-at-risk-only");
     if (atRiskToggle) atRiskToggle.addEventListener("change", () => { if (mosMerged.length) renderStockoutRisk(); });
 
-    const stockOutOnlyToggle = document.getElementById("stko-stockout-only");
-    if (stockOutOnlyToggle) stockOutOnlyToggle.addEventListener("change", () => { if (mosMerged.length) renderStockoutRisk(); });
+    const exprAdjToggle = document.getElementById("stko-expiry-adjusted");
+    if (exprAdjToggle) exprAdjToggle.addEventListener("change", () => { if (mosMerged.length) renderStockoutRisk(); });
 
     // Enter-to-apply in the search box, same UX as other search filters
     const searchInput = document.getElementById("stko-search");
