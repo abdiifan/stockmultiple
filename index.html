@@ -1234,14 +1234,17 @@
     <div id="stko-no-data" class="alert-info" style="margin-bottom:1rem">Upload the <b>main inventory Excel</b> and <b>AMC.xlsx</b> (📐 AMC upload in the sidebar) to enable this analysis.</div>
     <div id="stko-content" style="display:none">
       <div class="filter-bar" style="gap:0.6rem;flex-wrap:wrap;align-items:center">
-        <input
-          type="text"
-          id="stko-search"
-          placeholder="Material code or name…"
-          autocomplete="off"
-          spellcheck="false"
-          class="filter-input"
-        />
+        <div class="stko-search-wrap" style="position:relative">
+          <input
+            type="text"
+            id="stko-search"
+            placeholder="Material code or name…"
+            autocomplete="off"
+            spellcheck="false"
+            class="filter-input"
+          />
+          <div class="who-resp-suggestions" id="stko-search-suggestions"></div>
+        </div>
         <select id="stko-type" class="filter-select">
           <option value="">All Types (ZME/ZMS/ZLC)</option>
           <option value="ZME">ZME (Medicines)</option>
