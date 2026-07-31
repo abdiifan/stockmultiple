@@ -147,6 +147,48 @@ const pageFilters = {
 // bar-click can hand off the selected plant-count group to Branch Comparison.
 let _lastSpreadDrilldown = null;   // { plantCount, matCodes[] } | null
 
+// ── GLOBAL MATERIAL-CODE DRILLDOWN ──────────────────────────────────────────
+// Clicking ANY material code anywhere in the app (rendered via renderMatCode /
+// renderMappedMatCode, or a page's own custom cell markup that opts in with
+// the same data-drill-mat attribute) jumps to Stock Concentration filtered to
+// that one material. This exists because a material can look perfectly fine
+// at the national level (e.g. on Stockout Risk) while actually being held
+// almost entirely at a single plant — a redistribution candidate, not a real
+// network-wide shortage. Concentration then offers a one-click hop on to
+// Branch Comparison for the same material so the user can see exactly where
+// the stock sits and where it could move.
+let _materialDrilldownCode = null; // material code to auto-filter to | null, consumed once by renderConcentration()
+
+function goToMaterialConcentration(code) {
+  const c = String(code || "").trim();
+  if (!c) return;
+  _materialDrilldownCode = c;
+  renderPage("concentration");
+}
+
+document.body.addEventListener("click", (e) => {
+  const el = e.target.closest("[data-drill-mat]");
+  if (!el) return;
+  e.stopPropagation();
+  goToMaterialConcentration(el.dataset.drillMat);
+});
+
+document.body.addEventListener("click", (e) => {
+  if (e.target.closest("#conc-drill-clear")) {
+    _materialDrilldownCode = null;
+    if (typeof renderConcentration === "function") renderConcentration();
+    return;
+  }
+  const branchBtn = e.target.closest("#conc-drill-to-branch");
+  if (branchBtn) {
+    const mat = branchBtn.dataset.mat;
+    if (mat) {
+      _lastSpreadDrilldown = { plantCount: null, matCodes: [mat], label: `material ${mat}` };
+      renderPage("branch");
+    }
+  }
+});
+
 // ── GLOBAL PERSON FILTER ────────────────────────────────────────────────────
 // A Set of selected PERSON values from the AMC file.
 // When non-empty, only materials whose AMC row has a matching PERSON are shown
@@ -154,24 +196,15 @@ let _lastSpreadDrilldown = null;   // { plantCount, matCodes[] } | null
 // MOS by Plant, and Overstock & Expiry Risk.
 let personFilter = new Set();   // empty = show all persons
 
-// Returns the Set of canonical (mapping-aware) material codes that belong to
-// the currently-selected persons. Built on demand from mosMerged so it always
-// reflects the latest AMC data. Returns null when no person filter is active
-// (show everything).
+// Returns the Set of material codes that belong to the currently-selected persons.
+// Built on demand from mosAmcRaw so it always reflects the latest AMC data.
+// Returns null when no person filter is active (show everything).
 function getPersonFilteredCodes() {
   if (personFilter.size === 0) return null;
-  // FIX-PERSON-MAP: use mosMerged (canonical/target codes, mapping-aware) rather
-  // than mosAmcRaw (raw, pre-mapping AMC codes). getReconciledBase() below now
-  // matches inventory rows on their canonical _mappedMaterial code, so the
-  // allow-list here must be in that same canonical code space — otherwise a
-  // merged material (several original SAP codes → one target code) only keeps
-  // the rows whose raw code happens to equal the AMC file's literal code
-  // string, silently dropping the rest of that material's stock everywhere
-  // the person filter is active (Branch Comparison, Who's Responsible, etc.).
-  if (typeof mosMerged === "undefined" || !mosMerged.length) return null;
+  if (typeof mosAmcRaw === "undefined" || !mosAmcRaw.length) return null;
   const codes = new Set();
-  mosMerged.forEach(r => {
-    if (r.person && personFilter.has(r.person)) codes.add(String(r.code || "").trim().toUpperCase());
+  mosAmcRaw.forEach(r => {
+    if (r.person && personFilter.has(r.person)) codes.add(r.code);
   });
   return codes;
 }
@@ -219,14 +252,8 @@ function getReconciledBase() {
   const base = mappingTable.size > 0 ? mappedDf : rawDf;
   const codes = getPersonFilteredCodes();
   if (!codes) return base;
-  // FIX-PERSON-MAP: match on the row's CANONICAL code (_mappedMaterial, same
-  // code merged/split materials are grouped by everywhere else — Branch
-  // Comparison, National Table, Who's Responsible), not the raw pre-mapping
-  // "Material" code. Falls back to "Material" when no mapping is loaded
-  // (rawDf rows have no _mappedMaterial), which keeps prior behavior for
-  // users without a mapping file.
   return base.filter(r => {
-    const mat = String(r._mappedMaterial || r["Material"] || "").trim().toUpperCase();
+    const mat = String(r["Material"] || "").trim().toUpperCase();
     return codes.has(mat);
   });
 }
@@ -282,9 +309,9 @@ function renderMappedMatCode_early(val, row) {
   const orig   = escHtml(String(row._origMaterial   || "").trim());
   if (!target) {
     const s = escHtml(String(val ?? "").trim());
-    return s ? `<span class="col-mat-code">${s}</span>` : '<span style="color:var(--dim)">—</span>';
+    return s ? `<span class="col-mat-code mat-code-clickable" data-drill-mat="${s}" title="Click to see Stock Concentration for this material">${s}</span>` : '<span style="color:var(--dim)">—</span>';
   }
-  const codeHtml = `<span class="col-mat-code">${target}</span><span class="mat-mapped-badge" title="Standardized from ${orig}">STD</span>`;
+  const codeHtml = `<span class="col-mat-code mat-code-clickable" data-drill-mat="${target}" title="Click to see Stock Concentration for this material">${target}</span><span class="mat-mapped-badge" title="Standardized from ${orig}">STD</span>`;
   if (orig && orig !== target) {
     return codeHtml + `<span class="mat-orig-pill" title="Original SAP code">${orig}</span>`;
   }
@@ -320,7 +347,7 @@ function renderMatCode(val, row) {
     return `<span class="mat-name-as-code" title="No structured code — SAP stores the name here">${s}</span>`
          + `<span class="mat-desc-badge" title="Material field contains a name, not a code">NAME</span>`;
   }
-  return `<span class="col-mat-code">${s}</span>`;
+  return `<span class="col-mat-code mat-code-clickable" data-drill-mat="${s}" title="Click to see Stock Concentration for this material">${s}</span>`;
 }
 
 // ── renderMatDesc(val, row) ────────────────────────────────────────────────
@@ -2757,7 +2784,7 @@ function renderBranch() {
     // renderConcentration(). We consume it once here and clear it so a manual
     // page-revisit doesn't re-apply a stale selection.
     if (_lastSpreadDrilldown) {
-      const { plantCount, matCodes } = _lastSpreadDrilldown;
+      const { plantCount, matCodes, label: customLabel } = _lastSpreadDrilldown;
       _lastSpreadDrilldown = null;   // consume — one-shot
 
       const matWrapEl = document.getElementById("mat-ms-wrap");
@@ -2779,8 +2806,11 @@ function renderBranch() {
           }
         });
 
-        // Show a transient toast so the user knows why the filter changed
-        const label = plantCount === 1
+        // Show a transient toast so the user knows why the filter changed.
+        // customLabel is used for single-material jumps (e.g. from the
+        // Concentration drill banner) where "plants" phrasing doesn't apply.
+        const label = customLabel != null ? customLabel
+          : plantCount === 1
           ? "1 plant (sole branch)"
           : `${plantCount} plant${plantCount > 1 ? "s" : ""}`;
         showSpreadDrilldownToast(matched, label);
@@ -3886,6 +3916,9 @@ function renderConcentration() {
     document.getElementById("conc-dl-row").innerHTML = "";
     document.getElementById("chart-conc-pie").innerHTML = "";
     document.getElementById("chart-conc-spread").innerHTML = "";
+    _materialDrilldownCode = null; // consume — nothing to show it against
+    const bannerEl = document.getElementById("conc-drill-banner");
+    if (bannerEl) bannerEl.innerHTML = "";
     return;
   }
 
@@ -4006,6 +4039,56 @@ function renderConcentration() {
   const spread = matConcentration.filter(r => r.pctQty < 80 && r.plantCount >= 5 && r.plantCount <= 8);
   const wide   = matConcentration.filter(r => r.pctQty < 80 && r.plantCount > 8);
   const soleExcludedCount = matConcentration.filter(r => r.pctQty >= 80 && r._mosExcluded).length;
+
+  // ── MATERIAL DRILLDOWN BANNER ──────────────────────────────────────────────
+  // Consumed once: set by clicking any material code elsewhere in the app
+  // (renderMatCode / renderMappedMatCode, or a page's own cell that opts in
+  // with data-drill-mat — see goToMaterialConcentration in the global click
+  // handler near the top of this file). Shows this material's concentration
+  // profile regardless of which band it falls in — a material can look fine
+  // nationally (e.g. on Stockout Risk) while actually sitting almost entirely
+  // at one plant — plus a one-click hop on to Branch Comparison for it.
+  const drillCode    = _materialDrilldownCode;
+  _materialDrilldownCode = null; // one-shot
+  const drillBannerEl = document.getElementById("conc-drill-banner");
+  if (drillBannerEl) {
+    if (!drillCode) {
+      drillBannerEl.innerHTML = "";
+    } else {
+      const codeUp = drillCode.trim().toUpperCase();
+      const info = matConcentration.find(r =>
+        r.mat.trim().toUpperCase() === codeUp ||
+        (r.origCodes && r.origCodes.split(", ").some(c => c.trim().toUpperCase() === codeUp))
+      );
+      if (!info) {
+        drillBannerEl.innerHTML = `<div class="alert-info" style="margin-bottom:0.9rem;display:flex;align-items:center;justify-content:space-between;gap:0.6rem;flex-wrap:wrap">
+          <span>No unrestricted stock found for <b>${escHtml(drillCode)}</b> under the current filters — nothing to show in Stock Concentration.</span>
+          <button type="button" id="conc-drill-clear" class="apply-btn secondary small" style="padding:0.2rem 0.6rem">✕ Clear</button>
+        </div>`;
+      } else {
+        const band = info.pctQty >= 80        ? { label: "Sole Branch",     color: "red"   }
+                   : info.plantCount <= 4      ? { label: "Few Branches",    color: "amber" }
+                   : info.plantCount <= 8      ? { label: "Moderate Spread", color: "amber" }
+                   :                             { label: "Wide Spread",     color: "green" };
+        drillBannerEl.innerHTML = `<div class="alert-info" style="margin-bottom:0.9rem">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:0.6rem;flex-wrap:wrap">
+            <span>Showing Stock Concentration for <b class="col-mat-code">${escHtml(info.mat)}</b> — ${escHtml(info.desc || "")}</span>
+            <button type="button" id="conc-drill-clear" class="apply-btn secondary small" style="padding:0.2rem 0.6rem">✕ Clear</button>
+          </div>
+          <div style="margin-top:0.6rem;display:flex;gap:1.4rem;flex-wrap:wrap;font-size:0.78rem">
+            <span>Band: <b style="color:var(--${band.color})">${band.label}</b></span>
+            <span>Dominant plant: <b>${escHtml(info.topPlantName)}</b></span>
+            <span>% of qty in top plant: <b>${info.pctQty.toFixed(1)}%</b></span>
+            <span>Plants stocking it: <b>${info.plantCount}</b></span>
+            <span>Total qty: <b>${fmtQty(info.totalQty)}</b></span>
+          </div>
+          <div style="margin-top:0.7rem">
+            <button type="button" id="conc-drill-to-branch" class="apply-btn small" data-mat="${escHtml(info.mat)}">↪ View in Branch Comparison</button>
+          </div>
+        </div>`;
+      }
+    }
+  }
 
   // ── KPIs ──
   const topPlantPct = plantValArr.length > 0 ? plantValArr[0].pct : 0;
