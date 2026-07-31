@@ -10,7 +10,7 @@
     (function () {
       try {
         var theme = localStorage.getItem('epss-theme');
-        if (theme === 'light' || theme === 'hc-black' || theme === 'hc-white' || theme === 'horizon') {
+        if (theme === 'light' || theme === 'hc-black' || theme === 'hc-white' || theme === 'horizon' || theme === 'quartz-dark') {
           document.documentElement.setAttribute('data-theme', theme);
         }
         var fontFamilies = {
@@ -670,8 +670,11 @@
         <button type="button" class="settings-theme-swatch" data-theme-value="hc-white" title="High Contrast White">
           <span class="settings-swatch-preview settings-swatch-hc-white"></span><span>HC White</span>
         </button>
-        <button type="button" class="settings-theme-swatch" data-theme-value="horizon" title="Horizon" style="grid-column: 1 / -1;">
+        <button type="button" class="settings-theme-swatch" data-theme-value="horizon" title="Horizon">
           <span class="settings-swatch-preview settings-swatch-horizon"></span><span>Horizon</span>
+        </button>
+        <button type="button" class="settings-theme-swatch" data-theme-value="quartz-dark" title="Quartz Dark">
+          <span class="settings-swatch-preview settings-swatch-quartz-dark"></span><span>Quartz Dark</span>
         </button>
       </div>
     </div>
