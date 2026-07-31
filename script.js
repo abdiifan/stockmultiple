@@ -147,6 +147,66 @@ const pageFilters = {
 // bar-click can hand off the selected plant-count group to Branch Comparison.
 let _lastSpreadDrilldown = null;   // { plantCount, matCodes[] } | null
 
+// ── DRILLDOWN BACK NAVIGATION ────────────────────────────────────────────────
+// Tracks the chain created specifically by drilldown clicks (material code →
+// Concentration, Concentration → Branch Comparison via the drill banner or
+// the Branch Spread chart bar). A normal nav-bar / overview-card click clears
+// this trail — "⬅ Back" is only ever offered on a page reached BY drilling
+// down from another, and it restores that other page exactly as it was left:
+// no re-render, since a hidden page's DOM already holds its prior state
+// (drill banners included) and re-rendering would wipe one-shot state like
+// _materialDrilldownCode that's already been consumed.
+let _drillNavStack = []; // stack of page ids to return to, most recent last
+
+function _showPageDivOnly(id) {
+  document.getElementById("landingView").style.display = "none";
+  document.querySelectorAll(".page").forEach(el => { el.style.display = "none"; });
+  const pg = document.getElementById(`page-${id}`);
+  if (pg) pg.style.display = "block";
+  document.querySelectorAll(".nav-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.page === id));
+  currentPage = id;
+}
+
+// Paints (or clears) the "⬅ Back" button into whichever page-back-<id>
+// placeholder matches the page currently on screen.
+function _renderDrillBackButtons() {
+  document.querySelectorAll('[id^="page-back-"]').forEach(el => { el.innerHTML = ""; });
+  if (!_drillNavStack.length) return;
+  const container = document.getElementById(`page-back-${currentPage}`);
+  if (container) {
+    container.innerHTML = `<button type="button" class="drill-back-btn" id="drill-back-btn" title="Back to where you came from">⬅ Back</button>`;
+  }
+}
+
+// Call instead of a bare renderPage() at a drilldown jump-off point: records
+// the page being left so Back can return to it later, then navigates.
+function drillNavigate(targetPage) {
+  _drillNavStack.push(currentPage);
+  renderPage(targetPage);
+  _renderDrillBackButtons();
+}
+
+// Pops one hop off the chain and restores that page's exact prior state.
+function goDrillBack() {
+  if (!_drillNavStack.length) return;
+  const target = _drillNavStack.pop();
+  _showPageDivOnly(target);
+  _renderDrillBackButtons();
+}
+
+// Any "normal" navigation (nav bar, overview cards, the phantom-transit
+// link) abandons the drilldown trail — Back should never point somewhere
+// stale once the user has deliberately jumped elsewhere.
+function navReset(id) {
+  _drillNavStack = [];
+  renderPage(id);
+  _renderDrillBackButtons();
+}
+
+document.body.addEventListener("click", (e) => {
+  if (e.target.closest("#drill-back-btn")) goDrillBack();
+});
+
 // ── GLOBAL MATERIAL-CODE DRILLDOWN ──────────────────────────────────────────
 // Clicking ANY material code anywhere in the app (rendered via renderMatCode /
 // renderMappedMatCode, or a page's own custom cell markup that opts in with
@@ -163,7 +223,7 @@ function goToMaterialConcentration(code) {
   const c = String(code || "").trim();
   if (!c) return;
   _materialDrilldownCode = c;
-  renderPage("concentration");
+  drillNavigate("concentration");
 }
 
 document.body.addEventListener("click", (e) => {
@@ -184,7 +244,7 @@ document.body.addEventListener("click", (e) => {
     const mat = branchBtn.dataset.mat;
     if (mat) {
       _lastSpreadDrilldown = { plantCount: null, matCodes: [mat], label: `material ${mat}` };
-      renderPage("branch");
+      drillNavigate("branch");
     }
   }
 });
@@ -1739,7 +1799,7 @@ function renderPhantomAlert(containerId, df) {
         tbl.style.display=open?'none':'block';
         btn.textContent=open?'Show unverified items ▾':'Hide unverified items ▴';
       })()" style="background:none;border:1px solid var(--amber);color:var(--amber);border-radius:4px;padding:3px 10px;font-size:0.72rem;cursor:pointer;white-space:nowrap">Show unverified items ▾</button>
-      <a class="phantom-alert-link" style="white-space:nowrap" onclick="renderPage('transit')">Transit page →</a>
+      <a class="phantom-alert-link" style="white-space:nowrap" onclick="navReset('transit')">Transit page →</a>
       <div id="${tableId}" style="display:none;margin-top:0.75rem;max-height:320px;overflow-y:auto">${buildTable(phantomRows, phantomCols, () => "row-amber")}</div>`;
 
   el.innerHTML = `
@@ -3544,7 +3604,7 @@ function renderConcentration() {
 
     // Navigate to Branch Comparison — renderPage calls renderBranch() which
     // rebuilds the DOM; we hook in once the tab/filter UI is ready.
-    renderPage("branch");
+    drillNavigate("branch");
   });
 }
 
@@ -3590,7 +3650,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll(".nav-btn[data-page]").forEach(btn => {
     btn.addEventListener("click", () => {
       const target = btn.dataset.page;
-      renderPage(target);
+      navReset(target);
     });
   });
 
@@ -4283,6 +4343,6 @@ function renderConcentration() {
 
     // Navigate to Branch Comparison — renderPage calls renderBranch() which
     // rebuilds the DOM; we hook in once the tab/filter UI is ready.
-    renderPage("branch");
+    drillNavigate("branch");
   });
 }
