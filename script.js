@@ -3665,8 +3665,6 @@ function renderConcentration() {
   if (!df.length) {
     document.getElementById("conc-kpis").innerHTML = "";
     document.getElementById("conc-analysis-cards").innerHTML = `<div class="alert-info">No data after filters.</div>`;
-    document.getElementById("conc-table-wrap").innerHTML = "";
-    document.getElementById("conc-dl-row").innerHTML = "";
     document.getElementById("chart-conc-pie").innerHTML = "";
     document.getElementById("chart-conc-spread").innerHTML = "";
     _materialDrilldownCode = null; // consume — nothing to show it against
@@ -3936,7 +3934,6 @@ function renderConcentration() {
   const fewRows    = toConcRows(few);
   const spreadRows = toConcRows(spread);
   const wideRows   = toConcRows(wide);
-  const soleCols   = concCols; // kept as a separate name below for the existing table code
 
   // ── Concentration Analysis Cards ──
   function bandCard(cls, icon, count, label, desc, clickId) {
@@ -3966,9 +3963,9 @@ function renderConcentration() {
 
   // ── Each band card → popup listing its items + their dominant plant % ──
   // Reuses the shared showChartDrillModal() shell (same look as every other
-  // chart-click popup in the app). The Sole Branch popup shares its exact
-  // rows/cols with the "Highly Concentrated Items" table below, so the two
-  // views never disagree.
+  // chart-click popup in the app). This is the only place Sole Branch items
+  // are listed now that the standalone "Highly Concentrated Items" table has
+  // been removed (redundant with this card's own drilldown).
   const BAND_MODAL_CONFIG = [
     { id: "conc-band-sole",   icon: "🔴", label: "Sole-Branch Materials",    rows: soleRows,   desc: "≥80% of stock concentrated in a single plant",         critical: true  },
     { id: "conc-band-few",    icon: "🟠", label: "Few-Branch Materials",     rows: fewRows,    desc: "Spread across 2–4 plants — limited redundancy",         critical: false },
@@ -3993,30 +3990,6 @@ function renderConcentration() {
       if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openModal(); }
     });
   });
-
-  // ── Highly Concentrated Table (all sole-branch materials, sorted by total value) ──
-  if (soleRows.length === 0) {
-    document.getElementById("conc-table-wrap").innerHTML = `<div class="alert-info">✓ No materials with &gt;80% concentration in a single plant.</div>`;
-    document.getElementById("conc-dl-row").innerHTML = "";
-  } else {
-    document.getElementById("conc-table-wrap").innerHTML = buildTable(soleRows, soleCols,
-      (row) => row.pctQty >= 95 ? "row-critical" : "row-warning"
-    );
-
-    // Export buttons — use plain exportable cols (strip raw HTML formatters)
-    const exportCols = [
-      { key:"mat",          label:"Material Code" },
-      { key:"desc",         label:"Description" },
-      { key:"topPlantName", label:"Dominant Plant" },
-      { key:"topQty",       label:"Qty in Plant",        fmt:fmtQty, rawKey:"topQty" },
-      { key:"totalQty",     label:"Total Qty",            fmt:fmtQty, rawKey:"totalQty" },
-      { key:"totalVal",     label:"Total Value (ETB)",    fmt:fmtETB, rawKey:"totalVal" },
-      { key:"pctQty",       label:"% in Top Plant",       fmt: v => Number(v).toFixed(1) + "%" },
-    ];
-    injectDlButtons("conc-dl-row",
-      () => downloadCSV(soleRows,   exportCols, "concentrated_items.csv"),
-      () => downloadExcel(soleRows, exportCols, "concentrated_items.xlsx"));
-  }
 
   // ── Branch Spread Bar Chart ──
   // Count materials by number of plants they occupy
