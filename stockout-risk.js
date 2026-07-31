@@ -356,6 +356,110 @@ function renderStockoutRisk() {
   }
 }
 
+// ── MATERIAL CODE SEARCH SUGGESTIONS ────────────────────────────────────────
+// Lightweight autocomplete dropdown for #stko-search, styled to match the
+// existing "Who's Responsible?" search (reuses its who-resp-* CSS classes —
+// see index.html). Self-contained: does not depend on who-responsible.js,
+// so it works even if that page/module isn't loaded.
+let stkoSuggestActiveIdx = -1;
+let stkoSuggestItems = [];
+
+// Suggestion source respects the page's fixed type scope (ZME/ZMS/ZLC only),
+// same as the table itself — no point suggesting a code you can't see here.
+function stkoSuggestionSource() {
+  if (typeof mosMerged === "undefined" || !mosMerged.length) return [];
+  const seen = new Set();
+  const out = [];
+  for (const r of mosMerged) {
+    if (!STOCKOUT_ALLOWED_TYPES.has(r.type)) continue;
+    if (seen.has(r.code)) continue;
+    seen.add(r.code);
+    out.push({ code: r.code, desc: r.desc || "", type: r.type });
+  }
+  return out;
+}
+
+function stkoHighlight(text, q) {
+  const s = String(text || "");
+  if (!q) return escHtml(s);
+  const idx = s.toLowerCase().indexOf(q.toLowerCase());
+  if (idx === -1) return escHtml(s);
+  return escHtml(s.slice(0, idx)) + "<mark>" + escHtml(s.slice(idx, idx + q.length)) + "</mark>" + escHtml(s.slice(idx + q.length));
+}
+
+// Suggestions box is position:fixed (see CSS), so it needs manual placement
+// under the input, re-run on open/scroll/resize.
+function stkoPositionSuggestions(input, box) {
+  const rect = input.getBoundingClientRect();
+  box.style.left  = rect.left + "px";
+  box.style.top   = (rect.bottom + 4) + "px";
+  box.style.width = rect.width + "px";
+}
+
+function stkoCloseSuggestions() {
+  const box = document.getElementById("stko-search-suggestions");
+  if (box) { box.classList.remove("open"); box.innerHTML = ""; }
+  stkoSuggestActiveIdx = -1;
+  stkoSuggestItems = [];
+}
+
+function stkoRenderSuggestions(query) {
+  const input = document.getElementById("stko-search");
+  const box   = document.getElementById("stko-search-suggestions");
+  if (!input || !box) return;
+
+  const q = query.trim();
+  if (!q) { stkoCloseSuggestions(); return; }
+
+  const ql = q.toLowerCase();
+  const matches = stkoSuggestionSource().filter(m =>
+    m.code.toLowerCase().includes(ql) || m.desc.toLowerCase().includes(ql)
+  );
+  // Codes starting with the query rank first, then description matches, each alphabetical.
+  matches.sort((a, b) => {
+    const aStarts = a.code.toLowerCase().startsWith(ql) ? 0 : 1;
+    const bStarts = b.code.toLowerCase().startsWith(ql) ? 0 : 1;
+    if (aStarts !== bStarts) return aStarts - bStarts;
+    return a.code.localeCompare(b.code);
+  });
+
+  stkoSuggestItems = matches.slice(0, 25);
+  stkoSuggestActiveIdx = -1;
+
+  box.innerHTML = stkoSuggestItems.length
+    ? stkoSuggestItems.map((m, i) =>
+        `<div class="who-resp-item" data-idx="${i}">
+           <div class="who-resp-item-code">${stkoHighlight(m.code, q)}</div>
+           <div class="who-resp-item-desc">${stkoHighlight(m.desc, q)} · ${escHtml(m.type)}</div>
+         </div>`
+      ).join("")
+    : '<div class="who-resp-empty">No matching materials</div>';
+
+  stkoPositionSuggestions(input, box);
+  box.classList.add("open");
+}
+
+function stkoSelectSuggestion(idx) {
+  const item = stkoSuggestItems[idx];
+  if (!item) return;
+  const input = document.getElementById("stko-search");
+  if (input) input.value = item.code;
+  stkoCloseSuggestions();
+  renderStockoutRisk();
+}
+
+function stkoSetActiveSuggestion(idx) {
+  const box = document.getElementById("stko-search-suggestions");
+  if (!box) return;
+  const items = box.querySelectorAll(".who-resp-item");
+  items.forEach(el => el.classList.remove("who-resp-active"));
+  if (idx >= 0 && items[idx]) {
+    items[idx].classList.add("who-resp-active");
+    items[idx].scrollIntoView({ block: "nearest" });
+  }
+  stkoSuggestActiveIdx = idx;
+}
+
 // ── WIRE INTO PAGE_RENDERERS AND EVENT LISTENERS ──────────────────────────────
 (function wireStockoutRiskModule() {
   function extend() {
@@ -429,11 +533,48 @@ function renderStockoutRisk() {
     const exprAdjToggle = document.getElementById("stko-expiry-adjusted");
     if (exprAdjToggle) exprAdjToggle.addEventListener("change", () => { if (mosMerged.length) renderStockoutRisk(); });
 
-    // Enter-to-apply in the search box, same UX as other search filters
+    // Material code search: autocomplete suggestions + Enter-to-apply
     const searchInput = document.getElementById("stko-search");
+    const suggestBox  = document.getElementById("stko-search-suggestions");
     if (searchInput) {
-      searchInput.addEventListener("keydown", (e) => { if (e.key === "Enter") renderStockoutRisk(); });
+      searchInput.addEventListener("input", () => stkoRenderSuggestions(searchInput.value));
+      searchInput.addEventListener("focus", () => { if (searchInput.value.trim()) stkoRenderSuggestions(searchInput.value); });
+      searchInput.addEventListener("keydown", (e) => {
+        const open = !!(suggestBox && suggestBox.classList.contains("open") && stkoSuggestItems.length);
+        if (e.key === "ArrowDown" && open) {
+          e.preventDefault();
+          stkoSetActiveSuggestion(Math.min(stkoSuggestActiveIdx + 1, stkoSuggestItems.length - 1));
+        } else if (e.key === "ArrowUp" && open) {
+          e.preventDefault();
+          stkoSetActiveSuggestion(Math.max(stkoSuggestActiveIdx - 1, 0));
+        } else if (e.key === "Enter") {
+          if (open && stkoSuggestActiveIdx >= 0) {
+            e.preventDefault();
+            stkoSelectSuggestion(stkoSuggestActiveIdx);
+          } else {
+            stkoCloseSuggestions();
+            renderStockoutRisk();
+          }
+        } else if (e.key === "Escape" && open) {
+          stkoCloseSuggestions();
+        }
+      });
     }
+    if (suggestBox) {
+      suggestBox.addEventListener("click", (e) => {
+        const item = e.target.closest(".who-resp-item[data-idx]");
+        if (item) stkoSelectSuggestion(Number(item.dataset.idx));
+      });
+    }
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".stko-search-wrap")) stkoCloseSuggestions();
+    });
+    window.addEventListener("resize", () => {
+      if (suggestBox && suggestBox.classList.contains("open") && searchInput) stkoPositionSuggestions(searchInput, suggestBox);
+    });
+    window.addEventListener("scroll", () => {
+      if (suggestBox && suggestBox.classList.contains("open") && searchInput) stkoPositionSuggestions(searchInput, suggestBox);
+    }, true);
 
     // Re-render if currently on this page and either source file changes
     const fileInput  = document.getElementById("fileInput");
