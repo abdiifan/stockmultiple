@@ -1324,6 +1324,16 @@ table.freeze-header.freeze-cols thead th[data-freeze-col] {
   color: var(--purple) !important;
   white-space: nowrap;
 }
+.mat-code-clickable {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: text-decoration-color 0.12s, color 0.12s;
+}
+.mat-code-clickable:hover {
+  color: var(--blue) !important;
+  text-decoration-color: rgba(61,148,224,0.5);
+}
 .mat-name-as-code { font-size: 0.75rem; color: var(--amber); font-style: italic; }
 .mat-desc-same    { font-size: 0.71rem; color: var(--dim); font-style: italic; }
 .col-mat-desc     { color: var(--text); font-size: 0.77rem; white-space: normal; line-height: 1.35; }
