@@ -1709,6 +1709,20 @@ td.col-mat-desc-wrap { max-width: 280px; white-space: normal; line-height: 1.4; 
 .conc-band-card.spread::before { background: var(--risk-low); }
 .conc-band-card.wide::before   { background: var(--blue); }
 
+/* All four band cards are now clickable — each opens a popup with the
+   underlying materials for that band. Hover/focus color matches the card's
+   own band color (set via the ::before accent above) rather than always red. */
+.conc-band-card[role="button"]:hover,
+.conc-band-card[role="button"]:focus-visible {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  transform: translateY(-1px);
+}
+.conc-band-card.sole[role="button"]:hover,   .conc-band-card.sole[role="button"]:focus-visible   { border-color: var(--risk-critical); outline-color: var(--risk-critical); }
+.conc-band-card.few[role="button"]:hover,    .conc-band-card.few[role="button"]:focus-visible    { border-color: var(--risk-high);     outline-color: var(--risk-high); }
+.conc-band-card.spread[role="button"]:hover, .conc-band-card.spread[role="button"]:focus-visible { border-color: var(--risk-low);      outline-color: var(--risk-low); }
+.conc-band-card.wide[role="button"]:hover,   .conc-band-card.wide[role="button"]:focus-visible   { border-color: var(--blue);          outline-color: var(--blue); }
+.conc-band-card[role="button"]:focus-visible { outline: 2px solid; outline-offset: 2px; }
+
 .conc-band-icon  { font-size: 1.4rem; line-height: 1; margin-bottom: 0.1rem; }
 .conc-band-count {
   font-size: 1.4rem; font-family: 'IBM Plex Mono', monospace;
