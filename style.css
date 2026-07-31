@@ -779,6 +779,28 @@ body { display: flex; }
 .page-subtitle { color: var(--muted); font-size: 0.77rem; font-weight: 400; }
 .page-actions  { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
 
+/* Back button injected next to a page-title when that page was reached via
+   a drilldown click (material code → Concentration, or Concentration →
+   Branch Comparison). See _renderDrillBackButtons() in script.js. */
+.drill-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: 0.7rem;
+  padding: 0.2rem 0.7rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  font-family: var(--app-font-family);
+  color: var(--blue);
+  background: var(--blue-glow);
+  border: 1px solid rgba(61,148,224,0.35);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  vertical-align: middle;
+  transition: background 0.12s, color 0.12s;
+}
+.drill-back-btn:hover { background: var(--blue); color: #fff; }
+
 /* ══════════════════════════════════════════════
    GROUP OVERVIEW PAGES (shown when a sidebar
    section header is clicked, e.g. "Inventory Ops")
