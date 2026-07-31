@@ -202,6 +202,40 @@
 }
 
 /* ══════════════════════════════════════════════
+   QUARTZ DARK (violet-tinted dark)
+   ══════════════════════════════════════════════ */
+[data-theme="quartz-dark"] {
+  --bg:        #0d0912;
+  --surface:   #150f1e;
+  --surface2:  #1c1428;
+  --surface3:  #241a34;
+  --border:    #2e2140;
+  --border2:   #3a2a52;
+  --text:      #e8def5;
+  --muted:     #9a86b8;
+  --dim:       #6b5a87;
+
+  --blue:      #a78bfa;
+  --blue-soft: #3b2a5c;
+  --blue-glow: rgba(167,139,250,0.22);
+  --green:     #34d399;
+  --amber:     #fbbf24;
+  --red:       #f87171;
+  --purple:    #e879f9;
+
+  --risk-critical: #fb7185;
+  --risk-high:     #fb923c;
+  --risk-moderate: #eab308;
+  --risk-low:      #34d399;
+
+  --accent-glow: rgba(167,139,250,0.16);
+  --kpi-hover-shadow: 0 12px 36px rgba(0,0,0,0.65);
+
+  --blue-glow-solid:   #2a1f47;
+  --accent-glow-solid: #241c3d;
+}
+
+/* ══════════════════════════════════════════════
    BASE
    ══════════════════════════════════════════════ */
 html, body {
@@ -449,6 +483,7 @@ body { display: flex; }
 .settings-swatch-hc-black    { background: linear-gradient(135deg, #000000 50%, #66c3ff 50%); }
 .settings-swatch-hc-white    { background: linear-gradient(135deg, #ffffff 50%, #0043ce 50%); border-color: rgba(0,0,0,0.3); }
 .settings-swatch-horizon     { background: linear-gradient(135deg, #eef1f4 50%, #0854a0 50%); }
+.settings-swatch-quartz-dark { background: linear-gradient(135deg, #0d0912 50%, #a78bfa 50%); }
 
 /* Font style / size selects — mirror .person-filter-select look */
 .settings-select {
