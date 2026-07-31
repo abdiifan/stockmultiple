@@ -3301,313 +3301,6 @@ function aggregateByMaterial(df) {
 // ═══════════════════════════════════════════════════════════════════════════
 // PAGE SWITCHING
 // ═══════════════════════════════════════════════════════════════════════════
-// STOCK CONCENTRATION
-// ═══════════════════════════════════════════════════════════════════════════
-function renderConcentration() {
-  // ── Build filtered dataset (no plant filter — concentration is cross-plant) ──
-  const f           = pageFilters["concentration"] || {};
-  const base        = getReconciledBase();
-  const mgs         = f.mgs      || [];
-  const valTypes    = f.valTypes || [];
-  // FIX-CONC-MAP: honour mapping table state — only use _mappedMaterial as key
-  // when a mapping file is actually loaded, otherwise fall back to raw Material.
-  // Without this guard, unmapped rows (where _mappedMaterial === original code)
-  // would be counted correctly, but the intent is unclear and inconsistent with
-  // aggregateByMappedMaterial which is the canonical pattern across all pages.
-  const useMapped   = mappingTable.size > 0;
-
-  const df = base.filter(r =>
-    !isNonMedicalCode(r["Material"]) &&
-    !isNonMedicalGroup(r["Material Group Name"]) &&
-    !isProjectStockDescription(r["Special Stock Type Description"]) &&
-    !isExcludedStorageLocation(r["Storage Location"]) &&
-    (function(){ const s = String(r["Special Stock Type"] || "").trim().toUpperCase(); return s !== "Q" && s !== "W"; })() &&
-    String(r["Inventory Valuation Type"] || "").trim() !== "" &&
-    (!mgs.length      || mgs.includes(r["Material Group Name"])) &&
-    (!valTypes.length || valTypes.includes(getValuationType(r)))
-  );
-
-
-
-  if (!df.length) {
-    document.getElementById("conc-kpis").innerHTML = "";
-    document.getElementById("conc-analysis-cards").innerHTML = `<div class="alert-info">No data after filters.</div>`;
-    document.getElementById("conc-table-wrap").innerHTML = "";
-    document.getElementById("conc-dl-row").innerHTML = "";
-    document.getElementById("chart-conc-pie").innerHTML = "";
-    document.getElementById("chart-conc-spread").innerHTML = "";
-    return;
-  }
-
-  // ── 1. Plant-level aggregation (value basis) ──
-  const plantValMap = {};
-  df.forEach(r => {
-    const k = r["Plant Name"] || "(Blank)";
-    if (!plantValMap[k]) plantValMap[k] = 0;
-    plantValMap[k] += getMappedVal(r, "Value of Unrestricted Stock")
-                    + getVerifiedTransitVal(r)
-                    + getMappedVal(r, "Value of Stock in Quality Inspection");
-  });
-  const totalVal = Object.values(plantValMap).reduce((s, v) => s + v, 0);
-  const plantValArr = Object.entries(plantValMap)
-    .map(([name, val]) => ({ name, val, pct: totalVal > 0 ? (val / totalVal) * 100 : 0 }))
-    .sort((a, b) => b.val - a.val);
-
-  // ── 2. Per-material, per-plant aggregation (unrestricted qty + value) ──
-  // FIX-CONC-MAP: key by _mappedMaterial only when mapping is active — this is
-  // the single change that makes two SAP codes mapping to the same target drug
-  // collapse into one row. Without useMapped guard they stayed separate because
-  // unmapped rows' _mappedMaterial equals their original code (no merger).
-  const matPlantMap = {};
-  df.forEach(r => {
-    const mat   = useMapped ? (r._mappedMaterial || r["Material"]) : r["Material"];
-    const desc  = useMapped ? (r._mappedDesc    || r["Material Description"] || "") : (r["Material Description"] || "");
-    const plant = r["Plant Name"] || "(Blank)";
-    const orig  = r._origMaterial || r["Material"];
-    if (!mat) return;
-    if (!matPlantMap[mat]) {
-      matPlantMap[mat] = {
-        desc,
-        plants:    {},
-        totalQty:  0,
-        totalVal:  0,
-        origCodes: new Set(),   // FIX-CONC-MAP: track all original SAP codes merged here
-      };
-    }
-    const qty = getMappedQty(r, "Unrestricted Stock");
-    const val = getMappedVal(r, "Value of Unrestricted Stock");
-    if (!matPlantMap[mat].plants[plant]) matPlantMap[mat].plants[plant] = { qty: 0, val: 0 };
-    matPlantMap[mat].plants[plant].qty += qty;
-    matPlantMap[mat].plants[plant].val += val;
-    matPlantMap[mat].totalQty += qty;
-    matPlantMap[mat].totalVal += val;
-    if (orig && orig !== mat) matPlantMap[mat].origCodes.add(orig);
-  });
-
-  // ── 3. Concentration classification ──
-  // For each material find the dominant plant
-  const matConcentration = Object.entries(matPlantMap).map(([mat, info]) => {
-    // Only count plants that actually hold positive Unrestricted Stock qty.
-    // A plant can have an inventory row for this material (e.g. a batch fully
-    // in QC/Blocked/Transit) with zero Unrestricted Stock — that shouldn't
-    // count as "stocked at this plant" for concentration purposes, or it
-    // inflates plantCount for materials that are really only at one plant.
-    const activePlants = Object.entries(info.plants).filter(([, v]) => v.qty > 0);
-    const plantCount = activePlants.length;
-    const topPlant   = [...activePlants]
-      .sort((a, b) => b[1].qty - a[1].qty)[0];
-    const topPlantName = topPlant ? topPlant[0] : "—";
-    const topQty       = topPlant ? topPlant[1].qty : 0;
-    const topVal       = topPlant ? topPlant[1].val : 0;
-    const pctQty       = info.totalQty > 0 ? (topQty / info.totalQty) * 100 : 0;
-    const pctVal       = info.totalVal > 0 ? (topVal / info.totalVal) * 100 : 0;
-    const origCodes    = [...info.origCodes].sort().join(", ");
-    return { mat, desc: info.desc, plantCount, topPlantName, topQty, topVal, pctQty, pctVal, totalQty: info.totalQty, totalVal: info.totalVal, origCodes };
-  }).filter(r => r.totalQty > 0); // only materials with unrestricted stock
-
-  // Band classification
-  const sole   = matConcentration.filter(r => r.pctQty >= 80);  // >80% in one plant
-  const few    = matConcentration.filter(r => r.pctQty < 80 && r.plantCount >= 2 && r.plantCount <= 4);
-  const spread = matConcentration.filter(r => r.pctQty < 80 && r.plantCount >= 5 && r.plantCount <= 8);
-  const wide   = matConcentration.filter(r => r.pctQty < 80 && r.plantCount > 8);
-
-  // ── KPIs ──
-  const topPlantPct = plantValArr.length > 0 ? plantValArr[0].pct : 0;
-  const totalMats   = matConcentration.length;
-  // FIX-CONC-MAP: count unique materials by mapped code when mapping is active
-  const uniqueMatCount = useMapped
-    ? new Set(df.map(r => r._mappedMaterial || r["Material"])).size
-    : new Set(df.map(r => r["Material"])).size;
-  setKpis("conc-kpis", [
-    ["Total Unique Plants",      new Set(df.map(r => r["Plant Name"])).size.toLocaleString(),        "With unrestricted stock",       "blue"],
-    ["Sole-Branch Materials",    sole.length.toLocaleString(),   `${totalMats > 0 ? ((sole.length/totalMats)*100).toFixed(0) : 0}% of materials`,  "red"],
-    ["Few-Branch Materials",     few.length.toLocaleString(),    "Held in 2–4 plants",               "amber"],
-    ["Top Plant Share",          topPlantPct.toFixed(1) + "%",   plantValArr[0]?.name || "—",        "purple"],
-    ["Unique Materials Tracked", uniqueMatCount.toLocaleString(), useMapped ? "Standardized (merged)" : "Unrestricted stock only", "green"],
-  ]);
-
-  // ── Pie chart: value by plant ──
-  const pieLabels = plantValArr.map(r => r.name);
-  const pieVals   = plantValArr.map(r => r.val);
-  const pieText   = plantValArr.map(r => `${r.pct.toFixed(1)}%`);
-  Plotly.newPlot("chart-conc-pie", [{
-    type: "pie",
-    labels: pieLabels,
-    values: pieVals,
-    text:   pieText,
-    textinfo: "label+percent",
-    hovertemplate: "<b>%{label}</b><br>ETB %{value:,.0f}<br>%{percent}<extra></extra>",
-    hole: 0.38,
-    marker: { colors: COLORWAY },
-    textfont: { size: 11 },
-  }], pl({
-    height: 300,
-    margin: { l: 10, r: 10, t: 10, b: 10 },
-    showlegend: false,
-  }), PLOTLY_CONFIG);
-
-  // ── Concentration Analysis Cards ──
-  function bandCard(cls, icon, count, label, desc) {
-    return `<div class="conc-band-card ${cls}">
-      <div class="conc-band-icon">${icon}</div>
-      <div class="conc-band-count">${count}</div>
-      <div class="conc-band-label">${label}</div>
-      <div class="conc-band-desc">${desc}</div>
-    </div>`;
-  }
-  document.getElementById("conc-analysis-cards").innerHTML = `
-    <div class="conc-analysis-grid">
-      ${bandCard("sole",   "🔴", sole.length,   "Sole Branch",   ">80% of stock in a single plant — high supply-chain risk")}
-      ${bandCard("few",    "🟠", few.length,    "Few Branches",  "Spread across 2–4 plants — limited redundancy")}
-      ${bandCard("spread", "🟡", spread.length, "Moderate Spread","Across 5–8 plants — reasonable distribution")}
-      ${bandCard("wide",   "🟢", wide.length,   "Wide Spread",   "Across 9+ plants — well distributed")}
-    </div>
-    <div style="margin-top:0.85rem;font-size:0.7rem;color:var(--dim);line-height:1.5">
-      Classification based on <b>% of total unrestricted quantity</b> held by the top plant per material.
-      <br>Sole Branch threshold: ≥80% in one plant.
-    </div>`;
-
-  // ── Highly Concentrated Table (all sole-branch materials, sorted by total value) ──
-  const topConcentrated = [...sole]
-    .sort((a, b) => b.totalVal - a.totalVal);
-
-  if (topConcentrated.length === 0) {
-    document.getElementById("conc-table-wrap").innerHTML = `<div class="alert-info">✓ No materials with &gt;80% concentration in a single plant.</div>`;
-    document.getElementById("conc-dl-row").innerHTML = "";
-  } else {
-    const cols = [
-      { key: "mat",         label: "Material Code",    fmt: (v, r) => renderMatCode(r.Material, r), raw: true, cellClass: "col-mat-code-wrap" },
-      { key: "desc",        label: "Description",      fmt: (v)    => `<span class="col-mat-desc">${escHtml(String(v||""))}</span>`, raw: true, cellClass: "col-mat-desc-wrap" },
-      { key: "topPlantName",label: "Dominant Plant",   fmt: (v)    => `<span class="conc-plant-pill" title="${escHtml(String(v||""))}">${escHtml(String(v||""))}</span>`, raw: true },
-      { key: "topQty",      label: "Qty in Plant",     fmt: fmtQty, rawKey: "topQty",   cellClass: "col-qty" },
-      { key: "totalQty",    label: "Total Qty",        fmt: fmtQty, rawKey: "totalQty", cellClass: "col-qty" },
-      { key: "totalVal",    label: "Total Value (ETB)",fmt: fmtETB, rawKey: "totalVal", cellClass: "col-val" },
-      {
-        key: "pctQty",
-        label: "% of Qty in Top Plant",
-        fmt: (v) => {
-          const cls = v >= 95 ? "critical" : "high";
-          return `<span class="conc-pct-badge ${cls}">${Number(v).toFixed(1)}%</span>`;
-        },
-        raw: true,
-      },
-    ];
-
-    // Build plain objects for buildTable
-    // FIX-CONC-STD: attach mapping fields so renderMatCode delegates to
-    // renderMappedMatCode_early and shows the STD badge just like every other page.
-    // A row is "mapped" when mapping is active AND it has at least one original
-    // SAP code that differs from the target (i.e. it merged ≥1 source code).
-    const rows = topConcentrated.map(r => {
-      const hasMergedCodes = useMapped && r.origCodes && r.origCodes.length > 0;
-      return {
-        mat:             r.mat,
-        // The "Material" key is what renderMatCode reads as `val` (first arg)
-        Material:        r.mat,
-        desc:            r.desc,
-        origCodes:       r.origCodes || "",
-        topPlantName:    r.topPlantName,
-        topQty:          r.topQty,
-        totalQty:        r.totalQty,
-        totalVal:        r.totalVal,
-        pctQty:          r.pctQty,
-        // Mapping display fields — mirror what applyMaterialMapping stamps on rows
-        _isMapped:       hasMergedCodes,
-        _mappedMaterial: r.mat,
-        _origMaterial:   hasMergedCodes ? r.origCodes.split(", ")[0] : r.mat,
-        _mappedDesc:     r.desc,
-        _origDesc:       "",
-      };
-    });
-    document.getElementById("conc-table-wrap").innerHTML = buildTable(rows, cols,
-      (row) => row.pctQty >= 95 ? "row-critical" : "row-warning"
-    );
-
-    // Export buttons — use plain exportable cols (strip raw HTML formatters)
-    const exportCols = [
-      { key:"mat",          label:"Material Code" },
-      { key:"desc",         label:"Description" },
-      { key:"topPlantName", label:"Dominant Plant" },
-      { key:"topQty",       label:"Qty in Plant",        fmt:fmtQty, rawKey:"topQty" },
-      { key:"totalQty",     label:"Total Qty",            fmt:fmtQty, rawKey:"totalQty" },
-      { key:"totalVal",     label:"Total Value (ETB)",    fmt:fmtETB, rawKey:"totalVal" },
-      { key:"pctQty",       label:"% in Top Plant",       fmt: v => Number(v).toFixed(1) + "%" },
-    ];
-    injectDlButtons("conc-dl-row",
-      () => downloadCSV(rows,   exportCols, "concentrated_items.csv"),
-      () => downloadExcel(rows, exportCols, "concentrated_items.xlsx"));
-  }
-
-  // ── Branch Spread Bar Chart ──
-  // Count materials by number of plants they occupy
-  const spreadCountMap = {};
-  matConcentration.forEach(r => {
-    const k = r.plantCount;
-    spreadCountMap[k] = (spreadCountMap[k] || 0) + 1;
-  });
-  const spreadKeys  = Object.keys(spreadCountMap).map(Number).sort((a, b) => a - b);
-  const spreadCounts = spreadKeys.map(k => spreadCountMap[k]);
-  const spreadColors = spreadKeys.map(k =>
-    k === 1 ? "#f85149" : k <= 4 ? "#ffa657" : k <= 8 ? "#d29922" : "#3fb950"
-  );
-
-  const spreadLabels = spreadKeys.map(k =>
-    k === 1 ? "1 plant\n(sole)" : `${k} plant${k > 1 ? "s" : ""}`
-  );
-
-  // Build a lookup: plantCount → array of material codes (used by click handler)
-  const _spreadByPlantCount = {};
-  matConcentration.forEach(r => {
-    if (!_spreadByPlantCount[r.plantCount]) _spreadByPlantCount[r.plantCount] = [];
-    _spreadByPlantCount[r.plantCount].push(r.mat);
-  });
-  Plotly.newPlot("chart-conc-spread", [{
-    type: "bar",
-    x: spreadLabels,
-    y: spreadCounts,
-    marker: {
-      color: spreadColors,
-      line: { color: "rgba(255,255,255,0.15)", width: 1 },
-    },
-    hovertemplate: "<b>%{x}</b><br>%{y} material(s)<br><i>Click to explore in Branch Comparison →</i><extra></extra>",
-    text: spreadCounts,
-    textposition: "outside",
-    textfont: { size: 10 },
-    customdata: spreadKeys,   // parallel array: raw plant-count number for each bar
-  }], pl({
-    height: 300,
-    margin: { l: 20, r: 20, t: 30, b: 70 },
-    xaxis: { title: { text: "Number of plants stocking the material  ·  Click a bar to explore in Branch Comparison →", font: { size: 10 } }, tickfont: { size: 10 } },
-    yaxis: { title: { text: "Materials", font: { size: 10 } }, tickformat: ",d" },
-    showlegend: false,
-  }), PLOTLY_CONFIG);
-
-  // ── Drilldown: clicking a bar navigates to Branch Comparison ──────────────
-  // We attach the listener to the Plotly div directly; the handler is replaced on
-  // every renderConcentration() call so stale closures over old data never fire.
-  const spreadDiv = document.getElementById("chart-conc-spread");
-  // Plotly sets cursor to 'pointer' on bar hover automatically but we make it
-  // explicit so users see the affordance even before hovering over a bar.
-  spreadDiv.style.cursor = "pointer";
-
-  spreadDiv.on("plotly_click", function(eventData) {
-    const pt = eventData && eventData.points && eventData.points[0];
-    if (!pt) return;
-
-    // pt.customdata is the raw plantCount number we stored above
-    const clickedCount = pt.customdata;
-    const mats = _spreadByPlantCount[clickedCount];
-    if (!mats || !mats.length) return;
-
-    // Stash drilldown payload so renderBranch can read it after navigation
-    _lastSpreadDrilldown = { plantCount: clickedCount, matCodes: mats };
-
-    // Navigate to Branch Comparison — renderPage calls renderBranch() which
-    // rebuilds the DOM; we hook in once the tab/filter UI is ready.
-    drillNavigate("branch");
-  });
-}
-
 const PAGE_RENDERERS = {
   dashboard:     renderDashboard,
   transit:       renderTransit,
@@ -4185,59 +3878,37 @@ function renderConcentration() {
     showlegend: false,
   }), PLOTLY_CONFIG);
 
-  // ── Concentration Analysis Cards ──
-  function bandCard(cls, icon, count, label, desc) {
-    return `<div class="conc-band-card ${cls}">
-      <div class="conc-band-icon">${icon}</div>
-      <div class="conc-band-count">${count}</div>
-      <div class="conc-band-label">${label}</div>
-      <div class="conc-band-desc">${desc}</div>
-    </div>`;
-  }
-  document.getElementById("conc-analysis-cards").innerHTML = `
-    <div class="conc-analysis-grid">
-      ${bandCard("sole",   "🔴", sole.length,   "Sole Branch",   ">80% of stock in a single plant — high supply-chain risk")}
-      ${bandCard("few",    "🟠", few.length,    "Few Branches",  "Spread across 2–4 plants — limited redundancy")}
-      ${bandCard("spread", "🟡", spread.length, "Moderate Spread","Across 5–8 plants — reasonable distribution")}
-      ${bandCard("wide",   "🟢", wide.length,   "Wide Spread",   "Across 9+ plants — well distributed")}
-    </div>
-    <div style="margin-top:0.85rem;font-size:0.7rem;color:var(--dim);line-height:1.5">
-      Classification based on <b>% of total unrestricted quantity</b> held by the top plant per material.
-      <br>Sole Branch threshold: ≥80% in one plant. Items with MOS &lt; 1 month at any holding plant are excluded (fast-moving, not a real concentration risk).
-    </div>`;
-
-  // ── Highly Concentrated Table (all sole-branch materials, sorted by total value) ──
-  const topConcentrated = [...sole]
-    .sort((a, b) => b.totalVal - a.totalVal);
-
-  if (topConcentrated.length === 0) {
-    document.getElementById("conc-table-wrap").innerHTML = `<div class="alert-info">✓ No materials with &gt;80% concentration in a single plant.</div>`;
-    document.getElementById("conc-dl-row").innerHTML = "";
-  } else {
-    const cols = [
-      { key: "mat",         label: "Material Code",    fmt: (v, r) => renderMatCode(r.Material, r), raw: true, cellClass: "col-mat-code-wrap" },
-      { key: "desc",        label: "Description",      fmt: (v)    => `<span class="col-mat-desc">${escHtml(String(v||""))}</span>`, raw: true, cellClass: "col-mat-desc-wrap" },
-      { key: "topPlantName",label: "Dominant Plant",   fmt: (v)    => `<span class="conc-plant-pill" title="${escHtml(String(v||""))}">${escHtml(String(v||""))}</span>`, raw: true },
-      { key: "topQty",      label: "Qty in Plant",     fmt: fmtQty, rawKey: "topQty",   cellClass: "col-qty" },
-      { key: "totalQty",    label: "Total Qty",        fmt: fmtQty, rawKey: "totalQty", cellClass: "col-qty" },
-      { key: "totalVal",    label: "Total Value (ETB)",fmt: fmtETB, rawKey: "totalVal", cellClass: "col-val" },
-      {
-        key: "pctQty",
-        label: "% of Qty in Top Plant",
-        fmt: (v) => {
-          const cls = v >= 95 ? "critical" : "high";
-          return `<span class="conc-pct-badge ${cls}">${Number(v).toFixed(1)}%</span>`;
-        },
-        raw: true,
+  // ── Table/popup data for ALL FOUR bands (sole/few/spread/wide) — built
+  //    BEFORE the cards so each card's click handler and the "Highly
+  //    Concentrated Items" table below can share the exact same rows/cols
+  //    instead of recomputing (and risking the views drifting apart). ──
+  const concCols = [
+    { key: "mat",         label: "Material Code",    fmt: (v, r) => renderMatCode(r.Material, r), raw: true, cellClass: "col-mat-code-wrap" },
+    { key: "desc",        label: "Description",      fmt: (v)    => `<span class="col-mat-desc">${escHtml(String(v||""))}</span>`, raw: true, cellClass: "col-mat-desc-wrap" },
+    { key: "topPlantName",label: "Dominant Plant",   fmt: (v)    => `<span class="conc-plant-pill" title="${escHtml(String(v||""))}">${escHtml(String(v||""))}</span>`, raw: true },
+    { key: "topQty",      label: "Qty in Plant",     fmt: fmtQty, rawKey: "topQty",   cellClass: "col-qty" },
+    { key: "totalQty",    label: "Total Qty",        fmt: fmtQty, rawKey: "totalQty", cellClass: "col-qty" },
+    { key: "totalVal",    label: "Total Value (ETB)",fmt: fmtETB, rawKey: "totalVal", cellClass: "col-val" },
+    { key: "plantCount",  label: "Plants Holding It",fmt: (v)    => `<span class="conc-plant-pill">${Number(v).toLocaleString()}</span>`, raw: true },
+    {
+      key: "pctQty",
+      label: "% of Qty in Top Plant",
+      fmt: (v) => {
+        const cls = v >= 95 ? "critical" : v >= 80 ? "high" : "";
+        return cls ? `<span class="conc-pct-badge ${cls}">${Number(v).toFixed(1)}%</span>` : `${Number(v).toFixed(1)}%`;
       },
-    ];
+      raw: true,
+    },
+  ];
 
-    // Build plain objects for buildTable
-    // FIX-CONC-STD: attach mapping fields so renderMatCode delegates to
-    // renderMappedMatCode_early and shows the STD badge just like every other page.
-    // A row is "mapped" when mapping is active AND it has at least one original
-    // SAP code that differs from the target (i.e. it merged ≥1 source code).
-    const rows = topConcentrated.map(r => {
+  // Build plain objects for buildTable/downloadCSV/downloadExcel out of a
+  // matConcentration-shaped array.
+  // FIX-CONC-STD: attach mapping fields so renderMatCode delegates to
+  // renderMappedMatCode_early and shows the STD badge just like every other page.
+  // A row is "mapped" when mapping is active AND it has at least one original
+  // SAP code that differs from the target (i.e. it merged ≥1 source code).
+  function toConcRows(arr) {
+    return [...arr].sort((a, b) => b.totalVal - a.totalVal).map(r => {
       const hasMergedCodes = useMapped && r.origCodes && r.origCodes.length > 0;
       return {
         mat:             r.mat,
@@ -4250,6 +3921,7 @@ function renderConcentration() {
         totalQty:        r.totalQty,
         totalVal:        r.totalVal,
         pctQty:          r.pctQty,
+        plantCount:      r.plantCount,
         // Mapping display fields — mirror what applyMaterialMapping stamps on rows
         _isMapped:       hasMergedCodes,
         _mappedMaterial: r.mat,
@@ -4258,7 +3930,76 @@ function renderConcentration() {
         _origDesc:       "",
       };
     });
-    document.getElementById("conc-table-wrap").innerHTML = buildTable(rows, cols,
+  }
+
+  const soleRows   = toConcRows(sole);
+  const fewRows    = toConcRows(few);
+  const spreadRows = toConcRows(spread);
+  const wideRows   = toConcRows(wide);
+  const soleCols   = concCols; // kept as a separate name below for the existing table code
+
+  // ── Concentration Analysis Cards ──
+  function bandCard(cls, icon, count, label, desc, clickId) {
+    // clickId, when given, makes the card a keyboard-and-mouse-clickable
+    // affordance that opens a popup listing the underlying materials.
+    const clickAttrs = clickId
+      ? ` id="${clickId}" role="button" tabindex="0" style="cursor:pointer" title="Click to see these ${count} material(s), and which plant each is concentrated in"`
+      : "";
+    return `<div class="conc-band-card ${cls}"${clickAttrs}>
+      <div class="conc-band-icon">${icon}</div>
+      <div class="conc-band-count">${count}</div>
+      <div class="conc-band-label">${label}</div>
+      <div class="conc-band-desc">${desc}</div>
+    </div>`;
+  }
+  document.getElementById("conc-analysis-cards").innerHTML = `
+    <div class="conc-analysis-grid">
+      ${bandCard("sole",   "🔴", sole.length,   "Sole Branch",   ">80% of stock in a single plant — high supply-chain risk", "conc-band-sole")}
+      ${bandCard("few",    "🟠", few.length,    "Few Branches",  "Spread across 2–4 plants — limited redundancy", "conc-band-few")}
+      ${bandCard("spread", "🟡", spread.length, "Moderate Spread","Across 5–8 plants — reasonable distribution", "conc-band-spread")}
+      ${bandCard("wide",   "🟢", wide.length,   "Wide Spread",   "Across 9+ plants — well distributed", "conc-band-wide")}
+    </div>
+    <div style="margin-top:0.85rem;font-size:0.7rem;color:var(--dim);line-height:1.5">
+      Classification based on <b>% of total unrestricted quantity</b> held by the top plant per material.
+      <br>Sole Branch threshold: ≥80% in one plant. Items with MOS &lt; 1 month at any holding plant are excluded (fast-moving, not a real concentration risk).
+    </div>`;
+
+  // ── Each band card → popup listing its items + their dominant plant % ──
+  // Reuses the shared showChartDrillModal() shell (same look as every other
+  // chart-click popup in the app). The Sole Branch popup shares its exact
+  // rows/cols with the "Highly Concentrated Items" table below, so the two
+  // views never disagree.
+  const BAND_MODAL_CONFIG = [
+    { id: "conc-band-sole",   icon: "🔴", label: "Sole-Branch Materials",    rows: soleRows,   desc: "≥80% of stock concentrated in a single plant",         critical: true  },
+    { id: "conc-band-few",    icon: "🟠", label: "Few-Branch Materials",     rows: fewRows,    desc: "Spread across 2–4 plants — limited redundancy",         critical: false },
+    { id: "conc-band-spread", icon: "🟡", label: "Moderate-Spread Materials",rows: spreadRows, desc: "Spread across 5–8 plants — reasonable distribution",    critical: false },
+    { id: "conc-band-wide",   icon: "🟢", label: "Wide-Spread Materials",    rows: wideRows,   desc: "Spread across 9+ plants — well distributed",            critical: false },
+  ];
+  BAND_MODAL_CONFIG.forEach(band => {
+    const el = document.getElementById(band.id);
+    if (!el) return;
+    const openModal = () => {
+      showChartDrillModal({
+        title: `${band.icon} ${band.label}`,
+        meta: `${band.rows.length.toLocaleString()} material${band.rows.length !== 1 ? "s" : ""} · ${band.desc}`,
+        rows: band.rows,
+        cols: concCols,
+        rowClass: band.critical ? (row => row.pctQty >= 95 ? "row-critical" : "row-warning") : undefined,
+        filenameBase: band.id.replace("conc-band-", "") + "_branch_materials",
+      });
+    };
+    el.addEventListener("click", openModal);
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openModal(); }
+    });
+  });
+
+  // ── Highly Concentrated Table (all sole-branch materials, sorted by total value) ──
+  if (soleRows.length === 0) {
+    document.getElementById("conc-table-wrap").innerHTML = `<div class="alert-info">✓ No materials with &gt;80% concentration in a single plant.</div>`;
+    document.getElementById("conc-dl-row").innerHTML = "";
+  } else {
+    document.getElementById("conc-table-wrap").innerHTML = buildTable(soleRows, soleCols,
       (row) => row.pctQty >= 95 ? "row-critical" : "row-warning"
     );
 
@@ -4273,8 +4014,8 @@ function renderConcentration() {
       { key:"pctQty",       label:"% in Top Plant",       fmt: v => Number(v).toFixed(1) + "%" },
     ];
     injectDlButtons("conc-dl-row",
-      () => downloadCSV(rows,   exportCols, "concentrated_items.csv"),
-      () => downloadExcel(rows, exportCols, "concentrated_items.xlsx"));
+      () => downloadCSV(soleRows,   exportCols, "concentrated_items.csv"),
+      () => downloadExcel(soleRows, exportCols, "concentrated_items.xlsx"));
   }
 
   // ── Branch Spread Bar Chart ──
