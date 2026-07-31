@@ -174,7 +174,7 @@ function _renderDrillBackButtons() {
   if (!_drillNavStack.length) return;
   const container = document.getElementById(`page-back-${currentPage}`);
   if (container) {
-    container.innerHTML = `<button type="button" class="drill-back-btn" id="drill-back-btn" title="Back to where you came from">⬅ Back</button>`;
+    container.innerHTML = `<button type="button" class="drill-back-btn" id="drill-back-btn" title="Back to where you came from">↩ Back</button>`;
   }
 }
 
