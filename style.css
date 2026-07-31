@@ -786,7 +786,6 @@ body { display: flex; }
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  margin-left: 0.7rem;
   padding: 0.2rem 0.7rem;
   font-size: 0.68rem;
   font-weight: 700;
