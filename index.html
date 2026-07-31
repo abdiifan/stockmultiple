@@ -738,7 +738,7 @@
       <div class="overview-card" data-goto="transit">
         <div class="overview-card-icon">🚚</div>
         <div class="overview-card-title">Stock in Transit</div>
-        <div class="overview-card-desc">Goods that have left the hub but haven't yet arrived at destination branches, with aging and status.</div>
+        <div class="overview-card-desc">Goods that have left the hub but haven't yet arrived at destination branches.</div>
       </div>
       <div class="overview-card" data-goto="branch">
         <div class="overview-card-icon">🏢</div>
@@ -1245,13 +1245,13 @@
           <option value="ZMS">ZMS (Medical Supplies)</option>
           <option value="ZLC">ZLC</option>
         </select>
-        <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;color:var(--muted);white-space:nowrap" title="National MOS 1–4 months">
+        <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;color:var(--muted);white-space:nowrap">
           <input type="checkbox" id="stko-at-risk-only" checked />
-          At-risk only (1–4mo)
+          At-risk only (&lt;4mo)
         </label>
-        <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;color:var(--muted);white-space:nowrap" title="Show only materials that are currently stocked out (National MOS < 1mo)">
-          <input type="checkbox" id="stko-stockout-only" />
-          Stock out only
+        <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;color:var(--muted);white-space:nowrap" title="Also include materials that look safe today (MOS ≥ 4mo) but would drop below 4mo once soon-to-expire stock is excluded">
+          <input type="checkbox" id="stko-expiry-adjusted" />
+          Include ⚠ Expiry-Adjusted Risk
         </label>
         <button class="apply-btn small" id="stko-apply">Apply</button>
         <button class="apply-btn secondary small" id="stko-clear">Clear</button>
