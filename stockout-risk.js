@@ -314,8 +314,8 @@ function renderStockoutRisk() {
   const cols = [
     { key: "code", label: "Material Code",
       fmt: (v, r) => r.isMerged
-        ? `<span class="col-mat-code">${escHtml(v)}</span><span class="mat-mapped-badge" title="Merged from: ${escHtml(r.origCodes)}">MERGED</span>`
-        : `<span class="col-mat-code">${escHtml(v)}</span>`,
+        ? `<span class="col-mat-code mat-code-clickable" data-drill-mat="${escHtml(v)}" title="Click to see Stock Concentration for this material">${escHtml(v)}</span><span class="mat-mapped-badge" title="Merged from: ${escHtml(r.origCodes)}">MERGED</span>`
+        : `<span class="col-mat-code mat-code-clickable" data-drill-mat="${escHtml(v)}" title="Click to see Stock Concentration for this material">${escHtml(v)}</span>`,
       raw: true, cellClass: "col-mat-code-wrap" },
     { key: "desc", label: "Description", cellClass: "col-mat-desc-wrap" },
     { key: "type", label: "Type" },
