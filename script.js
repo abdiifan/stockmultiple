@@ -2792,13 +2792,7 @@ function renderBranch() {
           </div>
           <div>
             <div class="nav-label" style="font-size:0.65rem;margin-bottom:3px">Material Type</div>
-            <select id="mat-mgfilter" style="background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px">
-              <option value="">All Material Types</option>
-              <option value="ZME">ZME</option>
-              <option value="ZMS">ZMS</option>
-              <option value="ZLC">ZLC</option>
-              <option value="ZMD">ZMD</option>
-            </select>
+            <div class="ms-wrap" id="mat-type-ms-wrap" style="min-width:180px"><button class="ms-btn" type="button">All Material Types <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="mat-type-ms-dd"></div></div>
           </div>
           <div>
             <div class="nav-label" style="font-size:0.65rem;margin-bottom:3px">Sort By</div>
@@ -2818,12 +2812,13 @@ function renderBranch() {
         <div id="mat-table-wrap"></div>`;
       document.getElementById("mat-apply").addEventListener("click", refreshMaterialView);
       document.getElementById("mat-clear").addEventListener("click", () => {
-        const matWrap2 = document.getElementById("mat-ms-wrap");
-        const mgWrap2  = document.getElementById("mat-mg-ms-wrap");
-        if (matWrap2 && matWrap2._clearSelected) matWrap2._clearSelected();
-        if (mgWrap2  && mgWrap2._clearSelected)  mgWrap2._clearSelected();
+        const matWrap2  = document.getElementById("mat-ms-wrap");
+        const mgWrap2   = document.getElementById("mat-mg-ms-wrap");
+        const typeWrap2 = document.getElementById("mat-type-ms-wrap");
+        if (matWrap2  && matWrap2._clearSelected)  matWrap2._clearSelected();
+        if (mgWrap2   && mgWrap2._clearSelected)   mgWrap2._clearSelected();
+        if (typeWrap2 && typeWrap2._clearSelected) typeWrap2._clearSelected();
         document.getElementById("mat-metric").value    = "TotalQty";
-        document.getElementById("mat-mgfilter").value  = "";
         document.getElementById("mat-sort").value      = "total_desc";
         refreshMaterialView();
       });
@@ -2833,6 +2828,10 @@ function renderBranch() {
       // more material groups (e.g. only "Antibiotics" or "Vaccines") in addition
       // to / instead of picking individual materials.
       buildMultiSelect("mat-mg-ms-wrap", "mat-mg-ms-dd", mgNamesForFilter, "All Material Groups");
+      // Material Type multi-select — was a single-select <select>; now supports
+      // choosing more than one type (e.g. ZME + ZMS) at once, same UX as the
+      // other filters on this tab.
+      buildMultiSelect("mat-type-ms-wrap", "mat-type-ms-dd", ["ZME", "ZMS", "ZLC", "ZMD"], "All Material Types");
       ["mat-show-soh", "mat-show-mos", "mat-show-amc"].forEach(id => {
         const cb = document.getElementById(id);
         if (cb) cb.addEventListener("change", refreshMaterialView);
@@ -2960,9 +2959,10 @@ function renderBranch() {
       const selCodes  = selected.map(v => v.split(" — ")[0].trim().toLowerCase());
       const mgWrap      = document.getElementById("mat-mg-ms-wrap");
       const selectedMgs = (mgWrap && mgWrap._getSelected) ? mgWrap._getSelected() : [];
+      const typeWrap      = document.getElementById("mat-type-ms-wrap");
+      const selectedTypes = (typeWrap && typeWrap._getSelected) ? typeWrap._getSelected() : [];
       const metric    = document.getElementById("mat-metric").value;
       const sortMode  = document.getElementById("mat-sort").value;
-      const mgFilter  = document.getElementById("mat-mgfilter").value;
       const isQty     = metric.includes("Qty");
       const fmtFn     = isQty ? fmtQty : fmtETB;
 
@@ -2992,7 +2992,7 @@ function renderBranch() {
 
       let materials = Object.entries(matPlantMap)
         .filter(([mat, info]) => {
-          if (mgFilter && info.valType !== mgFilter) return false;
+          if (selectedTypes.length > 0 && !selectedTypes.includes(info.valType)) return false;
           if (selectedMgs.length > 0 && !selectedMgs.includes(info.group)) return false;
           if (selCodes.length > 0) {
             // Multi-select: match if material code is one of the selected codes
