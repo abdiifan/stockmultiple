@@ -678,6 +678,64 @@ document.addEventListener("click", () => {
   document.querySelectorAll(".ms-wrap.open").forEach(w => w.classList.remove("open"));
 });
 
+// ── COLLAPSIBLE FILTER CHIPS ────────────────────────────────────────────────
+// Wraps a filter control (select, multi-select, checkbox group, etc.) so it's
+// hidden behind a small "chip" button and only appears once clicked. Used on
+// pages with many filters (e.g. Branch Comparison) to keep the toolbar compact.
+// Each chip shows a numeric badge when the filter has an active selection.
+function filterChipHTML(id, label, innerHtml) {
+  return `
+    <div class="filter-item" id="flt-item-${id}" style="position:relative">
+      <button type="button" class="filter-chip-toggle" id="flt-toggle-${id}"
+        style="display:flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;cursor:pointer;white-space:nowrap">
+        <span>${escHtml(label)}</span>
+        <span class="filter-badge" id="flt-badge-${id}" style="display:none;background:var(--blue,#3a8fd4);color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;min-width:16px;text-align:center;line-height:1.4">0</span>
+        <span style="font-size:10px;opacity:0.7">▾</span>
+      </button>
+      <div class="filter-body" id="flt-body-${id}" style="display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:50;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.7rem;min-width:230px;box-shadow:0 4px 18px rgba(0,0,0,0.3)">
+        ${innerHtml}
+      </div>
+    </div>`;
+}
+
+// Wires the toggle behaviour for one or more filter chips built with
+// filterChipHTML(). Call once after the chips' HTML is in the DOM.
+function wireFilterChips(ids) {
+  ids.forEach(id => {
+    const toggle = document.getElementById(`flt-toggle-${id}`);
+    const body   = document.getElementById(`flt-body-${id}`);
+    if (!toggle || !body) return;
+    toggle.addEventListener("click", e => {
+      e.stopPropagation();
+      const isOpen = body.style.display !== "none";
+      body.style.display = isOpen ? "none" : "block";
+      toggle.classList.toggle("filter-chip-open", !isOpen);
+    });
+    // Clicks inside the body (e.g. opening a nested ms-wrap dropdown) shouldn't
+    // bubble up and trigger the "close on outside click" handler below.
+    body.addEventListener("click", e => e.stopPropagation());
+  });
+}
+
+// Opens a specific filter chip's body (used e.g. by drilldowns that
+// auto-select a filter, so the user immediately sees what changed).
+function openFilterChip(id) {
+  const toggle = document.getElementById(`flt-toggle-${id}`);
+  const body   = document.getElementById(`flt-body-${id}`);
+  if (!body || !toggle) return;
+  body.style.display = "block";
+  toggle.classList.add("filter-chip-open");
+}
+
+// Close any open filter-chip bodies when clicking outside them.
+document.addEventListener("click", e => {
+  document.querySelectorAll(".filter-body").forEach(body => {
+    if (body.style.display === "none") return;
+    const item = body.closest(".filter-item");
+    if (item && !item.contains(e.target)) body.style.display = "none";
+  });
+});
+
 // ── GLOBAL PERSON FILTER WIRING ─────────────────────────────────────────────
 // Single dropdown in the sidebar drives the filter for every page.
 (function wirePersonFilter() {
@@ -2754,18 +2812,22 @@ function renderBranch() {
       }))].filter(Boolean).sort();
 
       wrap.innerHTML = `
-        <div style="display:flex;gap:0.8rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:1rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.8rem">
-          <div>
+        <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.8rem">
+          ${filterChipHTML("material", "Material", `
             <div class="nav-label" style="font-size:0.65rem;margin-bottom:3px">Material</div>
             <div class="ms-wrap" id="mat-ms-wrap" style="min-width:260px"><button class="ms-btn" type="button">All Materials <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="mat-ms-dd"></div></div>
-          </div>
-          <div>
+          `)}
+          ${filterChipHTML("group", "Material Group", `
             <div class="nav-label" style="font-size:0.65rem;margin-bottom:3px">Material Group</div>
             <div class="ms-wrap" id="mat-mg-ms-wrap" style="min-width:220px"><button class="ms-btn" type="button">All Material Groups <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="mat-mg-ms-dd"></div></div>
-          </div>
-          <div>
+          `)}
+          ${filterChipHTML("type", "Material Type", `
+            <div class="nav-label" style="font-size:0.65rem;margin-bottom:3px">Material Type</div>
+            <div class="ms-wrap" id="mat-type-ms-wrap" style="min-width:180px"><button class="ms-btn" type="button">All Material Types <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="mat-type-ms-dd"></div></div>
+          `)}
+          ${filterChipHTML("metric", "Metric", `
             <div class="nav-label" style="font-size:0.65rem;margin-bottom:3px">Metric</div>
-            <select id="mat-metric" style="background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px">
+            <select id="mat-metric" style="background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;width:100%">
               <option value="TotalQty" selected>Total Quantity</option>
               <option value="UnrestrictedQty">Unrestricted Stock Quantity</option>
               <option value="TransitQty">Transit Quantity</option>
@@ -2775,8 +2837,8 @@ function renderBranch() {
               <option value="Transit">Transit Value (ETB)</option>
               <option value="QC">Stock in Quality Inspection Value (ETB)</option>
             </select>
-          </div>
-          <div>
+          `)}
+          ${filterChipHTML("show", "Show", `
             <div class="nav-label" style="font-size:0.65rem;margin-bottom:3px">Show</div>
             <div style="display:flex;align-items:center;gap:10px;height:32px">
               <label style="display:flex;align-items:center;gap:4px;font-size:0.78rem;cursor:pointer" title="Stock on Hand — the value picked by the Metric dropdown">
@@ -2789,20 +2851,16 @@ function renderBranch() {
                 <input type="checkbox" id="mat-show-amc" ${mosAvailable ? "" : "disabled"} /> AMC
               </label>
             </div>
-          </div>
-          <div>
-            <div class="nav-label" style="font-size:0.65rem;margin-bottom:3px">Material Type</div>
-            <div class="ms-wrap" id="mat-type-ms-wrap" style="min-width:180px"><button class="ms-btn" type="button">All Material Types <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="mat-type-ms-dd"></div></div>
-          </div>
-          <div>
+          `)}
+          ${filterChipHTML("sort", "Sort By", `
             <div class="nav-label" style="font-size:0.65rem;margin-bottom:3px">Sort By</div>
-            <select id="mat-sort" style="background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px">
+            <select id="mat-sort" style="background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;width:100%">
               <option value="total_desc">Highest Total ↓</option>
               <option value="total_asc">Lowest Total ↑</option>
               <option value="desc_asc">Description A–Z</option>
               <option value="spread_desc">Most Branches ↓</option>
             </select>
-          </div>
+          `)}
           <button id="mat-apply" class="apply-btn">Apply</button>
           <button id="mat-clear" class="apply-btn secondary">Clear</button>
         </div>
@@ -2810,6 +2868,49 @@ function renderBranch() {
         <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.5rem">Downloads include whichever of SOH / MOS / AMC are ticked above.</div>
         <div id="mat-dl-row" style="display:flex;gap:0.6rem;justify-content:flex-end;margin-bottom:0.5rem"></div>
         <div id="mat-table-wrap"></div>`;
+
+      // Wire the collapse/expand behaviour for every filter chip on this tab.
+      wireFilterChips(["material", "group", "type", "metric", "show", "sort"]);
+
+      // FEAT-FILTER-BADGES: keeps each chip's numeric badge in sync with what's
+      // actually selected inside it, so the user can tell at a glance which
+      // filters are active without opening every one of them.
+      function computeMatFilterBadgeCounts() {
+        const matWrap  = document.getElementById("mat-ms-wrap");
+        const mgWrap   = document.getElementById("mat-mg-ms-wrap");
+        const typeWrap = document.getElementById("mat-type-ms-wrap");
+        const metricEl = document.getElementById("mat-metric");
+        const sortEl   = document.getElementById("mat-sort");
+        const soh = document.getElementById("mat-show-soh");
+        const mos = document.getElementById("mat-show-mos");
+        const amc = document.getElementById("mat-show-amc");
+        let showCount = 0;
+        if (soh && soh.checked) showCount++;
+        if (mos && mos.checked) showCount++;
+        if (amc && amc.checked) showCount++;
+        return {
+          material: (matWrap && matWrap._getSelected) ? matWrap._getSelected().length : 0,
+          group:    (mgWrap && mgWrap._getSelected)   ? mgWrap._getSelected().length   : 0,
+          type:     (typeWrap && typeWrap._getSelected) ? typeWrap._getSelected().length : 0,
+          metric:   (metricEl && metricEl.value !== "TotalQty") ? 1 : 0,
+          sort:     (sortEl && sortEl.value !== "total_desc") ? 1 : 0,
+          show:     showCount,
+        };
+      }
+      function refreshMatFilterBadges() {
+        const counts = computeMatFilterBadgeCounts();
+        Object.entries(counts).forEach(([id, count]) => {
+          const badge = document.getElementById(`flt-badge-${id}`);
+          if (!badge) return;
+          if (count > 0) {
+            badge.textContent = String(count);
+            badge.style.display = "inline-block";
+          } else {
+            badge.style.display = "none";
+          }
+        });
+      }
+
       document.getElementById("mat-apply").addEventListener("click", refreshMaterialView);
       document.getElementById("mat-clear").addEventListener("click", () => {
         const matWrap2  = document.getElementById("mat-ms-wrap");
@@ -2820,6 +2921,7 @@ function renderBranch() {
         if (typeWrap2 && typeWrap2._clearSelected) typeWrap2._clearSelected();
         document.getElementById("mat-metric").value    = "TotalQty";
         document.getElementById("mat-sort").value      = "total_desc";
+        refreshMatFilterBadges();
         refreshMaterialView();
       });
       // Build the material multi-select after HTML is in DOM
@@ -2832,10 +2934,23 @@ function renderBranch() {
       // choosing more than one type (e.g. ZME + ZMS) at once, same UX as the
       // other filters on this tab.
       buildMultiSelect("mat-type-ms-wrap", "mat-type-ms-dd", ["ZME", "ZMS", "ZLC", "ZMD"], "All Material Types");
+      // Badge updates: checkbox "change" events inside each ms-dropdown bubble
+      // up to the dropdown container, so one listener per dropdown covers every
+      // checkbox without needing to hook buildMultiSelect itself.
+      ["mat-ms-dd", "mat-mg-ms-dd", "mat-type-ms-dd"].forEach(ddId => {
+        const dd = document.getElementById(ddId);
+        if (dd) dd.addEventListener("change", refreshMatFilterBadges);
+      });
+      document.getElementById("mat-metric").addEventListener("change", refreshMatFilterBadges);
+      document.getElementById("mat-sort").addEventListener("change", refreshMatFilterBadges);
       ["mat-show-soh", "mat-show-mos", "mat-show-amc"].forEach(id => {
         const cb = document.getElementById(id);
-        if (cb) cb.addEventListener("change", refreshMaterialView);
+        if (cb) cb.addEventListener("change", () => { refreshMatFilterBadges(); refreshMaterialView(); });
       });
+      refreshMatFilterBadges();
+      // Expose so the drilldown block below (and any future callers within
+      // this render) can refresh badges after programmatically ticking boxes.
+      wrap._refreshMatFilterBadges = refreshMatFilterBadges;
     }
 
     // ── Spread-chart drilldown: auto-select materials from the clicked group ──
@@ -2873,6 +2988,10 @@ function renderBranch() {
           ? "1 plant (sole branch)"
           : `${plantCount} plant${plantCount > 1 ? "s" : ""}`;
         showSpreadDrilldownToast(matched, label);
+        // Reveal the Material filter chip so the user can see what got
+        // auto-selected, and sync its badge count.
+        openFilterChip("material");
+        if (wrap._refreshMatFilterBadges) wrap._refreshMatFilterBadges();
       }
     }
 
