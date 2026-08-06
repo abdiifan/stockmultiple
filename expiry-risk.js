@@ -5,7 +5,10 @@
 // CORE IDEA
 // ---------
 // For every plant + item, we know:
-//   - SOH            stock-on-hand right now (Unrestricted Stock)
+//   - SOH            stock-on-hand right now (Unrestricted + verified Transit
+//                     + Quality Inspection — same definition as mos.js's
+//                     buildMosSohMap(), so this page agrees with the rest
+//                     of the app)
 //   - AMC            average monthly consumption at that plant
 //                     (HO01 uses total branch demand — see mos.js HUB rule)
 //   - MOS            = SOH ÷ AMC   → months of stock at current pace
@@ -52,8 +55,23 @@ function buildExpiryMap() {
   for (const row of base) {
     const mat = String(row._mappedMaterial || row["Material"] || "").trim();
     const plt = String(row["Plant"] || "").trim().toUpperCase();
-    const qty = Number(row["Unrestricted Stock"] || 0);
-    const val = Number(row["Value of Unrestricted Stock"] || 0);
+
+    // FIX: qty/val must match mos.js's buildMosSohMap() definition of SOH
+    // (Unrestricted + verified Transit + Quality Inspection), not just
+    // Unrestricted Stock. Otherwise a material sitting entirely in QC status
+    // at a plant gets skipped here (qty <= 0) even though its SOH — used a
+    // few lines down via pm.soh — is nonzero, silently dropping it from the
+    // whole Expiry Risk page while it still shows stock everywhere else.
+    const unrestrictedQty = (typeof getMappedQty === "function") ? getMappedQty(row, "Unrestricted Stock") : Number(row["Unrestricted Stock"] || 0);
+    const transitQty      = (typeof getVerifiedTransitQty === "function") ? getVerifiedTransitQty(row) : Number(row["Stock in Transit"] || 0);
+    const qcQty            = (typeof getMappedQty === "function") ? getMappedQty(row, "Stock in Quality Inspection") : Number(row["Stock in Quality Inspection"] || 0);
+    const qty = (Number(unrestrictedQty) || 0) + (Number(transitQty) || 0) + (Number(qcQty) || 0);
+
+    const unrestrictedVal = (typeof getMappedVal === "function") ? getMappedVal(row, "Value of Unrestricted Stock") : Number(row["Value of Unrestricted Stock"] || 0);
+    const transitVal      = (typeof getVerifiedTransitVal === "function") ? getVerifiedTransitVal(row) : Number(row["Value of Stock in Transit"] || 0);
+    const qcVal            = (typeof getMappedVal === "function") ? getMappedVal(row, "Value of Stock in Quality Inspection") : Number(row["Value of Stock in Quality Inspection"] || 0);
+    const val = (Number(unrestrictedVal) || 0) + (Number(transitVal) || 0) + (Number(qcVal) || 0);
+
     if (!mat || !plt || qty <= 0) continue;
 
     if (!map.has(mat)) map.set(mat, {});
