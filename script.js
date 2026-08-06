@@ -3116,7 +3116,9 @@ function renderBranch() {
           rawKey:"grandTotal", cellClass:isQty?"col-qty":"col-val"},
         {key:"branchCount", label:"# Branches"},
       ];
-      const tableRows = materials.slice(0, 200).map(m => {
+      // buildMatRow: shared shape-builder used both for the on-screen (capped)
+      // table and for the full-data export below, so the two never drift apart.
+      function buildMatRow(m) {
         const row = {mat:m.mat, desc:m.desc, group:m.group, grandTotal:m.grandTotal, branchCount:m.branchCount};
         allPlantNames.forEach(pn => { row[`__p__${pn}`] = m.plantData[pn] || 0; row[`__r__${pn}`] = m.plantData[pn] || 0; });
         row["__r__grandTotal"] = m.grandTotal;
@@ -3125,7 +3127,12 @@ function renderBranch() {
         row.__exportMosData = m.exportMosData; // EXPORT-MOS-CB: consumed by export-only MOS columns
         row.__exportAmcData = m.exportAmcData; // consumed by export-only AMC columns
         return row;
-      });
+      }
+      // On-screen table stays capped at 200 rows for render performance.
+      const tableRows = materials.slice(0, 200).map(buildMatRow);
+      // EXPORT-FULL-DATA: exports must include every material, not just the
+      // first 200 rendered on screen — build the full row set separately.
+      const allTableRows = materials.map(buildMatRow);
 
       const centralKey = `__p__${centralName}`;
       // FEAT-BRANCH-FREEZE: the first 4 colDefs are frozen for horizontal
@@ -3198,14 +3205,17 @@ function renderBranch() {
         ...(exportAmc ? [{key:"__amc__national", label:"National AMC", rawKey:"__amc__national"}] : []),
         {key:"branchCount", label:"# Branches"},
       ];
-      // tableRows entries only carry mat/desc/group plus __p__/__r__ plant keys and
+      // EXPORT-FULL-DATA: exports are built from allTableRows (every material
+      // that matches the current filters), not the 200-row on-screen tableRows,
+      // so CSV/Excel downloads always contain the complete result set.
+      // allTableRows entries only carry mat/desc/group plus __p__/__r__ plant keys and
       // grandTotal/branchCount — already exactly what exportCols needs, so export
-      // directly from tableRows (no HTML-formatting fns involved). MOS/AMC fields
+      // directly from them (no HTML-formatting fns involved). MOS/AMC fields
       // (mosExportVal/amcExportVal) are sourced from __exportMosData/__exportAmcData
       // (always Total-Quantity-based, so exports stay meaningful even when the
       // on-screen table is currently showing a Value metric).
       const exportRows = (exportMos || exportAmc)
-        ? tableRows.map(r => {
+        ? allTableRows.map(r => {
             const er = {...r};
             if (exportMos) {
               allPlantNames.forEach(pn => { er[`__mos__${pn}`] = mosExportVal(r.__exportMosData ? r.__exportMosData[pn] : null); });
@@ -3217,7 +3227,7 @@ function renderBranch() {
             }
             return er;
           })
-        : tableRows;
+        : allTableRows;
       injectDlButtons("mat-dl-row",
         () => downloadCSV(exportRows,   exportCols, "branch_material_comparison.csv"),
         () => downloadExcel(exportRows, exportCols, "branch_material_comparison.xlsx"),
