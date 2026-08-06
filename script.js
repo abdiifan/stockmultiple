@@ -287,6 +287,15 @@ function populatePersonFilter(persons) {
   // Restore previous selection if still valid
   if (prev && persons.includes(prev)) sel.value = prev;
   _syncChipState();
+  // BUG-MOS-STALE-FIX: this fires right after mos.js finishes parsing the AMC
+  // file. If the user is already sitting on Branch Comparison's Material tab,
+  // its MOS/AMC checkboxes were greyed out based on AMC data that didn't
+  // exist yet — refresh it now so they light up immediately instead of
+  // staying stuck disabled until the user happens to click Apply.
+  if (typeof window._activeBranchMatRefresh === "function") {
+    try { window._activeBranchMatRefresh(); }
+    catch (e) { console.error("Branch material tab refresh failed:", e); }
+  }
 }
 
 function _syncChipState() {
@@ -2743,9 +2752,18 @@ function renderBranch() {
       const pn = r["Plant Name"];
       if (pn && !plantNameToCode[pn]) plantNameToCode[pn] = String(r["Plant"] || "").trim().toUpperCase();
     });
-    const mosAvailable = typeof mosMerged !== "undefined" && mosMerged.length > 0
+    const mosAvailable0 = typeof mosMerged !== "undefined" && mosMerged.length > 0
                        && typeof mosPlants !== "undefined" && mosPlants.length > 0;
-    const mosByCode  = mosAvailable ? new Map(mosMerged.map(r => [r.code, r])) : new Map();
+    // BUG-MOS-STALE-FIX: previously `const mosAvailable` / `const mosByCode` were
+    // computed once here and never rechecked. If the AMC file finished loading
+    // AFTER the user had already opened Branch Comparison, mosAvailable stayed
+    // false forever (checkboxes permanently greyed out) even though the data
+    // was now present — refreshMaterialView() re-ran on every Apply/filter
+    // change but always read this same stale const. Both are now `let` and get
+    // recomputed at the top of refreshMaterialView() below, so the checkboxes
+    // re-enable themselves the moment fresh AMC data shows up.
+    let mosAvailable = mosAvailable0;
+    let mosByCode  = mosAvailable ? new Map(mosMerged.map(r => [r.code, r])) : new Map();
     const mosHubCode = (typeof HUB_PLANT !== "undefined") ? HUB_PLANT : "HO01";
 
     // AMC a given plant code should be measured against for this AMC row.
@@ -2988,6 +3006,13 @@ function renderBranch() {
     }
 
     refreshMaterialView();
+    // BUG-MOS-STALE-FIX: expose this tab's refresh fn globally so that when the
+    // AMC file finishes loading *after* the user is already on this page, we
+    // can re-enable the MOS/AMC checkboxes immediately instead of leaving them
+    // greyed out until the user manually re-applies a filter. See the
+    // populatePersonFilter() hook near the top of the file, which mos.js calls
+    // right after it finishes parsing the AMC file.
+    window._activeBranchMatRefresh = refreshMaterialView;
 
     // FEAT-BRANCH-FREEZE: measure the rendered widths of the frozen columns
     // (Material Code, Material Description, Material Group) and stamp
@@ -3064,6 +3089,13 @@ function renderBranch() {
     }
 
     function refreshMaterialView() {
+      // BUG-MOS-STALE-FIX: recheck AMC availability fresh on every call instead
+      // of trusting the value captured when the tab first opened — see note
+      // above where mosAvailable/mosByCode are declared.
+      mosAvailable = typeof mosMerged !== "undefined" && mosMerged.length > 0
+                  && typeof mosPlants !== "undefined" && mosPlants.length > 0;
+      mosByCode = mosAvailable ? new Map(mosMerged.map(r => [r.code, r])) : new Map();
+
       const matWrap   = document.getElementById("mat-ms-wrap");
       const selected  = (matWrap && matWrap._getSelected) ? matWrap._getSelected() : [];
       // selected values are "CODE — DESC" or just "CODE"; extract the code part before " — "
@@ -3436,6 +3468,12 @@ function renderPage(id) {
   if (id === "home") id = "dashboard";
   if (!rawDf.length) return;
   currentPage = id;
+  // BUG-MOS-STALE-FIX: drop the Branch-Comparison-material-tab refresh hook
+  // whenever we navigate to a different page, so populatePersonFilter() never
+  // calls back into a refreshMaterialView() closure whose DOM elements (e.g.
+  // #mat-metric) no longer exist. renderMaterialTab() re-sets this itself if
+  // Branch Comparison is (re)opened.
+  if (id !== "branch") window._activeBranchMatRefresh = null;
   // Hide the pre-data landing splash whenever any page is shown
   document.getElementById("landingView").style.display = "none";
   document.querySelectorAll(".page").forEach(el => { el.style.display = "none"; });
