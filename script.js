@@ -604,7 +604,20 @@ function buildMultiSelect(wrapId, ddId, items, placeholder) {
   let activeBtn = btn;
 
   // Render options
+  // FIX-SEARCH-CHECK-LOSS: renderItems() rebuilds the whole checkbox list from
+  // scratch every time the search box fires (typing OR pasting). It used to
+  // restore "checked" purely from pageFilters — the last APPLIED selection —
+  // so any box the user had just ticked but not yet hit "Apply" on would
+  // silently lose its checkmark the moment they searched/pasted for another
+  // item, making an already-selected material look unselected. We now snapshot
+  // whatever is actually checked in the DOM right before wiping it, and use
+  // that snapshot (not pageFilters) to restore state on every re-render after
+  // the first one, so in-progress selections survive searching/pasting.
+  let hasRenderedOnce = false;
   function renderItems(filter) {
+    const priorChecked = new Set(
+      [...dd.querySelectorAll(".ms-item input:checked")].map(cb => cb.value)
+    );
     const filtered = filter ? items.filter(v => v.toLowerCase().includes(filter.toLowerCase())) : items;
     dd.querySelectorAll(".ms-item").forEach(el => el.remove());
     filtered.forEach(val => {
@@ -613,16 +626,24 @@ function buildMultiSelect(wrapId, ddId, items, placeholder) {
       const cb = document.createElement("input");
       cb.type  = "checkbox";
       cb.value = val;
-      // Restore checked state
-      const page = wrap.dataset.page, key = wrap.dataset.key;
-      if (page && key && pageFilters[page] && (pageFilters[page][key] || []).includes(val)) {
-        cb.checked = true;
+      // Restore checked state: after the first render, trust the live DOM
+      // snapshot (priorChecked) so unsaved clicks survive searching/pasting.
+      // On the very first render there's nothing to snapshot yet, so seed
+      // from the last-Applied pageFilters selection as before.
+      if (hasRenderedOnce) {
+        if (priorChecked.has(val)) cb.checked = true;
+      } else {
+        const page = wrap.dataset.page, key = wrap.dataset.key;
+        if (page && key && pageFilters[page] && (pageFilters[page][key] || []).includes(val)) {
+          cb.checked = true;
+        }
       }
       cb.addEventListener("change", updateLabel);
       label.appendChild(cb);
       label.appendChild(document.createTextNode(val));
       dd.appendChild(label);
     });
+    hasRenderedOnce = true;
   }
 
   function updateLabel() {
