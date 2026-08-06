@@ -2838,20 +2838,6 @@ function renderBranch() {
               <option value="QC">Stock in Quality Inspection Value (ETB)</option>
             </select>
           `)}
-          ${filterChipHTML("show", "Show", `
-            <div class="nav-label" style="font-size:0.65rem;margin-bottom:3px">Show</div>
-            <div style="display:flex;align-items:center;gap:10px;height:32px">
-              <label style="display:flex;align-items:center;gap:4px;font-size:0.78rem;cursor:pointer" title="Stock on Hand — the value picked by the Metric dropdown">
-                <input type="checkbox" id="mat-show-soh" checked /> SOH
-              </label>
-              <label id="mat-show-mos-label" style="display:flex;align-items:center;gap:4px;font-size:0.78rem;${mosAvailable ? "cursor:pointer" : "opacity:0.4"}" title="Months of Stock (Qty ÷ AMC) — only available when a Quantity metric is selected and AMC data is loaded">
-                <input type="checkbox" id="mat-show-mos" ${mosAvailable ? "" : "disabled"} /> MOS
-              </label>
-              <label id="mat-show-amc-label" style="display:flex;align-items:center;gap:4px;font-size:0.78rem;${mosAvailable ? "cursor:pointer" : "opacity:0.4"}" title="Average Monthly Consumption — only available when a Quantity metric is selected and AMC data is loaded">
-                <input type="checkbox" id="mat-show-amc" ${mosAvailable ? "" : "disabled"} /> AMC
-              </label>
-            </div>
-          `)}
           ${filterChipHTML("sort", "Sort By", `
             <div class="nav-label" style="font-size:0.65rem;margin-bottom:3px">Sort By</div>
             <select id="mat-sort" style="background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;width:100%">
@@ -2864,13 +2850,27 @@ function renderBranch() {
           <button id="mat-apply" class="apply-btn">Apply</button>
           <button id="mat-clear" class="apply-btn secondary">Clear</button>
         </div>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:1rem;padding:0 0.2rem">
+          <span class="nav-label" style="font-size:0.65rem">Show</span>
+          <label style="display:flex;align-items:center;gap:4px;font-size:0.78rem;cursor:pointer" title="Stock on Hand — the value picked by the Metric dropdown">
+            <input type="checkbox" id="mat-show-soh" checked /> SOH
+          </label>
+          <label id="mat-show-mos-label" style="display:flex;align-items:center;gap:4px;font-size:0.78rem;${mosAvailable ? "cursor:pointer" : "opacity:0.4"}" title="Months of Stock (Qty ÷ AMC) — only available when a Quantity metric is selected and AMC data is loaded">
+            <input type="checkbox" id="mat-show-mos" ${mosAvailable ? "" : "disabled"} /> MOS
+          </label>
+          <label id="mat-show-amc-label" style="display:flex;align-items:center;gap:4px;font-size:0.78rem;${mosAvailable ? "cursor:pointer" : "opacity:0.4"}" title="Average Monthly Consumption — only available when a Quantity metric is selected and AMC data is loaded">
+            <input type="checkbox" id="mat-show-amc" ${mosAvailable ? "" : "disabled"} /> AMC
+          </label>
+        </div>
         <div id="mat-chart-wrap" style="margin-bottom:1rem"></div>
         <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.5rem">Downloads include whichever of SOH / MOS / AMC are ticked above.</div>
         <div id="mat-dl-row" style="display:flex;gap:0.6rem;justify-content:flex-end;margin-bottom:0.5rem"></div>
         <div id="mat-table-wrap"></div>`;
 
       // Wire the collapse/expand behaviour for every filter chip on this tab.
-      wireFilterChips(["material", "group", "type", "metric", "show", "sort"]);
+      // "Show" (SOH/MOS/AMC) is a display toggle, not a filter, so it lives as
+      // a plain always-visible row under the filter bar and isn't a chip.
+      wireFilterChips(["material", "group", "type", "metric", "sort"]);
 
       // FEAT-FILTER-BADGES: keeps each chip's numeric badge in sync with what's
       // actually selected inside it, so the user can tell at a glance which
@@ -2881,20 +2881,12 @@ function renderBranch() {
         const typeWrap = document.getElementById("mat-type-ms-wrap");
         const metricEl = document.getElementById("mat-metric");
         const sortEl   = document.getElementById("mat-sort");
-        const soh = document.getElementById("mat-show-soh");
-        const mos = document.getElementById("mat-show-mos");
-        const amc = document.getElementById("mat-show-amc");
-        let showCount = 0;
-        if (soh && soh.checked) showCount++;
-        if (mos && mos.checked) showCount++;
-        if (amc && amc.checked) showCount++;
         return {
           material: (matWrap && matWrap._getSelected) ? matWrap._getSelected().length : 0,
           group:    (mgWrap && mgWrap._getSelected)   ? mgWrap._getSelected().length   : 0,
           type:     (typeWrap && typeWrap._getSelected) ? typeWrap._getSelected().length : 0,
           metric:   (metricEl && metricEl.value !== "TotalQty") ? 1 : 0,
           sort:     (sortEl && sortEl.value !== "total_desc") ? 1 : 0,
-          show:     showCount,
         };
       }
       function refreshMatFilterBadges() {
