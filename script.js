@@ -257,44 +257,20 @@ document.body.addEventListener("click", (e) => {
 let personFilter = new Set();   // empty = show all persons
 
 // Returns the Set of material codes that belong to the currently-selected persons.
-// Built on demand from mosMerged so it always reflects the latest AMC + mapping
-// data, AND so merged materials are evaluated as a whole (see FIX-PERSON-MERGE
-// below) rather than per individual source code.
+// Built on demand from mosAmcRaw so it always reflects the latest AMC data.
 // Returns null when no person filter is active (show everything).
 function getPersonFilteredCodes() {
   if (personFilter.size === 0) return null;
-  // FIX-PERSON-MERGE: use mosMerged, not raw mosAmcRaw. mosMerged's `person`
-  // field is only populated when EVERY original source code for that
-  // canonical material agrees on the same person (mos.js buildMosMerged) —
-  // it's left blank ("") for mixed-ownership merges. Matching against that
-  // means a merged material only passes the filter when it wholly belongs to
-  // the selected person; we then include ALL of its source codes (origCodes)
-  // so every underlying inventory row for that material is kept together,
-  // instead of only whichever single source code happened to be assigned.
-  if (typeof mosMerged !== "undefined" && mosMerged.length) {
-    const codes = new Set();
-    mosMerged.forEach(m => {
-      if (m.person && personFilter.has(m.person)) {
-        String(m.origCodes || "").split(",").forEach(c => {
-          const t = c.trim().toUpperCase();
-          if (t) codes.add(t);
-        });
-      }
-    });
-    return codes;
-  }
-  // Fallback (AMC file loaded but mosMerged not built yet / no mapping in
-  // play): behave as before, per raw AMC row.
   if (typeof mosAmcRaw === "undefined" || !mosAmcRaw.length) return null;
   const codes = new Set();
   mosAmcRaw.forEach(r => {
-    // FIX-PERSON-CASE: normalize to the same case used by the comparison in
-    // getReconciledBase() (`mat = ...toUpperCase()`). AMC.xlsx is often typed
-    // by hand and can have different casing than the SAP inventory export for
-    // the same material — without normalizing here, that row's code never
-    // matches `mat`, so the material silently vanishes the moment a specific
-    // person is selected (it was never actually filtered while "All Persons"
-    // was active, since getReconciledBase() skips filtering entirely then).
+    // BUGFIX-PERSON-CASE: normalize the same way getReconciledBase() normalizes
+    // the inventory "Material" field (trim + uppercase) before comparing. AMC
+    // "Material Code" values aren't guaranteed to match the inventory file's
+    // casing, and without this the codes.has(mat) check in getReconciledBase()
+    // silently failed for any code whose casing differed — dropping that
+    // material's stock to near-zero the moment a specific person was selected
+    // in the global filter (e.g. HO01 SOH going from 17,379 → 0).
     if (r.person && personFilter.has(r.person)) codes.add(String(r.code || "").trim().toUpperCase());
   });
   return codes;
@@ -2874,32 +2850,11 @@ function renderBranch() {
       matTabInitialized = true;
       // FIX-BRANCH-MG: use baseDf (not aggregated df) so all material groups are available
       const mgNamesForFilter = [...new Set(baseDf.map(r => r["Material Group Name"]))].filter(Boolean).filter(name => !isNonMedicalGroup(name)).sort();
-      // Build list of all materials for the multi-select.
-      // FIX-BRANCH-MAT-MAPPING: matPlantMap (built below) is keyed by the
-      // MAPPED/target code when a mapping file is loaded (falls back to the
-      // original code only when a row has no mapping — see matPlantMap
-      // construction). This list previously always used the raw original
-      // "Material" code, so a mapped material could be found/selected in the
-      // dropdown by its original code but then fail to match matPlantMap's
-      // key on Apply — showing "no results" for a material that IS in the
-      // table (just under its mapped code). Every option's CODE segment
-      // (before " — ") must therefore always be the same code matPlantMap
-      // uses, so selCodes (derived by splitting on " — ") lines up.
-      // The original SAP code is still surfaced — appended to the
-      // description segment, same "standardized from X" idea used by the
-      // STD badge elsewhere in the app (e.g. Quality Inspection page) — so
-      // it stays searchable/visible without breaking the code-match split.
-      const useMatMapping = mappingTable.size > 0;
+      // Build list of all materials for the multi-select
       const allMatOptions = [...new Set(baseDf.map(r => {
-        const origCode = String(r["Material"] || "").trim();
-        if (!origCode) return "";
-        const mappedCode = useMatMapping ? String(r._mappedMaterial || "").trim() : "";
-        const isMapped    = mappedCode && mappedCode !== origCode;
-        const code = isMapped ? mappedCode : origCode;
-        let desc = String((isMapped ? r._mappedDesc : null) || r["Material Description"] || "").trim();
-        if (desc === code) desc = "";
-        if (isMapped) desc = desc ? `${desc} (STD, was ${origCode})` : `(STD, was ${origCode})`;
-        return code + (desc ? " — " + desc : "");
+        const code = String(r["Material"] || "").trim();
+        const desc = String(r["Material Description"] || "").trim();
+        return code + (desc && desc !== code ? " — " + desc : "");
       }))].filter(Boolean).sort();
 
       wrap.innerHTML = `
