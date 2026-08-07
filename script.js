@@ -264,7 +264,14 @@ function getPersonFilteredCodes() {
   if (typeof mosAmcRaw === "undefined" || !mosAmcRaw.length) return null;
   const codes = new Set();
   mosAmcRaw.forEach(r => {
-    if (r.person && personFilter.has(r.person)) codes.add(r.code);
+    // FIX-PERSON-CASE: normalize to the same case used by the comparison in
+    // getReconciledBase() (`mat = ...toUpperCase()`). AMC.xlsx is often typed
+    // by hand and can have different casing than the SAP inventory export for
+    // the same material — without normalizing here, that row's code never
+    // matches `mat`, so the material silently vanishes the moment a specific
+    // person is selected (it was never actually filtered while "All Persons"
+    // was active, since getReconciledBase() skips filtering entirely then).
+    if (r.person && personFilter.has(r.person)) codes.add(String(r.code || "").trim().toUpperCase());
   });
   return codes;
 }
