@@ -42,10 +42,13 @@
     const q = query.trim().toLowerCase();
     if (!q) return { rows: [], noData: false };
 
-    let pool = mosMerged;
-    if (typeof personFilter !== "undefined" && personFilter.size > 0) {
-      pool = pool.filter(r => r.person && personFilter.has(r.person));
-    }
+    // FIX-WHORESP-SCOPE: search ALL materials regardless of the global
+    // sidebar Person filter. Who's Responsible exists specifically to look up
+    // ownership for any material — including ones that DON'T belong to
+    // whoever is currently selected in the sidebar, which is exactly the
+    // case someone wants to check. Scoping the search pool to the active
+    // filter made materials outside that filter completely unfindable here.
+    const pool = mosMerged;
 
     const starts = [];
     const contains = [];
@@ -186,6 +189,10 @@
       code: r.code,
       desc: r.desc,
       person: r.person || "",
+      isMerged: !!r.isMerged,
+      personMixed: !!r.personMixed,
+      personList: Array.isArray(r.personList) ? r.personList : [],
+      origCodes: r.origCodes || "",
       ho01Soh,
       branchesWithStock: withStock,
       branchesTotal: branchPlants.size,
@@ -220,7 +227,16 @@
     const mosDisplay = (typeof fmtMosVal === "function")
       ? fmtMosVal(data.nationalMos)
       : (data.nationalMos === null ? "—" : String(data.nationalMos));
-    const personLabel = data.person || "Not assigned";
+    const personLabel = data.personMixed ? "⚠️ Mixed ownership" : (data.person || "Not assigned");
+    const codeBadge = data.isMerged
+      ? `<span class="mat-mapped-badge" title="Merged from: ${escHtml(data.origCodes)}">MERGED</span>`
+      : "";
+    const mixedDetail = data.personMixed
+      ? `<div class="alert-warning" style="margin-top:0.2rem">
+           ⚠️ This material merges multiple original SAP codes (${escHtml(data.origCodes)}), and they're <b>not all assigned to the same person</b> in the AMC file (${escHtml(data.personList.join(", "))}).
+           It won't appear under any single person's filtered view — only its individual source codes' rows do, under whichever person each one is actually assigned to.
+         </div>`
+      : "";
 
     const overlay = document.createElement("div");
     overlay.id = "who-resp-modal-overlay";
@@ -229,9 +245,10 @@
       <div class="who-resp-modal" role="dialog" aria-modal="true" aria-label="Who's responsible for ${escHtml(data.code)}">
         <button class="who-resp-modal-close" id="who-resp-modal-close" type="button" aria-label="Close">✕</button>
         <div class="who-resp-modal-header">
-          <div class="who-resp-modal-code">${escHtml(data.code)}</div>
+          <div class="who-resp-modal-code">${escHtml(data.code)}${codeBadge}</div>
           <div class="who-resp-modal-desc">${escHtml(data.desc || "—")}</div>
         </div>
+        ${mixedDetail}
         <div class="who-resp-modal-grid">
           <div class="who-resp-stat">
             <div class="who-resp-stat-label">👤 Person Assigned</div>
