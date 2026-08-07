@@ -638,62 +638,18 @@ function buildMultiSelect(wrapId, ddId, items, placeholder) {
   // that snapshot (not pageFilters) to restore state on every re-render after
   // the first one, so in-progress selections survive searching/pasting.
   let hasRenderedOnce = false;
-  // FIX-LIST-VISIBILITY: the checklist previously relied entirely on an
-  // external .ms-item / .ms-dropdown stylesheet. If that CSS is missing,
-  // out of date, or overridden elsewhere, the search box (a plain <input>)
-  // still renders fine but the item rows collapse to nothing — looking like
-  // "search box with no list". Every element built here now carries its own
-  // inline styles so the list always renders regardless of external CSS,
-  // and the dropdown itself gets an explicit scroll container so long lists
-  // (e.g. hundreds of materials) don't blow out the page.
-  Object.assign(dd.style, {
-    display:        "block",
-    maxHeight:       "260px",
-    overflowY:       "auto",
-    overflowX:       "hidden",
-    background:      "var(--surface2, #12202e)",
-    border:          "1px solid var(--border2, #2a3b4d)",
-    borderRadius:    "6px",
-  });
   function renderItems(filter) {
     const priorChecked = new Set(
       [...dd.querySelectorAll(".ms-item input:checked")].map(cb => cb.value)
     );
-    const q = (filter || "").trim().toLowerCase();
-    const filtered = q ? items.filter(v => v.toLowerCase().includes(q)) : items;
-    dd.querySelectorAll(".ms-item, .ms-empty").forEach(el => el.remove());
-
-    if (!filtered.length) {
-      const empty = document.createElement("div");
-      empty.className = "ms-empty";
-      Object.assign(empty.style, {
-        padding: "10px 12px", fontSize: "12.5px", opacity: "0.6",
-      });
-      empty.textContent = q ? `No matches for "${filter}"` : "No options available";
-      dd.appendChild(empty);
-      hasRenderedOnce = true;
-      return;
-    }
-
+    const filtered = filter ? items.filter(v => v.toLowerCase().includes(filter.toLowerCase())) : items;
+    dd.querySelectorAll(".ms-item").forEach(el => el.remove());
     filtered.forEach(val => {
       const label = document.createElement("label");
       label.className = "ms-item";
-      Object.assign(label.style, {
-        display:      "flex",
-        alignItems:   "center",
-        gap:          "8px",
-        padding:      "6px 12px",
-        fontSize:     "13px",
-        cursor:       "pointer",
-        whiteSpace:   "nowrap",
-      });
-      label.addEventListener("mouseenter", () => { label.style.background = "var(--surface3, rgba(255,255,255,0.06))"; });
-      label.addEventListener("mouseleave", () => { label.style.background = "transparent"; });
-
       const cb = document.createElement("input");
       cb.type  = "checkbox";
       cb.value = val;
-      cb.style.flex = "0 0 auto";
       // Restore checked state: after the first render, trust the live DOM
       // snapshot (priorChecked) so unsaved clicks survive searching/pasting.
       // On the very first render there's nothing to snapshot yet, so seed
@@ -708,30 +664,7 @@ function buildMultiSelect(wrapId, ddId, items, placeholder) {
       }
       cb.addEventListener("change", updateLabel);
       label.appendChild(cb);
-
-      // Suggestion-style highlight: bold the portion of the text that matches
-      // what's typed in the search box, so it reads like autocomplete rather
-      // than a plain static checklist.
-      const textSpan = document.createElement("span");
-      textSpan.style.overflow = "hidden";
-      textSpan.style.textOverflow = "ellipsis";
-      if (q) {
-        const idx = val.toLowerCase().indexOf(q);
-        if (idx >= 0) {
-          const before = val.slice(0, idx), match = val.slice(idx, idx + q.length), after = val.slice(idx + q.length);
-          const b = document.createElement("b");
-          b.style.color = "var(--blue, #3a8fd4)";
-          b.textContent = match;
-          textSpan.appendChild(document.createTextNode(before));
-          textSpan.appendChild(b);
-          textSpan.appendChild(document.createTextNode(after));
-        } else {
-          textSpan.textContent = val;
-        }
-      } else {
-        textSpan.textContent = val;
-      }
-      label.appendChild(textSpan);
+      label.appendChild(document.createTextNode(val));
       dd.appendChild(label);
     });
     hasRenderedOnce = true;
@@ -756,25 +689,8 @@ function buildMultiSelect(wrapId, ddId, items, placeholder) {
   searchInput.className   = "ms-search";
   searchInput.placeholder = "Search…";
   searchInput.type        = "text";
-  Object.assign(searchInput.style, {
-    display:      "block",
-    width:        "100%",
-    boxSizing:    "border-box",
-    position:     "sticky",
-    top:          "0",
-    zIndex:       "1",
-    padding:      "7px 10px",
-    fontSize:     "13px",
-    border:       "none",
-    borderBottom: "1px solid var(--border2, #2a3b4d)",
-    background:   "var(--surface2, #12202e)",
-    color:        "var(--text, #e6edf3)",
-    outline:      "none",
-  });
   searchInput.addEventListener("input", e => renderItems(e.target.value));
   dd.appendChild(searchInput);
-  // Render the full list immediately so it's visible as soon as the dropdown
-  // opens, before the user types anything — not just on first keystroke.
   renderItems("");
 
   // Toggle open/close
@@ -2997,7 +2913,7 @@ function renderBranch() {
       // mat-type-ms-wrap, mat-metric, mat-sort, mat-apply, mat-clear) so none of
       // the existing wiring below needs to change.
       wrap.innerHTML = `
-        <div id="mat-filterbar-wrap" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:1rem;overflow:hidden">
+        <div id="mat-filterbar-wrap" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:1rem;overflow:visible">
           <div style="display:flex;align-items:center;justify-content:flex-end;gap:1.1rem;padding:0.55rem 0.9rem;border-bottom:1px solid var(--border)">
             <button id="mat-apply" class="apply-btn" style="padding:5px 22px">Go</button>
             <button id="mat-hide-filterbar-btn" type="button" style="background:none;border:none;color:var(--blue);font-size:12.5px;cursor:pointer;padding:0">Hide Filter Bar</button>
