@@ -2843,11 +2843,32 @@ function renderBranch() {
       matTabInitialized = true;
       // FIX-BRANCH-MG: use baseDf (not aggregated df) so all material groups are available
       const mgNamesForFilter = [...new Set(baseDf.map(r => r["Material Group Name"]))].filter(Boolean).filter(name => !isNonMedicalGroup(name)).sort();
-      // Build list of all materials for the multi-select
+      // Build list of all materials for the multi-select.
+      // FIX-BRANCH-MAT-MAPPING: matPlantMap (built below) is keyed by the
+      // MAPPED/target code when a mapping file is loaded (falls back to the
+      // original code only when a row has no mapping — see matPlantMap
+      // construction). This list previously always used the raw original
+      // "Material" code, so a mapped material could be found/selected in the
+      // dropdown by its original code but then fail to match matPlantMap's
+      // key on Apply — showing "no results" for a material that IS in the
+      // table (just under its mapped code). Every option's CODE segment
+      // (before " — ") must therefore always be the same code matPlantMap
+      // uses, so selCodes (derived by splitting on " — ") lines up.
+      // The original SAP code is still surfaced — appended to the
+      // description segment, same "standardized from X" idea used by the
+      // STD badge elsewhere in the app (e.g. Quality Inspection page) — so
+      // it stays searchable/visible without breaking the code-match split.
+      const useMatMapping = mappingTable.size > 0;
       const allMatOptions = [...new Set(baseDf.map(r => {
-        const code = String(r["Material"] || "").trim();
-        const desc = String(r["Material Description"] || "").trim();
-        return code + (desc && desc !== code ? " — " + desc : "");
+        const origCode = String(r["Material"] || "").trim();
+        if (!origCode) return "";
+        const mappedCode = useMatMapping ? String(r._mappedMaterial || "").trim() : "";
+        const isMapped    = mappedCode && mappedCode !== origCode;
+        const code = isMapped ? mappedCode : origCode;
+        let desc = String((isMapped ? r._mappedDesc : null) || r["Material Description"] || "").trim();
+        if (desc === code) desc = "";
+        if (isMapped) desc = desc ? `${desc} (STD, was ${origCode})` : `(STD, was ${origCode})`;
+        return code + (desc ? " — " + desc : "");
       }))].filter(Boolean).sort();
 
       wrap.innerHTML = `
