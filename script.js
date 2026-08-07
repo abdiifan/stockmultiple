@@ -256,21 +256,31 @@ document.body.addEventListener("click", (e) => {
 // MOS by Plant, and Overstock & Expiry Risk.
 let personFilter = new Set();   // empty = show all persons
 
-// Returns the Set of material codes that belong to the currently-selected persons.
-// Built on demand from mosAmcRaw so it always reflects the latest AMC data.
+// Returns the Set of CANONICAL/mapped material codes that belong to the
+// currently-selected persons. Built on demand from mosMerged (not the raw
+// mosAmcRaw) so it always reflects the latest AMC data AND the same
+// mapping-consolidated code identity used everywhere else in the app
+// (MOS by Plant, Who's Responsible, etc).
 // Returns null when no person filter is active (show everything).
+//
+// BUGFIX-PERSON-MAPPING: previously this pulled RAW, pre-mapping codes
+// straight from mosAmcRaw and compared them against the inventory's raw
+// "Material" field. That breaks whenever a mapping file consolidates
+// several distinct original SAP codes onto one target/canonical code
+// (e.g. two vial formulations both mapped to "105-PHEY-0301"): AMC only
+// tags a PERSON on the specific raw code it references, so filtering by
+// person silently dropped every OTHER raw code that maps to the same
+// canonical material — even though that canonical material, as a whole,
+// belongs to that person. This showed up as wildly different stock
+// numbers (and even different descriptions, since the surviving row
+// determined which one displayed) depending on whether a person filter
+// was active. Resolving against mosMerged's canonical `code` (which is
+// already mapping-aware, see buildMosMerged()) fixes this at the source.
 function getPersonFilteredCodes() {
   if (personFilter.size === 0) return null;
-  if (typeof mosAmcRaw === "undefined" || !mosAmcRaw.length) return null;
+  if (typeof mosMerged === "undefined" || !mosMerged.length) return null;
   const codes = new Set();
-  mosAmcRaw.forEach(r => {
-    // BUGFIX-PERSON-CASE: normalize the same way getReconciledBase() normalizes
-    // the inventory "Material" field (trim + uppercase) before comparing. AMC
-    // "Material Code" values aren't guaranteed to match the inventory file's
-    // casing, and without this the codes.has(mat) check in getReconciledBase()
-    // silently failed for any code whose casing differed — dropping that
-    // material's stock to near-zero the moment a specific person was selected
-    // in the global filter (e.g. HO01 SOH going from 17,379 → 0).
+  mosMerged.forEach(r => {
     if (r.person && personFilter.has(r.person)) codes.add(String(r.code || "").trim().toUpperCase());
   });
   return codes;
@@ -324,12 +334,19 @@ let mappingStats   = null;        // { mapped, total, valuePct } — shown in si
 
 // Returns the base dataset with material standardization applied (if mapping loaded),
 // then narrowed to materials belonging to the currently-selected persons (if any).
+//
+// BUGFIX-PERSON-MAPPING: now matches on the CANONICAL/mapped material code
+// (r._mappedMaterial, falling back to the raw code when no mapping is
+// loaded) instead of the raw pre-mapping "Material" field. This must stay
+// in lockstep with getPersonFilteredCodes(), which now returns canonical
+// codes too — otherwise every row whose raw code differs from its target
+// code would silently fail to match again.
 function getReconciledBase() {
   const base = mappingTable.size > 0 ? mappedDf : rawDf;
   const codes = getPersonFilteredCodes();
   if (!codes) return base;
   return base.filter(r => {
-    const mat = String(r["Material"] || "").trim().toUpperCase();
+    const mat = String(r._mappedMaterial || r["Material"] || "").trim().toUpperCase();
     return codes.has(mat);
   });
 }
@@ -1650,6 +1667,33 @@ function applyMaterialMapping() {
       _cvTotalQty:        cvTotalQty,
       _cvTotalValue:      cvTotalValue,
     };
+  });
+
+  // BUGFIX-DESC-CONSISTENCY: when multiple distinct raw SAP codes map to the
+  // same canonical target code, each row's _mappedDesc was previously set
+  // independently from ITS OWN mapping entry's targetDesc (falling back to
+  // that row's own raw "Material Description" if targetDesc was blank). If
+  // only some of a target's mapping entries had targetDesc filled in, rows
+  // for the same canonical material ended up showing different descriptions
+  // depending on which row happened to be first in whatever filtered/sorted
+  // view was rendering (Branch Comparison, matPlantMap, etc) — e.g. one
+  // formulation's raw description "winning" over another's for a merged
+  // item. Resolve ONE canonical description per target code up front (first
+  // non-empty targetDesc found across all mapping entries sharing that
+  // target; falls back to the first raw description seen for that target if
+  // no entry defines one) and stamp it uniformly on every row.
+  const canonicalDescByTarget = new Map();
+  mappingTable.forEach(entry => {
+    if (entry.targetDesc && !canonicalDescByTarget.has(entry.targetCode)) {
+      canonicalDescByTarget.set(entry.targetCode, entry.targetDesc);
+    }
+  });
+  mappedDf.forEach(row => {
+    if (!row._isMapped) return;
+    if (!canonicalDescByTarget.has(row._mappedMaterial)) {
+      canonicalDescByTarget.set(row._mappedMaterial, row._mappedDesc);
+    }
+    row._mappedDesc = canonicalDescByTarget.get(row._mappedMaterial);
   });
 
   // Compute stats
