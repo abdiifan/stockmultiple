@@ -112,7 +112,12 @@ function buildMosMerged() {
     let canonDesc = row.desc;
 
     if (mappingTable && mappingTable.size > 0) {
-      const entry = mappingTable.get(row.code);
+      // FIX-MOS-MAP-CASE: mappingTable's source keys are always uppercased
+      // (loadMappingFile does src.toUpperCase()), but row.code is the AMC
+      // file's code exactly as typed. A casing mismatch here (e.g. lowercase
+      // in AMC.xlsx) makes this lookup miss even when a mapping genuinely
+      // exists, silently leaving the material unmapped in mosMerged.
+      const entry = mappingTable.get(String(row.code || "").trim().toUpperCase());
       if (entry) {
         canonical = entry.targetCode;
         canonDesc = entry.targetDesc || row.desc;
