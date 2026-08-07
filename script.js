@@ -2902,33 +2902,34 @@ function renderBranch() {
       }))].filter(Boolean).sort();
 
       // ── SAP-STYLE FILTER BAR ────────────────────────────────────────────
-      // Fields laid out horizontally (label above box, icon inside box, always
-      // visible while expanded) with a top-right Go / Hide Filter Bar / Filters(N)
-      // control row, and a bottom "pin" toggle to keep it expanded — mirrors the
-      // SAP list-report filter bar pattern rather than the old per-field chip
-      // popups. Same underlying controls/IDs (mat-ms-wrap, mat-mg-ms-wrap,
+      // Fields laid out horizontally (label above box, always visible while
+      // expanded) with a top-right Go / Hide Filter Bar / Filters(N) control
+      // row — mirrors the SAP list-report filter bar pattern rather than the
+      // old per-field chip popups. Material / Material Group / Material Type
+      // keep the exact same box styling and click-to-open checklist behavior
+      // as before (.ms-btn / .ms-dropdown) — just no extra decorative icon —
+      // so they read consistently with the plain Metric / Sort By selects.
+      // Same underlying controls/IDs (mat-ms-wrap, mat-mg-ms-wrap,
       // mat-type-ms-wrap, mat-metric, mat-sort, mat-apply, mat-clear) so none of
       // the existing wiring below needs to change.
-      const sapFieldIcon = `<span aria-hidden="true" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--muted);pointer-events:none">⧉</span>`;
       wrap.innerHTML = `
         <div id="mat-filterbar-wrap" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:1rem;overflow:hidden">
           <div style="display:flex;align-items:center;justify-content:flex-end;gap:1.1rem;padding:0.55rem 0.9rem;border-bottom:1px solid var(--border)">
             <button id="mat-apply" class="apply-btn" style="padding:5px 22px">Go</button>
             <button id="mat-hide-filterbar-btn" type="button" style="background:none;border:none;color:var(--blue);font-size:12.5px;cursor:pointer;padding:0">Hide Filter Bar</button>
-            <span id="mat-filters-count-badge" style="font-size:12.5px;color:var(--muted);border:1px solid var(--border2);border-radius:4px;padding:3px 10px;white-space:nowrap">Filters (0)</span>
           </div>
           <div id="mat-filterbar-fields" style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:flex-end;padding:0.9rem 1rem 1rem">
             <div style="min-width:240px;flex:1 1 240px">
               <div class="nav-label" style="font-size:0.65rem;margin-bottom:5px">Material</div>
-              <div class="ms-wrap" id="mat-ms-wrap" style="position:relative;min-width:0"><button class="ms-btn" type="button" style="width:100%;padding-right:26px">All Materials <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="mat-ms-dd"></div>${sapFieldIcon}</div>
+              <div class="ms-wrap" id="mat-ms-wrap" style="min-width:0;width:100%"><button class="ms-btn" type="button" style="width:100%">All Materials <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="mat-ms-dd"></div></div>
             </div>
             <div style="min-width:210px;flex:1 1 210px">
               <div class="nav-label" style="font-size:0.65rem;margin-bottom:5px">Material Group</div>
-              <div class="ms-wrap" id="mat-mg-ms-wrap" style="position:relative;min-width:0"><button class="ms-btn" type="button" style="width:100%;padding-right:26px">All Material Groups <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="mat-mg-ms-dd"></div>${sapFieldIcon}</div>
+              <div class="ms-wrap" id="mat-mg-ms-wrap" style="min-width:0;width:100%"><button class="ms-btn" type="button" style="width:100%">All Material Groups <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="mat-mg-ms-dd"></div></div>
             </div>
             <div style="min-width:180px;flex:1 1 180px">
               <div class="nav-label" style="font-size:0.65rem;margin-bottom:5px">Material Type</div>
-              <div class="ms-wrap" id="mat-type-ms-wrap" style="position:relative;min-width:0"><button class="ms-btn" type="button" style="width:100%;padding-right:26px">All Material Types <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="mat-type-ms-dd"></div>${sapFieldIcon}</div>
+              <div class="ms-wrap" id="mat-type-ms-wrap" style="min-width:0;width:100%"><button class="ms-btn" type="button" style="width:100%">All Material Types <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="mat-type-ms-dd"></div></div>
             </div>
             <div style="min-width:190px;flex:1 1 190px">
               <div class="nav-label" style="font-size:0.65rem;margin-bottom:5px">Metric</div>
@@ -2956,10 +2957,6 @@ function renderBranch() {
               <button id="mat-clear" class="apply-btn secondary">Clear</button>
             </div>
           </div>
-          <div style="display:flex;justify-content:center;padding-bottom:5px">
-            <button id="mat-pin-filterbar-btn" type="button" title="Keep filter bar expanded"
-              style="background:var(--surface2);border:1px solid var(--border2);color:var(--muted);width:22px;height:16px;border-radius:4px;font-size:10px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center">📌</button>
-          </div>
         </div>
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:1rem;padding:0 0.2rem">
           <span class="nav-label" style="font-size:0.65rem">Show</span>
@@ -2978,19 +2975,15 @@ function renderBranch() {
         <div id="mat-dl-row" style="display:flex;gap:0.6rem;justify-content:flex-end;margin-bottom:0.5rem"></div>
         <div id="mat-table-wrap"></div>`;
 
-      // ── Hide Filter Bar / Filters(N) / pin behaviour ─────────────────────
-      // "Hide Filter Bar" collapses the whole fields row down to just the
-      // top control strip (Go / Filters(N) badge / a "Show Filter Bar" link
-      // to bring it back). The pin button underneath is a quick shortcut for
-      // the same expand action, matching the SAP list-report pattern where a
-      // pin icon sits centred beneath the bar.
+      // ── Hide Filter Bar / Filters(N) behaviour ────────────────────────────
+      // "Hide Filter Bar" collapses the whole fields row down to just the top
+      // control strip (Go / Filters(N) badge), and flips to "Show Filter Bar"
+      // to bring it back.
       const filterFieldsEl  = document.getElementById("mat-filterbar-fields");
-      const pinBtn          = document.getElementById("mat-pin-filterbar-btn");
       const hideBtn         = document.getElementById("mat-hide-filterbar-btn");
       function setFilterBarExpanded(expanded) {
         if (filterFieldsEl) filterFieldsEl.style.display = expanded ? "flex" : "none";
         if (hideBtn) hideBtn.textContent = expanded ? "Hide Filter Bar" : "Show Filter Bar";
-        if (pinBtn) pinBtn.style.color = expanded ? "var(--blue)" : "var(--muted)";
       }
       if (hideBtn) {
         hideBtn.addEventListener("click", () => {
@@ -2998,34 +2991,7 @@ function renderBranch() {
           setFilterBarExpanded(!isExpanded);
         });
       }
-      if (pinBtn) {
-        pinBtn.addEventListener("click", () => setFilterBarExpanded(true));
-      }
-      setFilterBarExpanded(true); // starts expanded — syncs pin/label colors with initial state
-
-      // FEAT-FILTER-BADGES: keeps the "Filters (N)" badge in sync with what's
-      // actually selected across every field, so the user can tell at a
-      // glance how many filters are active even while the bar is collapsed.
-      function computeMatFilterBadgeCounts() {
-        const matWrap  = document.getElementById("mat-ms-wrap");
-        const mgWrap   = document.getElementById("mat-mg-ms-wrap");
-        const typeWrap = document.getElementById("mat-type-ms-wrap");
-        const metricEl = document.getElementById("mat-metric");
-        const sortEl   = document.getElementById("mat-sort");
-        return {
-          material: (matWrap && matWrap._getSelected) ? matWrap._getSelected().length : 0,
-          group:    (mgWrap && mgWrap._getSelected)   ? mgWrap._getSelected().length   : 0,
-          type:     (typeWrap && typeWrap._getSelected) ? typeWrap._getSelected().length : 0,
-          metric:   (metricEl && metricEl.value !== "TotalQty") ? 1 : 0,
-          sort:     (sortEl && sortEl.value !== "total_desc") ? 1 : 0,
-        };
-      }
-      function refreshMatFilterBadges() {
-        const counts = computeMatFilterBadgeCounts();
-        const total = Object.values(counts).reduce((s, n) => s + n, 0);
-        const totalBadge = document.getElementById("mat-filters-count-badge");
-        if (totalBadge) totalBadge.textContent = `Filters (${total})`;
-      }
+      setFilterBarExpanded(true); // starts expanded
 
       document.getElementById("mat-apply").addEventListener("click", refreshMaterialView);
       document.getElementById("mat-clear").addEventListener("click", () => {
@@ -3037,7 +3003,6 @@ function renderBranch() {
         if (typeWrap2 && typeWrap2._clearSelected) typeWrap2._clearSelected();
         document.getElementById("mat-metric").value    = "TotalQty";
         document.getElementById("mat-sort").value      = "total_desc";
-        refreshMatFilterBadges();
         refreshMaterialView();
       });
       // Build the material multi-select after HTML is in DOM
@@ -3050,24 +3015,12 @@ function renderBranch() {
       // choosing more than one type (e.g. ZME + ZMS) at once, same UX as the
       // other filters on this tab.
       buildMultiSelect("mat-type-ms-wrap", "mat-type-ms-dd", ["ZME", "ZMS", "ZLC", "ZMD"], "All Material Types");
-      // Badge updates: checkbox "change" events inside each ms-dropdown bubble
-      // up to the dropdown container, so one listener per dropdown covers every
-      // checkbox without needing to hook buildMultiSelect itself.
-      ["mat-ms-dd", "mat-mg-ms-dd", "mat-type-ms-dd"].forEach(ddId => {
-        const dd = document.getElementById(ddId);
-        if (dd) dd.addEventListener("change", refreshMatFilterBadges);
-      });
-      document.getElementById("mat-metric").addEventListener("change", refreshMatFilterBadges);
-      document.getElementById("mat-sort").addEventListener("change", refreshMatFilterBadges);
       ["mat-show-soh", "mat-show-mos", "mat-show-amc"].forEach(id => {
         const cb = document.getElementById(id);
-        if (cb) cb.addEventListener("change", () => { refreshMatFilterBadges(); refreshMaterialView(); });
+        if (cb) cb.addEventListener("change", refreshMaterialView);
       });
-      refreshMatFilterBadges();
       // Expose so the drilldown block below (and any future callers within
-      // this render) can refresh badges / re-expand the bar after
-      // programmatically ticking boxes.
-      wrap._refreshMatFilterBadges = refreshMatFilterBadges;
+      // this render) can re-expand the bar after programmatically ticking boxes.
       wrap._expandMatFilterBar = () => setFilterBarExpanded(true);
     }
 
@@ -3107,9 +3060,8 @@ function renderBranch() {
           : `${plantCount} plant${plantCount > 1 ? "s" : ""}`;
         showSpreadDrilldownToast(matched, label);
         // Make sure the filter bar is expanded so the user can see what got
-        // auto-selected in the Material field, and sync the Filters(N) badge.
+        // auto-selected in the Material field.
         if (wrap._expandMatFilterBar) wrap._expandMatFilterBar();
-        if (wrap._refreshMatFilterBadges) wrap._refreshMatFilterBadges();
       }
     }
 
