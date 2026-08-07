@@ -705,7 +705,7 @@ body { display: flex; }
 .upload-btn:active { transform: translateY(0); }
 .upload-btn input { display: none; }
 
-#fileStatus, #incomingFileStatus, #transitFileStatus, #mappingFileStatus {
+#fileStatus, #incomingFileStatus, #transitFileStatus, #mappingFileStatus, #reqan-file-status {
   font-size: 0.67rem;
   margin: 0.4rem 0.75rem 0;
   background: var(--surface2);
@@ -716,11 +716,11 @@ body { display: flex; }
   transition: var(--theme-transition);
 }
 #fileStatus .status-ok, #incomingFileStatus .status-ok,
-#transitFileStatus .status-ok, #mappingFileStatus .status-ok {
+#transitFileStatus .status-ok, #mappingFileStatus .status-ok, #reqan-file-status .status-ok {
   color: var(--green); font-weight: 700; font-size: 0.64rem;
 }
 #fileStatus .status-name, #incomingFileStatus .status-name,
-#transitFileStatus .status-name, #mappingFileStatus .status-name {
+#transitFileStatus .status-name, #mappingFileStatus .status-name, #reqan-file-status .status-name {
   color: var(--muted); margin-top: 2px; font-size: 0.64rem;
 }
 #mappingFileStatus .status-stats { color: var(--dim); margin-top: 3px; font-size: 0.62rem; line-height: 1.4; }
@@ -731,6 +731,8 @@ body { display: flex; }
 .transit-upload-btn:hover { background: rgba(61,148,224,0.08) !important; }
 .mapping-upload-btn  { border-color: var(--purple) !important; color: var(--purple) !important; }
 .mapping-upload-btn:hover { background: rgba(148,113,214,0.08) !important; }
+.reqan-upload-btn    { border-color: var(--amber) !important; color: var(--amber) !important; }
+.reqan-upload-btn:hover { background: rgba(212,135,42,0.08) !important; border-color: var(--amber) !important; }
 
 /* ══════════════════════════════════════════════
    LANDING PAGE
