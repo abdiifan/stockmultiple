@@ -642,9 +642,36 @@ function buildMultiSelect(wrapId, ddId, items, placeholder) {
     const priorChecked = new Set(
       [...dd.querySelectorAll(".ms-item input:checked")].map(cb => cb.value)
     );
-    const filtered = filter ? items.filter(v => v.toLowerCase().includes(filter.toLowerCase())) : items;
+    const q = (filter || "").trim();
+    const filtered = q ? items.filter(v => v.toLowerCase().includes(q.toLowerCase())) : items;
+
+    // FEAT-MAPPING-SEARCH: if the typed text is a raw/source material code
+    // that isn't itself an item (e.g. it has no current stock under that
+    // exact code, or was consolidated), but the loaded mapping file maps it
+    // to a target/STD code that IS an item, surface that item too — marked
+    // "via <source code>" so it's clear it matched through the mapping
+    // table, not a literal text match. Only ever finds anything for the
+    // Material list (mapping entries are material codes); for Material
+    // Group / Material Type this is a harmless no-op.
+    const mappedExtras = [];
+    if (q && typeof mappingTable !== "undefined" && mappingTable.size > 0) {
+      const directCodes = new Set(filtered.map(v => v.split(" — ")[0].trim().toUpperCase()));
+      const qUpper = q.toUpperCase();
+      mappingTable.forEach((entry, srcCode) => {
+        if (!srcCode.includes(qUpper)) return;
+        const targetCode = String(entry.targetCode || "").trim().toUpperCase();
+        if (!targetCode || directCodes.has(targetCode)) return; // already shown directly
+        const targetItem = items.find(v => v.split(" — ")[0].trim().toUpperCase() === targetCode);
+        if (targetItem && !mappedExtras.some(e => e.item === targetItem)) {
+          mappedExtras.push({ item: targetItem, viaCode: srcCode });
+          directCodes.add(targetCode);
+        }
+      });
+    }
+
     dd.querySelectorAll(".ms-item").forEach(el => el.remove());
-    filtered.forEach(val => {
+
+    const renderRow = (val, viaCode) => {
       const label = document.createElement("label");
       label.className = "ms-item";
       const cb = document.createElement("input");
@@ -665,8 +692,20 @@ function buildMultiSelect(wrapId, ddId, items, placeholder) {
       cb.addEventListener("change", updateLabel);
       label.appendChild(cb);
       label.appendChild(document.createTextNode(val));
+      if (viaCode) {
+        const badge = document.createElement("span");
+        badge.className = "ms-mapped-badge";
+        badge.textContent = ` (STD, via ${viaCode})`;
+        badge.title = `Matched because ${viaCode} is mapped to this material in your mapping file`;
+        badge.style.cssText = "font-size:0.75em;opacity:0.65;font-style:italic;margin-left:4px";
+        label.appendChild(badge);
+      }
       dd.appendChild(label);
-    });
+    };
+
+    filtered.forEach(val => renderRow(val, null));
+    mappedExtras.forEach(({ item, viaCode }) => renderRow(item, viaCode));
+
     hasRenderedOnce = true;
   }
 
@@ -928,7 +967,13 @@ function applyPageFilter(page) {
     (!plants.length    || plants.includes(r["Plant Name"])) &&
     (!mgs.length       || mgs.includes(r["Material Group Name"])) &&
     (!valTypes.length  || valTypes.includes(getValuationType(r))) &&
-    (!materials.length || materials.includes(String(r["Material"] || "").trim().toLowerCase()))
+    // FEAT-MAPPING-SEARCH: match on the raw code OR the mapped/STD code, so
+    // selecting a target (STD) material also pulls in every source code that
+    // maps to it (e.g. picking 105-PHEY-0301 includes 105-PHEY-0301-01 rows
+    // too), not just rows whose raw code is a literal, exact match.
+    (!materials.length
+      || materials.includes(String(r["Material"] || "").trim().toLowerCase())
+      || materials.includes(String(r._mappedMaterial || "").trim().toLowerCase()))
   );
 }
 
