@@ -257,10 +257,34 @@ document.body.addEventListener("click", (e) => {
 let personFilter = new Set();   // empty = show all persons
 
 // Returns the Set of material codes that belong to the currently-selected persons.
-// Built on demand from mosAmcRaw so it always reflects the latest AMC data.
+// Built on demand from mosMerged so it always reflects the latest AMC + mapping
+// data, AND so merged materials are evaluated as a whole (see FIX-PERSON-MERGE
+// below) rather than per individual source code.
 // Returns null when no person filter is active (show everything).
 function getPersonFilteredCodes() {
   if (personFilter.size === 0) return null;
+  // FIX-PERSON-MERGE: use mosMerged, not raw mosAmcRaw. mosMerged's `person`
+  // field is only populated when EVERY original source code for that
+  // canonical material agrees on the same person (mos.js buildMosMerged) —
+  // it's left blank ("") for mixed-ownership merges. Matching against that
+  // means a merged material only passes the filter when it wholly belongs to
+  // the selected person; we then include ALL of its source codes (origCodes)
+  // so every underlying inventory row for that material is kept together,
+  // instead of only whichever single source code happened to be assigned.
+  if (typeof mosMerged !== "undefined" && mosMerged.length) {
+    const codes = new Set();
+    mosMerged.forEach(m => {
+      if (m.person && personFilter.has(m.person)) {
+        String(m.origCodes || "").split(",").forEach(c => {
+          const t = c.trim().toUpperCase();
+          if (t) codes.add(t);
+        });
+      }
+    });
+    return codes;
+  }
+  // Fallback (AMC file loaded but mosMerged not built yet / no mapping in
+  // play): behave as before, per raw AMC row.
   if (typeof mosAmcRaw === "undefined" || !mosAmcRaw.length) return null;
   const codes = new Set();
   mosAmcRaw.forEach(r => {
