@@ -14,12 +14,18 @@
 //    stock figure (from the currently loaded main inventory), so any mismatch
 //    between what the requester's system said and what HO01 actually has
 //    right now is visible at a glance.
-// 2. Suggested Code Corrections — request lines whose material code doesn't
-//    match a SAP code directly, but resolves through the app's existing
-//    Material Standardization mapping file to a target code that DOES carry
-//    stock at HO01. These are "the stock is there, but requested under a
-//    different code" cases — we surface the code that should actually be
-//    requested.
+// 2. Suggested Code Corrections — request lines whose canonical material has
+//    live stock at HO01, but NOT (only) under the exact code the requester
+//    typed. The mapping file's target/"standard" code is used ONLY to figure
+//    out which raw SAP codes belong to the same material — it is never
+//    itself the suggestion, because it may not be a real, orderable SAP code
+//    with its own stock record. The suggestion is always the actual raw SAP
+//    code(s) that currently carry stock at HO01 for that material, each with
+//    its own live quantity (in that code's own native unit, exactly as SAP
+//    shows it — NOT the standardized/converted number used for totals). If
+//    more than one raw code carries stock, ALL of them are surfaced together
+//    (e.g. "115-ZOLE-0301-01 (120) or 115-ZOLE-0301-02 (15)") so a requester
+//    isn't steered toward a nearly-empty code when a fuller one exists.
 // 3. HO01 Stockout but Requested — request lines whose resolved material has
 //    ZERO stock at HO01 right now.
 // 4. HO01 Stock Not Requested — every material with stock at HO01 that does
@@ -31,9 +37,22 @@
 // We resolve them the same way the rest of the app reconciles codes: via the
 // existing Material Standardization mapping table (mappingTable, loaded via
 // the sidebar's "⚗️ Material Standardization" upload). If a mapping entry
-// exists, its target code is the canonical SAP code used for stock lookups.
-// If no mapping entry exists, we fall back to trying the raw code as-is
-// (covers cases where a request already used the real SAP code).
+// exists, its target code identifies which OTHER raw SAP codes are the same
+// material (for grouping/aggregation only — see point 2 above). If no
+// mapping entry exists, we fall back to trying the raw code as-is (covers
+// cases where a request already used the real SAP code).
+//
+// TOTALS VS. SUGGESTIONS — two different quantities, on purpose
+// ----------------------------------------------------------------
+// - "Live HO01 stock" for status/totals (Tab 1, Tab 3, Tab 4, KPIs) is always
+//   the STANDARDIZED total across every raw code that maps to the canonical
+//   material (sohMap from buildMosSohMap(), same converted numbers the rest
+//   of the app uses) — this answers "is there stock, in total, right now."
+// - "Suggested code" quantities (Tab 2) are the RAW, unconverted stock under
+//   each individual SAP code (Unrestricted + verified Transit + QC, in that
+//   code's own unit) — this answers "which exact code do I type into SAP,
+//   and how much is really under it." Only codes with a live inventory row
+//   and stock > 0 are ever suggested — nothing from the mapping table alone.
 //
 // Requires: script.js (rawDf, mappingTable, escHtml, fmtQty, kpiCard, buildTable,
 //           wireTableExport, downloadCSV, downloadExcel, parseExpiryDate,
@@ -175,11 +194,59 @@
     return out;
   }
 
+  // ── HO01 STOCK BY RAW SAP CODE (for Suggested Code Corrections) ────────────
+  // Returns Map<canonicalCode, Array<{code, qty}>> — for every canonical
+  // material, the individual raw SAP codes that currently carry stock at
+  // HO01 and how much (RAW/native units, NOT converted), sorted highest
+  // quantity first. Codes with zero or no stock are never included, so
+  // anything in this map is, by construction, "actually in SAP right now."
+  //
+  // Deliberately mirrors buildMosSohMap()'s Total Quantity definition
+  // (Unrestricted + verified Transit + QC) so the numbers agree with the
+  // rest of the app — the only difference is grouping by the RAW code
+  // (row["Material"]) instead of the canonical code, and using the raw
+  // (pre-conversion) fields instead of the standardized _cv* fields, since
+  // this needs to reflect exactly what's under that one specific SAP code.
+  function buildHo01RawCodeMap(hub) {
+    const map = new Map(); // canonical -> Map<rawCode, qty>
+    const base = (typeof getReconciledBase === "function") ? getReconciledBase() : (typeof rawDf !== "undefined" ? rawDf : []);
+    base.forEach(row => {
+      const plt = String(row["Plant"] || "").trim().toUpperCase();
+      if (plt !== hub) return;
+
+      const canonical = String(row._mappedMaterial || row["Material"] || "").trim();
+      const rawCode   = String(row["Material"] || "").trim();
+      if (!canonical || !rawCode) return;
+
+      const unrestricted   = Number(row["Unrestricted Stock"] || 0);
+      const rawTransit     = Number(row["Stock in Transit"] || 0);
+      const phantomTransit = Number(row._phantomTransitQty || 0);
+      const verifiedTransit = Math.max(0, rawTransit - phantomTransit);
+      const qc              = Number(row["Stock in Quality Inspection"] || 0);
+      const qty = unrestricted + verifiedTransit + qc;
+      if (qty <= 0) return;
+
+      if (!map.has(canonical)) map.set(canonical, new Map());
+      const inner = map.get(canonical);
+      inner.set(rawCode, (inner.get(rawCode) || 0) + qty);
+    });
+
+    const out = new Map();
+    map.forEach((inner, canonical) => {
+      const list = [...inner.entries()]
+        .map(([code, qty]) => ({ code, qty }))
+        .sort((a, b) => b.qty - a.qty);
+      out.set(canonical, list);
+    });
+    return out;
+  }
+
   // ── CORE ANALYSIS ──────────────────────────────────────────────────────────
   function buildRequestAnalysis() {
     const hub    = (typeof HUB_PLANT === "function" || typeof HUB_PLANT !== "undefined") ? HUB_PLANT : "HO01";
     const sohMap = (typeof buildMosSohMap === "function") ? buildMosSohMap() : new Map();
     const descMap = buildCanonicalDescMap();
+    const rawCodeMap = buildHo01RawCodeMap(hub); // canonical -> [{code, qty}], live SAP codes only
 
     const requestedCanonical = new Set();
 
@@ -187,6 +254,8 @@
       const resolved   = resolveRequestMaterial(r.material);
       const canonical  = resolved.canonical;
       const inInventory = !!canonical && sohMap.has(canonical);
+      // "Total" / status figures stay STANDARDIZED (converted, summed across
+      // every raw code for this material) — this is unchanged and intentional.
       const liveHo01   = inInventory ? (sohMap.get(canonical)[hub] || 0) : 0;
       const desc       = r.shortText || resolved.desc || descMap.get(canonical) || "";
 
@@ -195,8 +264,19 @@
       else if (liveHo01 <= 0)          status = "stockout";
       else                             status = "ok";
 
-      const hasSuggestion = resolved.viaMapping && canonical && canonical.toUpperCase() !== resolved.raw.toUpperCase();
-      const sohMismatch   = inInventory && Math.abs(liveHo01 - r.reqSoh) > 0.001;
+      // The SUGGESTION is a different thing: which actual, live SAP code(s)
+      // carry that stock right now, in their own native quantities. A
+      // suggestion is only needed when the code the requester typed isn't
+      // already the single, correct thing to type — i.e. there's at least
+      // one live code (possibly the one they typed, possibly not, possibly
+      // several) and it's not simply "exactly one live code, and it's the
+      // one they already used."
+      const rawCandidates = canonical ? (rawCodeMap.get(canonical) || []) : [];
+      const typedCode = String(r.material || "").trim().toUpperCase();
+      const alreadyExactMatch = rawCandidates.length === 1 && rawCandidates[0].code.toUpperCase() === typedCode;
+      const hasSuggestion = rawCandidates.length > 0 && !alreadyExactMatch;
+
+      const sohMismatch = inInventory && Math.abs(liveHo01 - r.reqSoh) > 0.001;
 
       if (canonical && inInventory) requestedCanonical.add(canonical);
 
@@ -205,22 +285,77 @@
         canonical, desc, status,
         liveHo01, sohMismatch,
         hasSuggestion,
-        suggestedCode: hasSuggestion ? canonical : null,
+        suggestedCode: hasSuggestion
+          ? rawCandidates.map(c => `${c.code} (${fmtQty(c.qty)})`).join(" or ")
+          : null,
         suggestedDesc: hasSuggestion ? (resolved.desc || descMap.get(canonical) || "") : null,
+        suggestedTotal: hasSuggestion ? rawCandidates.reduce((s, c) => s + c.qty, 0) : 0,
       };
     });
 
+    // ── DOUBLE REQUEST DETECTION ─────────────────────────────────────────────
+    // Same physical item requested more than once in THIS file — same or
+    // different raw code. Grouping key is the canonical code when resolvable;
+    // when it isn't (no mapping match), we still group by the raw code as
+    // typed, so exact-duplicate lines are caught even with no mapping loaded.
+    const dupGroups = new Map(); // key -> array of row indices
+    rows.forEach((r, i) => {
+      const key = r.canonical || `__raw__${r.material.toUpperCase()}`;
+      if (!dupGroups.has(key)) dupGroups.set(key, []);
+      dupGroups.get(key).push(i);
+    });
+    rows.forEach((r, i) => {
+      const key = r.canonical || `__raw__${r.material.toUpperCase()}`;
+      const group = dupGroups.get(key);
+      r.isDuplicate = group.length > 1;
+      if (r.isDuplicate) {
+        const siblings = group.filter(j => j !== i).map(j => rows[j]);
+        r.duplicateCount = group.length;
+        r.duplicateTotalQty = group.reduce((s, j) => s + (rows[j].reqQty || 0), 0);
+        r.duplicateSiblingsLabel = siblings
+          .map(s => `${s.material} · PR ${s.prNum}${s.poste ? "/" + s.poste : ""} (${fmtQty(s.reqQty)})`)
+          .join("; ");
+      } else {
+        r.duplicateCount = 1;
+        r.duplicateTotalQty = r.reqQty;
+        r.duplicateSiblingsLabel = "";
+      }
+    });
+
     // HO01 stock that never shows up (under its canonical code) in the request at all
-    const ho01NotRequested = [];
+    const ho01NotRequestedAll = [];
     sohMap.forEach((plantMap, code) => {
       const qty = plantMap[hub] || 0;
       if (qty > 0 && !requestedCanonical.has(code)) {
-        ho01NotRequested.push({ code, desc: descMap.get(code) || "", qty });
+        ho01NotRequestedAll.push({ code, desc: descMap.get(code) || "", qty });
       }
     });
-    ho01NotRequested.sort((a, b) => b.qty - a.qty);
 
-    return { rows, ho01NotRequested };
+    // Per clarified requirement: only surface items where at least one BRANCH
+    // (never HO01 itself — the hub has no consumption of its own) is running
+    // critical (MOS < 1 month). Requires the AMC file (MOS by Plant page) to
+    // be loaded — mosMerged/computeRowMOS/isMosCritical come from mos.js.
+    const mosDataLoaded = typeof mosMerged !== "undefined" && mosMerged.length > 0
+      && typeof computeRowMOS === "function" && typeof isMosCritical === "function";
+
+    let ho01NotRequested = [];
+    if (mosDataLoaded) {
+      ho01NotRequested = ho01NotRequestedAll
+        .map(r => {
+          const amcRow = mosMerged.find(m => m.code === r.code);
+          // No AMC commitment data at all for this material -> can't confirm
+          // it's critical anywhere, so don't flag it (avoids false positives).
+          const criticalBranches = amcRow
+            ? computeRowMOS(amcRow, sohMap).filter(p => !p.isHub && isMosCritical(p.mos))
+            : [];
+          return { ...r, criticalBranches };
+        })
+        .filter(r => r.criticalBranches.length > 0)
+        // Most urgent (lowest MOS among its critical branches) first.
+        .sort((a, b) => Math.min(...a.criticalBranches.map(c => c.mos)) - Math.min(...b.criticalBranches.map(c => c.mos)));
+    }
+
+    return { rows, ho01NotRequested, ho01NotRequestedAllCount: ho01NotRequestedAll.length, mosDataLoaded };
   }
 
   // ── SMALL HELPERS ──────────────────────────────────────────────────────────
@@ -273,7 +408,7 @@
     const searchQ  = searchEl ? searchEl.value.trim().toLowerCase() : "";
     const statusF  = statusEl ? statusEl.value : "";
 
-    const { rows, ho01NotRequested } = buildRequestAnalysis();
+    const { rows, ho01NotRequested, ho01NotRequestedAllCount, mosDataLoaded } = buildRequestAnalysis();
 
     const matches = r => {
       if (!searchQ) return true;
@@ -293,12 +428,19 @@
 
     // ── KPIs ─────────────────────────────────────────────────────────────────
     const matchedCount  = rows.filter(r => r.status !== "no-match").length;
+    const dupLineCount   = rows.filter(r => r.isDuplicate).length;
+    const dupGroupCount  = new Set(rows.filter(r => r.isDuplicate).map(r => r.canonical || `__raw__${r.material.toUpperCase()}`)).size;
     document.getElementById("reqan-kpis").innerHTML = [
       reqKpi("Request Lines Uploaded", rows.length.toLocaleString(), reqFileName || "", "blue"),
       reqKpi("Matched to SAP Stock", `${matchedCount.toLocaleString()} / ${rows.length.toLocaleString()}`, "Resolved via SAP code or mapping", "green"),
       reqKpi("HO01 Stockout (Requested)", rows.filter(r => r.status === "stockout").length.toLocaleString(), "Zero HO01 stock right now", "red"),
       reqKpi("Suggested Code Corrections", rows.filter(r => r.hasSuggestion).length.toLocaleString(), "Stock exists under a different code", "amber"),
-      reqKpi("HO01 Stock Not Requested", ho01NotRequested.length.toLocaleString(), "Materials at HO01, absent from this request", "purple"),
+      reqKpi("Possible Double Requests", `${dupLineCount.toLocaleString()} lines / ${dupGroupCount.toLocaleString()} items`, "Same item requested more than once — same or different code", "amber"),
+      reqKpi("Critical & Not Requested", ho01NotRequested.length.toLocaleString(),
+        mosDataLoaded
+          ? `Branch MOS < 1mo, absent from this request (${ho01NotRequestedAllCount.toLocaleString()} idle at HO01 in total)`
+          : "Load an AMC file (MOS by Plant page) to compute this",
+        "purple"),
     ].join("");
 
     if (!(typeof mappingTable !== "undefined" && mappingTable.size > 0)) {
@@ -314,7 +456,7 @@
       { key: "poste", label: "Poste" },
       { key: "material", label: "Requested Code",
         fmt: (v, r) => r.hasSuggestion
-          ? `<span class="col-mat-code">${escHtml(v)}</span><span class="mat-desc-badge" title="A different standardized code carries this stock — see Suggested Code Corrections tab">≠ CODE</span>`
+          ? `<span class="col-mat-code">${escHtml(v)}</span><span class="mat-desc-badge" title="This stock currently sits under a different live SAP code — see Suggested Code Corrections tab">≠ CODE</span>`
           : `<span class="col-mat-code">${escHtml(v)}</span>`,
         raw: true, cellClass: "col-mat-code-wrap" },
       { key: "desc", label: "Description", cellClass: "col-mat-desc-wrap" },
@@ -325,6 +467,11 @@
         raw: true, cellClass: "col-qty" },
       { key: "deliveryDate", label: "Delivery Date", fmt: v => fmtReqDate(v) },
       { key: "status", label: "Status", fmt: v => reqStatusBadge(v), raw: true },
+      { key: "isDuplicate", label: "Duplicate Check",
+        fmt: (v, r) => v
+          ? `<span style="display:inline-block;padding:0.15rem 0.55rem;border-radius:999px;font-size:0.72rem;font-weight:700;white-space:nowrap;background:rgba(217,119,6,0.14);color:var(--amber,#d97706)" title="${escHtml(r.duplicateSiblingsLabel)}">⚠ Requested ${r.duplicateCount}× (combined ${fmtQty(r.duplicateTotalQty)})</span>`
+          : "",
+        raw: true },
     ];
     document.getElementById("reqan-table-all").innerHTML = buildTable(
       filteredRows, cols1,
@@ -335,12 +482,16 @@
       prNum: r.prNum, poste: r.poste, material: r.material, canonical: r.canonical, desc: r.desc,
       reqQty: r.reqQty, reqSoh: r.reqSoh, liveHo01: r.liveHo01,
       deliveryDate: fmtReqDate(r.deliveryDate), status: r.status,
+      isDuplicate: r.isDuplicate ? "Yes" : "No", duplicateCount: r.duplicateCount,
+      duplicateTotalQty: r.duplicateTotalQty, duplicateSiblingsLabel: r.duplicateSiblingsLabel,
     })), [
       { key: "prNum", label: "Purchase Req Num" }, { key: "poste", label: "Poste" },
       { key: "material", label: "Requested Code" }, { key: "canonical", label: "Resolved SAP Code" },
       { key: "desc", label: "Description" }, { key: "reqQty", label: "Requested Quantity" },
       { key: "reqSoh", label: "Stock on Hand (Request File)" }, { key: "liveHo01", label: "Stock on Hand (Live, HO01)" },
       { key: "deliveryDate", label: "Delivery Date" }, { key: "status", label: "Status" },
+      { key: "isDuplicate", label: "Possible Duplicate?" }, { key: "duplicateCount", label: "Times Requested" },
+      { key: "duplicateTotalQty", label: "Combined Requested Qty" }, { key: "duplicateSiblingsLabel", label: "Other Lines (Same Item)" },
     ], "request_analysis_all_lines");
 
     // ── TAB 2: Suggested Code Corrections ───────────────────────────────────
@@ -348,11 +499,20 @@
       { key: "prNum", label: "PR Num" },
       { key: "material", label: "Code As Requested", cellClass: "col-mat-code-wrap" },
       { key: "shortText", label: "Description (as requested)" },
-      { key: "suggestedCode", label: "Suggested Standard Code",
-        fmt: v => `<span class="col-mat-code mat-code-clickable">${escHtml(v)}</span><span class="mat-mapped-badge">STD</span>`,
+      { key: "suggestedCode", label: "Request Under This SAP Code Instead",
+        // suggestedCode is a string like "115-ZOLE-0301-01 (120) or 115-ZOLE-0301-02 (15)" —
+        // each is a real, live SAP code with its OWN native-unit quantity, not the
+        // standardized/mapped code. Split it back apart just for per-code styling.
+        fmt: v => String(v || "").split(" or ").map(part => {
+          const m = part.match(/^(.*)\s\((.*)\)$/);
+          const code = m ? m[1] : part;
+          const qty  = m ? m[2] : "";
+          return `<span class="col-mat-code mat-code-clickable">${escHtml(code)}</span>` +
+                 (qty ? `<span class="mat-mapped-badge" title="Live HO01 stock under this exact SAP code">${escHtml(qty)}</span>` : "");
+        }).join(' <span style="opacity:0.6">or</span> '),
         raw: true, cellClass: "col-mat-code-wrap" },
-      { key: "suggestedDesc", label: "Standard Description" },
-      { key: "liveHo01", label: "HO01 Stock Under Suggested Code", fmt: v => fmtQty(v), cellClass: "col-qty" },
+      { key: "suggestedDesc", label: "Description" },
+      { key: "suggestedTotal", label: "Combined HO01 Stock (Suggested Codes)", fmt: v => fmtQty(v), cellClass: "col-qty" },
       { key: "reqQty", label: "Requested Qty", fmt: v => fmtQty(v), cellClass: "col-qty" },
     ];
     document.getElementById("reqan-table-suggest").innerHTML = buildTable(
@@ -360,11 +520,11 @@
     );
     wireTableExport("reqan-export-suggest", suggestionRows.map(r => ({
       prNum: r.prNum, material: r.material, shortText: r.shortText,
-      suggestedCode: r.suggestedCode, suggestedDesc: r.suggestedDesc, liveHo01: r.liveHo01, reqQty: r.reqQty,
+      suggestedCode: r.suggestedCode, suggestedDesc: r.suggestedDesc, suggestedTotal: r.suggestedTotal, reqQty: r.reqQty,
     })), [
       { key: "prNum", label: "Purchase Req Num" }, { key: "material", label: "Code As Requested" },
-      { key: "shortText", label: "Description (as requested)" }, { key: "suggestedCode", label: "Suggested Standard Code" },
-      { key: "suggestedDesc", label: "Standard Description" }, { key: "liveHo01", label: "HO01 Stock Under Suggested Code" },
+      { key: "shortText", label: "Description (as requested)" }, { key: "suggestedCode", label: "Request Under This SAP Code Instead" },
+      { key: "suggestedDesc", label: "Description" }, { key: "suggestedTotal", label: "Combined HO01 Stock (Suggested Codes)" },
       { key: "reqQty", label: "Requested Qty" },
     ], "request_analysis_suggested_codes");
 
@@ -388,24 +548,36 @@
       { key: "reqQty", label: "Requested Qty" }, { key: "deliveryDate", label: "Delivery Date" },
     ], "request_analysis_ho01_stockout");
 
-    // ── TAB 4: HO01 Stock Not Requested ─────────────────────────────────────
-    const cols4 = [
-      { key: "code", label: "Material Code", cellClass: "col-mat-code-wrap" },
-      { key: "desc", label: "Description" },
-      { key: "qty", label: "HO01 Stock on Hand", fmt: v => fmtQty(v), cellClass: "col-qty" },
-    ];
-    document.getElementById("reqan-table-notreq").innerHTML = buildTable(
-      notRequested, cols4, () => "", "", { id: "reqan-export-notreq", title: "" }
-    );
-    wireTableExport("reqan-export-notreq", notRequested, [
-      { key: "code", label: "Material Code" }, { key: "desc", label: "Description" }, { key: "qty", label: "HO01 Stock on Hand" },
-    ], "request_analysis_ho01_not_requested");
+    // ── TAB 4: HO01 Stock Not Requested (branch-critical only) ─────────────
+    if (!mosDataLoaded) {
+      document.getElementById("reqan-table-notreq").innerHTML =
+        `<div class="alert-warning" style="margin:0.8rem 0;font-size:0.8rem">⚠️ No AMC file is loaded, so branch consumption (MOS) can't be computed. This list only shows HO01 stock that's absent from the request AND critical (branch MOS &lt; 1 month) — load an AMC file on the "📐 MOS by Plant" page, then come back here.</div>`;
+    } else {
+      const cols4 = [
+        { key: "code", label: "Material Code", cellClass: "col-mat-code-wrap" },
+        { key: "desc", label: "Description" },
+        { key: "qty", label: "HO01 Stock on Hand", fmt: v => fmtQty(v), cellClass: "col-qty" },
+        { key: "criticalBranches", label: "Critical At (Branch MOS < 1mo)",
+          fmt: v => v.map(c => `<span style="display:inline-block;margin:1px 3px 1px 0;padding:0.1rem 0.4rem;border-radius:999px;font-size:0.7rem;font-weight:700;background:rgba(220,38,38,0.14);color:var(--red)">${escHtml(c.plant)} · ${c.mos === Infinity ? "∞" : Number(c.mos).toFixed(1)}mo</span>`).join(""),
+          raw: true },
+      ];
+      document.getElementById("reqan-table-notreq").innerHTML = buildTable(
+        notRequested, cols4, () => "row-red", "", { id: "reqan-export-notreq", title: "" }
+      );
+      wireTableExport("reqan-export-notreq", notRequested.map(r => ({
+        code: r.code, desc: r.desc, qty: r.qty,
+        criticalBranches: r.criticalBranches.map(c => `${c.plant} (${c.mos === Infinity ? "Infinite" : Number(c.mos).toFixed(2)}mo)`).join("; "),
+      })), [
+        { key: "code", label: "Material Code" }, { key: "desc", label: "Description" }, { key: "qty", label: "HO01 Stock on Hand" },
+        { key: "criticalBranches", label: "Critical At (Branch MOS < 1mo)" },
+      ], "request_analysis_ho01_not_requested");
+    }
 
     // ── Tab counts (badges in tab labels) ───────────────────────────────────
     setTabCount("reqan-tab-count-all", filteredRows.length);
     setTabCount("reqan-tab-count-suggest", suggestionRows.length);
     setTabCount("reqan-tab-count-stockout", stockoutRows.length);
-    setTabCount("reqan-tab-count-notreq", notRequested.length);
+    setTabCount("reqan-tab-count-notreq", mosDataLoaded ? notRequested.length : 0);
   }
 
   function setTabCount(id, n) {
