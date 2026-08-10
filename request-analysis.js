@@ -335,7 +335,7 @@
       prNum: r.prNum, poste: r.poste, material: r.material, canonical: r.canonical, desc: r.desc,
       reqQty: r.reqQty, reqSoh: r.reqSoh, liveHo01: r.liveHo01,
       deliveryDate: fmtReqDate(r.deliveryDate), status: r.status,
-    }), [
+    })), [
       { key: "prNum", label: "Purchase Req Num" }, { key: "poste", label: "Poste" },
       { key: "material", label: "Requested Code" }, { key: "canonical", label: "Resolved SAP Code" },
       { key: "desc", label: "Description" }, { key: "reqQty", label: "Requested Quantity" },
