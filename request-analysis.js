@@ -2,10 +2,25 @@
 // PharmaTrack v2 — request-analysis.js
 // "🧾 Request Analysis" — self-serve sidebar tool. Any user (not just admins)
 // uploads their OWN Transfer Requests Excel (Purchase Req Num, Poste, Material,
-// Short Text, Requested Quantity, Stock on hand, Delivery date) and instantly
-// sees it reconciled against the currently-loaded HO01 (hub) stock. Nothing is
-// saved to a shared database — the uploaded file lives only in this browser
-// tab's memory, exactly like the person who uploaded it intended.
+// Short Text, Requested Quantity, Stock on hand, Delivery date, Created By,
+// Plant) and instantly sees it reconciled against the currently-loaded HO01
+// (hub) stock. Nothing is saved to a shared database — the uploaded file
+// lives only in this browser tab's memory, exactly like the person who
+// uploaded it intended.
+//
+// PLANT SCOPING
+// -------------
+// The uploaded file is always for ONE requesting plant at a time (a branch
+// pasting its own transfer requests). The "Plant" column is used to:
+//   1. Label the analysis ("Requesting Plant: GO01") for clarity.
+//   2. Scope Tab 4 ("HO01 Stock Not Requested") criticality so it only flags
+//      HO01 stock as critical when it's THIS branch (not some other branch)
+//      that's running low — otherwise it would surface items that are fine
+//      for the branch that actually uploaded the file.
+// If a file somehow contains more than one distinct Plant value, the most
+// frequent one is used for scoping and a warning is shown.
+// "Created By" is carried through purely for visibility (shown as a column
+// in the main Request vs Stock table) — it has no effect on the analysis.
 //
 // WHAT THIS ANALYSIS SHOWS
 // -------------------------
@@ -68,10 +83,13 @@
   // shared store. Re-uploading replaces it; closing the tab discards it.
   let reqRows   = [];   // parsed request lines
   let reqFileName = "";
+  let reqPlant  = "";   // the (single) requesting plant this file is for
+  let reqPlantMismatch = false; // true if the file had more than one distinct Plant value
 
   const REQUIRED_COLS = [
     "Purchase Req Num", "Poste", "Material", "Short Text",
     "Requested Quantity", "Stock on hand", "Delivery date",
+    "Created By", "Plant",
   ];
 
   // ── FILE PARSING ───────────────────────────────────────────────────────────
@@ -116,18 +134,34 @@
               reqQty:   parseFloat(get(row, "Requested Quantity")) || 0,
               reqSoh:   parseFloat(get(row, "Stock on hand")) || 0,
               deliveryDate: (typeof parseExpiryDate === "function") ? parseExpiryDate(get(row, "Delivery date")) : null,
+              createdBy: String(get(row, "Created By") ?? "").trim(),
+              plant:     String(get(row, "Plant") ?? "").trim().toUpperCase(),
             }))
             .filter(r => r.material);
 
           if (!parsed.length) { showReqError("No valid rows with a Material code were found."); return; }
 
+          // This file is expected to be from ONE requesting plant. Take the
+          // most frequent Plant value as the file's plant; flag if mixed.
+          const plantCounts = new Map();
+          parsed.forEach(r => { if (r.plant) plantCounts.set(r.plant, (plantCounts.get(r.plant) || 0) + 1); });
+          const plantEntries = [...plantCounts.entries()].sort((a, b) => b[1] - a[1]);
+          reqPlant = plantEntries.length ? plantEntries[0][0] : "";
+          reqPlantMismatch = plantEntries.length > 1;
+
+          if (!reqPlant) { showReqError("No Plant value found — every row is missing a Plant."); return; }
+
           reqRows = parsed;
           reqFileName = file.name;
 
           if (statusEl) {
+            const mismatchNote = reqPlantMismatch
+              ? `<div class="status-name" style="color:var(--amber,#d97706)">⚠ Multiple Plant values found — using ${escHtml(reqPlant)} (most common) for scoping</div>`
+              : "";
             statusEl.innerHTML =
               `<div class="status-ok">✓ FILE LOADED</div>` +
-              `<div class="status-name">${escHtml(file.name)} (${parsed.length.toLocaleString()} lines)</div>`;
+              `<div class="status-name">${escHtml(file.name)} (${parsed.length.toLocaleString()} lines) · Plant ${escHtml(reqPlant)}</div>` +
+              mismatchNote;
           }
           if (btnEl) btnEl.textContent = "📥 Change Request File";
 
@@ -154,6 +188,8 @@
   function clearRequestFile() {
     reqRows = [];
     reqFileName = "";
+    reqPlant = "";
+    reqPlantMismatch = false;
     const statusEl = document.getElementById("reqan-file-status");
     if (statusEl) { statusEl.style.display = "none"; statusEl.innerHTML = ""; }
     const btnEl = document.getElementById("reqan-upload-btn-text");
@@ -331,10 +367,13 @@
       }
     });
 
-    // Per clarified requirement: only surface items where at least one BRANCH
-    // (never HO01 itself — the hub has no consumption of its own) is running
-    // critical (MOS < 1 month). Requires the AMC file (MOS by Plant page) to
-    // be loaded — mosMerged/computeRowMOS/isMosCritical come from mos.js.
+    // Per clarified requirement: only surface items where THIS request file's
+    // own requesting plant (reqPlant) — never HO01 itself, the hub has no
+    // consumption of its own — is running critical (MOS < 1 month). This is
+    // now scoped to reqPlant specifically (not "any branch"), since the
+    // analysis is always for one requesting plant vs HO01. Requires the AMC
+    // file (MOS by Plant page) to be loaded — mosMerged/computeRowMOS/
+    // isMosCritical come from mos.js.
     const mosDataLoaded = typeof mosMerged !== "undefined" && mosMerged.length > 0
       && typeof computeRowMOS === "function" && typeof isMosCritical === "function";
 
@@ -346,7 +385,10 @@
           // No AMC commitment data at all for this material -> can't confirm
           // it's critical anywhere, so don't flag it (avoids false positives).
           const criticalBranches = amcRow
-            ? computeRowMOS(amcRow, sohMap).filter(p => !p.isHub && isMosCritical(p.mos))
+            ? computeRowMOS(amcRow, sohMap).filter(p =>
+                !p.isHub &&
+                String(p.plant || "").trim().toUpperCase() === reqPlant &&
+                isMosCritical(p.mos))
             : [];
           return { ...r, criticalBranches };
         })
@@ -431,7 +473,7 @@
     const dupLineCount   = rows.filter(r => r.isDuplicate).length;
     const dupGroupCount  = new Set(rows.filter(r => r.isDuplicate).map(r => r.canonical || `__raw__${r.material.toUpperCase()}`)).size;
     document.getElementById("reqan-kpis").innerHTML = [
-      reqKpi("Request Lines Uploaded", rows.length.toLocaleString(), reqFileName || "", "blue"),
+      reqKpi("Request Lines Uploaded", rows.length.toLocaleString(), reqFileName ? `${reqFileName} · Plant ${reqPlant}` : "", "blue"),
       reqKpi("Matched to SAP Stock", `${matchedCount.toLocaleString()} / ${rows.length.toLocaleString()}`, "Resolved via SAP code or mapping", "green"),
       reqKpi("HO01 Stockout (Requested)", rows.filter(r => r.status === "stockout").length.toLocaleString(), "Zero HO01 stock right now", "red"),
       reqKpi("Suggested Code Corrections", rows.filter(r => r.hasSuggestion).length.toLocaleString(), "Stock exists under a different code", "amber"),
@@ -454,6 +496,7 @@
     const cols1 = [
       { key: "prNum", label: "PR Num" },
       { key: "poste", label: "Poste" },
+      { key: "createdBy", label: "Created By" },
       { key: "material", label: "Requested Code",
         fmt: (v, r) => r.hasSuggestion
           ? `<span class="col-mat-code">${escHtml(v)}</span><span class="mat-desc-badge" title="This stock currently sits under a different live SAP code — see Suggested Code Corrections tab">≠ CODE</span>`
@@ -479,13 +522,14 @@
       "", { id: "reqan-export-all", title: "" }
     );
     wireTableExport("reqan-export-all", filteredRows.map(r => ({
-      prNum: r.prNum, poste: r.poste, material: r.material, canonical: r.canonical, desc: r.desc,
+      prNum: r.prNum, poste: r.poste, createdBy: r.createdBy, material: r.material, canonical: r.canonical, desc: r.desc,
       reqQty: r.reqQty, reqSoh: r.reqSoh, liveHo01: r.liveHo01,
       deliveryDate: fmtReqDate(r.deliveryDate), status: r.status,
       isDuplicate: r.isDuplicate ? "Yes" : "No", duplicateCount: r.duplicateCount,
       duplicateTotalQty: r.duplicateTotalQty, duplicateSiblingsLabel: r.duplicateSiblingsLabel,
     })), [
       { key: "prNum", label: "Purchase Req Num" }, { key: "poste", label: "Poste" },
+      { key: "createdBy", label: "Created By" },
       { key: "material", label: "Requested Code" }, { key: "canonical", label: "Resolved SAP Code" },
       { key: "desc", label: "Description" }, { key: "reqQty", label: "Requested Quantity" },
       { key: "reqSoh", label: "Stock on Hand (Request File)" }, { key: "liveHo01", label: "Stock on Hand (Live, HO01)" },
