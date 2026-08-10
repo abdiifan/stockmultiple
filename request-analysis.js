@@ -277,12 +277,25 @@
     return out;
   }
 
+  // Canonical code -> responsible person, sourced from mosMerged (same
+  // "r.person" field who-responsible.js / the global sidebar person filter
+  // use) so "assigned to" here means the same thing it means everywhere
+  // else in the app — NOT the request file's "Created By" column.
+  function buildPersonMap() {
+    const out = new Map();
+    if (typeof mosMerged !== "undefined" && mosMerged.length) {
+      mosMerged.forEach(r => { if (r.code) out.set(r.code, r.person || ""); });
+    }
+    return out;
+  }
+
   // ── CORE ANALYSIS ──────────────────────────────────────────────────────────
   function buildRequestAnalysis() {
     const hub    = (typeof HUB_PLANT === "function" || typeof HUB_PLANT !== "undefined") ? HUB_PLANT : "HO01";
     const sohMap = (typeof buildMosSohMap === "function") ? buildMosSohMap() : new Map();
     const descMap = buildCanonicalDescMap();
     const rawCodeMap = buildHo01RawCodeMap(hub); // canonical -> [{code, qty}], live SAP codes only
+    const personMap = buildPersonMap();
 
     const requestedCanonical = new Set();
 
@@ -294,6 +307,7 @@
       // every raw code for this material) — this is unchanged and intentional.
       const liveHo01   = inInventory ? (sohMap.get(canonical)[hub] || 0) : 0;
       const desc       = r.shortText || resolved.desc || descMap.get(canonical) || "";
+      const person     = canonical ? (personMap.get(canonical) || "") : "";
 
       let status;
       if (!canonical || !inInventory) status = "no-match";
@@ -301,16 +315,34 @@
       else                             status = "ok";
 
       // The SUGGESTION is a different thing: which actual, live SAP code(s)
-      // carry that stock right now, in their own native quantities. A
-      // suggestion is only needed when the code the requester typed isn't
-      // already the single, correct thing to type — i.e. there's at least
-      // one live code (possibly the one they typed, possibly not, possibly
-      // several) and it's not simply "exactly one live code, and it's the
-      // one they already used."
+      // carry that stock right now, in their own native quantities.
+      //
+      // A suggestion is only shown when the code the requester typed can NOT
+      // fully cover the requested quantity by itself:
+      //   - If the typed code alone already has enough stock to cover the
+      //     requested qty, NO suggestion is shown — even if other codes also
+      //     happen to carry stock for the same item (nothing to fix).
+      //   - If the typed code has stock but not enough (partial) AND another
+      //     live code exists for the same item, the suggestion combo
+      //     includes the typed code itself plus the other code(s), so the
+      //     requester sees the full combination needed to fulfill.
+      //   - If the typed code has zero live stock but another code exists,
+      //     that other code (or codes) is suggested — even if their combined
+      //     total still doesn't fully cover the requested qty, since partial
+      //     stock elsewhere is still useful to know.
+      //   - If there's no OTHER live code at all (only the typed code, or
+      //     nothing), there's nothing to suggest either way.
       const rawCandidates = canonical ? (rawCodeMap.get(canonical) || []) : [];
       const typedCode = String(r.material || "").trim().toUpperCase();
-      const alreadyExactMatch = rawCandidates.length === 1 && rawCandidates[0].code.toUpperCase() === typedCode;
-      const hasSuggestion = rawCandidates.length > 0 && !alreadyExactMatch;
+      const typedEntry = rawCandidates.find(c => c.code.toUpperCase() === typedCode);
+      const typedQty = typedEntry ? typedEntry.qty : 0;
+      const otherCandidates = rawCandidates.filter(c => c.code.toUpperCase() !== typedCode);
+
+      const typedFullyCovers = typedQty > 0 && typedQty >= r.reqQty;
+      const hasSuggestion = !typedFullyCovers && otherCandidates.length > 0;
+      const suggestionCandidates = hasSuggestion
+        ? (typedEntry ? [typedEntry, ...otherCandidates] : otherCandidates)
+        : [];
 
       const sohMismatch = inInventory && Math.abs(liveHo01 - r.reqSoh) > 0.001;
 
@@ -318,14 +350,14 @@
 
       return {
         ...r,
-        canonical, desc, status,
+        canonical, desc, status, person,
         liveHo01, sohMismatch,
         hasSuggestion,
         suggestedCode: hasSuggestion
-          ? rawCandidates.map(c => `${c.code} (${fmtQty(c.qty)})`).join(" or ")
+          ? suggestionCandidates.map(c => `${c.code} (${fmtQty(c.qty)})`).join(" or ")
           : null,
         suggestedDesc: hasSuggestion ? (resolved.desc || descMap.get(canonical) || "") : null,
-        suggestedTotal: hasSuggestion ? rawCandidates.reduce((s, c) => s + c.qty, 0) : 0,
+        suggestedTotal: hasSuggestion ? suggestionCandidates.reduce((s, c) => s + c.qty, 0) : 0,
       };
     });
 
@@ -363,7 +395,7 @@
     sohMap.forEach((plantMap, code) => {
       const qty = plantMap[hub] || 0;
       if (qty > 0 && !requestedCanonical.has(code)) {
-        ho01NotRequestedAll.push({ code, desc: descMap.get(code) || "", qty });
+        ho01NotRequestedAll.push({ code, desc: descMap.get(code) || "", qty, person: personMap.get(code) || "" });
       }
     });
 
@@ -459,13 +491,21 @@
           || (r.desc || "").toLowerCase().includes(searchQ);
     };
 
-    let filteredRows = rows.filter(matches);
+    // "Assigned to" = the same global sidebar person filter used everywhere
+    // else in the app (who-responsible.js, dashboard, expiry-risk, etc.) —
+    // NOT the request file's "Created By" column. Applies to every tab here,
+    // since it's a property of the MATERIAL, not of the request line.
+    const personActive = typeof personFilter !== "undefined" && personFilter.size > 0;
+    const personMatches = r => !personActive || (r.person && personFilter.has(r.person));
+
+    let filteredRows = rows.filter(r => matches(r) && personMatches(r));
     if (statusF) filteredRows = filteredRows.filter(r => r.status === statusF);
 
-    const suggestionRows = rows.filter(r => r.hasSuggestion && matches(r));
-    const stockoutRows   = rows.filter(r => r.status === "stockout" && matches(r));
+    const suggestionRows = rows.filter(r => r.hasSuggestion && matches(r) && personMatches(r));
+    const stockoutRows   = rows.filter(r => r.status === "stockout" && matches(r) && personMatches(r));
     const notRequested   = ho01NotRequested.filter(r =>
-      !searchQ || r.code.toLowerCase().includes(searchQ) || (r.desc || "").toLowerCase().includes(searchQ)
+      (!searchQ || r.code.toLowerCase().includes(searchQ) || (r.desc || "").toLowerCase().includes(searchQ))
+      && personMatches(r)
     );
 
     // ── KPIs ─────────────────────────────────────────────────────────────────
@@ -490,6 +530,14 @@
         `<div class="alert-warning" style="margin-bottom:0.8rem;font-size:0.78rem">⚠️ No Material Standardization mapping file is loaded — code-mismatch suggestions can't be computed, and any request material code that isn't already an exact SAP code will show as "No SAP Match".</div>`;
     } else {
       document.getElementById("reqan-mapping-banner").innerHTML = "";
+    }
+
+    if (personActive) {
+      const names = [...personFilter].join(", ");
+      const banner = document.getElementById("reqan-mapping-banner");
+      if (banner) {
+        banner.innerHTML += `<div class="alert-info" style="margin-bottom:0.8rem;font-size:0.78rem">👤 Filtered to items assigned to <b>${escHtml(names)}</b> (sidebar person filter) — every tab on this page reflects this.</div>`;
+      }
     }
 
     // ── TAB 1: Request vs Stock (side-by-side) ─────────────────────────────
@@ -681,6 +729,15 @@
     if (mappingInput) {
       mappingInput.addEventListener("change", () => {
         setTimeout(() => { if (currentPage === "request-analysis") renderRequestAnalysis(); }, 300);
+      });
+    }
+    // Re-render when the global "assigned to" sidebar person filter changes
+    // (same dropdown who-responsible.js's "View all of X's items" button
+    // drives), so this page's tabs stay scoped to whoever is selected there.
+    const personFilterEl = document.getElementById("global-person-filter");
+    if (personFilterEl) {
+      personFilterEl.addEventListener("change", () => {
+        if (currentPage === "request-analysis") renderRequestAnalysis();
       });
     }
 
