@@ -226,6 +226,35 @@ function goToMaterialConcentration(code) {
   drillNavigate("concentration");
 }
 
+// ── BRANCH-COMPARISON-ONLY OVERRIDE ─────────────────────────────────────────
+// On every other page, clicking a material code jumps to Stock Concentration
+// (see goToMaterialConcentration above). On Branch Comparison specifically,
+// the more useful jump is to the Expiry Watch List filtered to that one
+// material — you're already looking at where a material sits across plants,
+// so the natural next question is "is any of that stock about to expire?"
+// rather than "how concentrated is it?". This REPLACES the Concentration
+// jump for Branch Comparison only; every other page is untouched.
+let _expiryDrilldownMatCode = null; // material code to auto-filter Expiry Watch List to | null, consumed once by renderExpiry()
+
+function goToMaterialExpiry(code) {
+  const c = String(code || "").trim();
+  if (!c) return;
+  _expiryDrilldownMatCode = c;
+  drillNavigate("expiry");
+}
+
+// Capture-phase listener so it runs BEFORE the bubble-phase global handler
+// below, regardless of registration order. Only intercepts clicks whose
+// material-code element lives inside the Branch Comparison page; everywhere
+// else the click falls through untouched to the normal Concentration jump.
+document.body.addEventListener("click", (e) => {
+  const el = e.target.closest("[data-drill-mat]");
+  if (!el) return;
+  if (!el.closest("#page-branch")) return;
+  e.stopPropagation();
+  goToMaterialExpiry(el.dataset.drillMat);
+}, true);
+
 document.body.addEventListener("click", (e) => {
   const el = e.target.closest("[data-drill-mat]");
   if (!el) return;
@@ -397,14 +426,25 @@ function getSiblingCode(row) {
 // These are used by renderMatCode/renderMatDesc when row._isMapped is true.
 // Defined here (before renderMatCode) so the mutual reference resolves cleanly.
 
+// Branch Comparison is the one page where clicking a material code jumps to
+// the Expiry Watch List instead of Stock Concentration (see the Branch-
+// Comparison-only override near goToMaterialExpiry). The tooltip is kept in
+// sync with that behavior rather than always saying "Stock Concentration".
+function _matCodeClickTitle() {
+  return currentPage === "branch"
+    ? "Click to see the Expiry Watch List for this material"
+    : "Click to see Stock Concentration for this material";
+}
+
 function renderMappedMatCode_early(val, row) {
   const target = escHtml(String(row._mappedMaterial || "").trim());
   const orig   = escHtml(String(row._origMaterial   || "").trim());
+  const clickTitle = _matCodeClickTitle();
   if (!target) {
     const s = escHtml(String(val ?? "").trim());
-    return s ? `<span class="col-mat-code mat-code-clickable" data-drill-mat="${s}" title="Click to see Stock Concentration for this material">${s}</span>` : '<span style="color:var(--dim)">—</span>';
+    return s ? `<span class="col-mat-code mat-code-clickable" data-drill-mat="${s}" title="${clickTitle}">${s}</span>` : '<span style="color:var(--dim)">—</span>';
   }
-  const codeHtml = `<span class="col-mat-code mat-code-clickable" data-drill-mat="${target}" title="Click to see Stock Concentration for this material">${target}</span><span class="mat-mapped-badge" title="Standardized from ${orig}">STD</span>`;
+  const codeHtml = `<span class="col-mat-code mat-code-clickable" data-drill-mat="${target}" title="${clickTitle}">${target}</span><span class="mat-mapped-badge" title="Standardized from ${orig}">STD</span>`;
   if (orig && orig !== target) {
     return codeHtml + `<span class="mat-orig-pill" title="Original SAP code">${orig}</span>`;
   }
@@ -440,7 +480,7 @@ function renderMatCode(val, row) {
     return `<span class="mat-name-as-code" title="No structured code — SAP stores the name here">${s}</span>`
          + `<span class="mat-desc-badge" title="Material field contains a name, not a code">NAME</span>`;
   }
-  return `<span class="col-mat-code mat-code-clickable" data-drill-mat="${s}" title="Click to see Stock Concentration for this material">${s}</span>`;
+  return `<span class="col-mat-code mat-code-clickable" data-drill-mat="${s}" title="${_matCodeClickTitle()}">${s}</span>`;
 }
 
 // ── renderMatDesc(val, row) ────────────────────────────────────────────────
@@ -2219,6 +2259,32 @@ function renderTransit() {
 // EXPIRY
 // ═══════════════════════════════════════════════════════════════════════════
 function renderExpiry() {
+  // ── Branch-Comparison material drilldown: auto-select the clicked material ──
+  // _expiryDrilldownMatCode is set by goToMaterialExpiry() (see the Branch-
+  // Comparison-only click override near the top of this file). We consume it
+  // once here and clear it so a later manual visit to Expiry doesn't re-apply
+  // a stale filter. pageFilters.expiry.materials is set directly (that's what
+  // applyPageFilter/renderExpiryDetailTable actually read); the checkbox UI
+  // is then ticked to match, purely so the filter bar reflects reality.
+  if (_expiryDrilldownMatCode) {
+    const code = _expiryDrilldownMatCode;
+    _expiryDrilldownMatCode = null; // consume — one-shot
+    pageFilters.expiry.materials = [code];
+    const matWrapEl = document.getElementById("ms-expiry-mat");
+    const matDdEl   = document.getElementById("ms-expiry-mat-dd");
+    if (matWrapEl && matDdEl) {
+      if (matWrapEl._clearSelected) matWrapEl._clearSelected();
+      const target = code.trim().toUpperCase();
+      matDdEl.querySelectorAll("input[type=checkbox]").forEach(cb => {
+        const cbCode = cb.value.split(" — ")[0].trim().toUpperCase();
+        if (cbCode === target) {
+          cb.checked = true;
+          cb.dispatchEvent(new Event("change"));
+        }
+      });
+    }
+  }
+
   const baseDf  = applyPageFilter("expiry");
   const months  = parseInt(document.querySelector('input[name="expWin"]:checked')?.value || 6);
   const today   = new Date();
