@@ -336,6 +336,11 @@
       // doesn't match the resolved material.
       const mappedDesc = resolved.desc || descMap.get(canonical) || "";
       const qcHo01     = canonical ? (qcMap.get(canonical) || 0) : 0;
+      // Live current stock at the REQUESTING plant itself (not HO01) — same
+      // sohMap used for the HO01 figure, just keyed by the branch's own plant
+      // code instead of the hub, so it reflects what's actually there right
+      // now for comparison against what the request file claims.
+      const liveReqPlant = (canonical && reqPlant && sohMap.has(canonical)) ? (sohMap.get(canonical)[reqPlant] || 0) : 0;
       const person     = canonical ? (personMap.get(canonical) || "") : "";
 
       let status;
@@ -380,7 +385,7 @@
       return {
         ...r,
         canonical, desc, status, person,
-        liveHo01, mappedDesc, qcHo01, sohMismatch,
+        liveHo01, mappedDesc, qcHo01, liveReqPlant, sohMismatch,
         hasSuggestion,
         suggestedCode: hasSuggestion
           ? suggestionCandidates.map(c => `${c.code} (${fmtQty(c.qty)})`).join(" or ")
@@ -585,6 +590,7 @@
       { key: "liveHo01", label: "SOH (HO01)",
         fmt: (v, r) => r.sohMismatch ? `<b style="color:var(--amber)">${fmtQty(v)}</b>` : fmtQty(v),
         raw: true, cellClass: "col-qty" },
+      { key: "liveReqPlant", label: `SOH (${reqPlant || "Requesting Plant"})`, fmt: v => fmtQty(v), cellClass: "col-qty" },
       { key: "mappedDesc", label: "Description (mapped, HO01)", cellClass: "col-mat-desc-wrap" },
       { key: "qcHo01", label: "Under Quality Inspection (HO01)", fmt: v => v > 0 ? fmtQty(v) : "—", cellClass: "col-qty" },
       { key: "status", label: "Status", fmt: v => reqStatusBadge(v), raw: true },
@@ -601,7 +607,7 @@
     );
     wireTableExport("reqan-export-all", filteredRows.map(r => ({
       prNum: r.prNum, poste: r.poste, createdBy: r.createdBy, material: r.material, canonical: r.canonical, desc: r.desc,
-      reqQty: r.reqQty, reqSoh: r.reqSoh, liveHo01: r.liveHo01, mappedDesc: r.mappedDesc, qcHo01: r.qcHo01,
+      reqQty: r.reqQty, reqSoh: r.reqSoh, liveHo01: r.liveHo01, liveReqPlant: r.liveReqPlant, mappedDesc: r.mappedDesc, qcHo01: r.qcHo01,
       deliveryDate: fmtReqDate(r.deliveryDate), status: r.status,
       isDuplicate: r.isDuplicate ? "Yes" : "No", duplicateCount: r.duplicateCount,
       duplicateTotalQty: r.duplicateTotalQty, duplicateSiblingsLabel: r.duplicateSiblingsLabel,
@@ -611,6 +617,7 @@
       { key: "material", label: "Requested Code" }, { key: "canonical", label: "Resolved SAP Code" },
       { key: "desc", label: "Description" }, { key: "reqQty", label: "Requested Quantity" },
       { key: "reqSoh", label: "Stock on Hand (Request File)" }, { key: "liveHo01", label: "Stock on Hand (HO01)" },
+      { key: "liveReqPlant", label: `Stock on Hand (${reqPlant || "Requesting Plant"})` },
       { key: "mappedDesc", label: "Description (mapped, HO01)" },
       { key: "qcHo01", label: "Under Quality Inspection (HO01)" },
       { key: "deliveryDate", label: "Delivery Date" }, { key: "status", label: "Status" },
