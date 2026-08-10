@@ -3398,12 +3398,14 @@ function renderBranch() {
           fmt:(val,r) => mosAmcUsable
             ? plantCellMulti(val, r.__mosData ? r.__mosData[pn] : null, r.__amcData ? r.__amcData[pn] : null, cellFlags)
             : fmtFn(val),
+          raw:true, // fmt returns HTML (<div> wrappers) — must not be escaped
           rawKey:`__r__${pn}`, cellClass:isQty?"col-qty":"col-val",
         })),
         {key:"grandTotal",  label:"National", // FEAT-BRANCH-MOS: "Grand Total" renamed to "National"
           fmt:(val,r) => mosAmcUsable
             ? plantCellMulti(val, r.__mosData ? r.__mosData.__national__ : null, r.__amcData ? r.__amcData.__national__ : null, cellFlags)
             : fmtFn(val),
+          raw:true, // fmt returns HTML (<div> wrappers) — must not be escaped
           rawKey:"grandTotal", cellClass:isQty?"col-qty":"col-val"},
         {key:"branchCount", label:"# Branches"},
       ];
