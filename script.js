@@ -1166,8 +1166,8 @@ function showChartDrillModal(opts) {
 // Standard drilldown table columns — reused across all chart-click modals so
 // the item list always looks the same regardless of which chart it came from.
 const CHART_DRILL_COLS = [
-  {key:"Material", label:"Material Code", fmt:(val,r)=>renderMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap"},
-  {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap"},
+  {key:"Material", label:"Material Code", fmt:(val,r)=>renderMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap", rawKey:"_mappedMaterial"},
+  {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap", rawKey:"_mappedDesc"},
   {key:"Material Group Name", label:"Material Group"},
   {key:"Plant Name",          label:"Plant"},
   {key:"_expiryStr",          label:"Expiry Date"},
@@ -1963,8 +1963,8 @@ function renderPhantomAlert(containerId, df) {
   const tableId = containerId + "-inline-tbl";
 
   const phantomCols = [
-    {key:"Material", label:"Material Code", fmt:(val,r)=>renderMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap"},
-    {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap"},
+    {key:"Material", label:"Material Code", fmt:(val,r)=>renderMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap", rawKey:"_mappedMaterial"},
+    {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap", rawKey:"_mappedDesc"},
     {key:"Material Group Name", label:"Material Group"},
     {key:"Plant Name",          label:"Plant"},
     {key:"_phantomTransitQty",  label:"Unverified Qty",        fmt:fmtQty, rawKey:"_phantomTransitQty", cellClass:"col-qty"},
@@ -2022,8 +2022,8 @@ function renderPhantomTable(df) {
   const uniqPlants      = new Set(phantomRows.map(r => r["Plant Name"])).size;
 
   const phantomCols = [
-    {key:"Material", label:"Material Code", fmt:(val,r)=>renderMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap"},
-    {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap"},
+    {key:"Material", label:"Material Code", fmt:(val,r)=>renderMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap", rawKey:"_mappedMaterial"},
+    {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap", rawKey:"_mappedDesc"},
     {key:"Material Group Name",  label:"Material Group"},
     {key:"Plant",                label:"Plant Code"},
     {key:"Plant Name",           label:"Plant Name"},
@@ -2117,8 +2117,8 @@ function renderTransit() {
   ]);
 
   const transitCols = [
-    {key:"Material", label:"Material Code", fmt:(val,r)=>renderMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap"},
-    {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap"},
+    {key:"Material", label:"Material Code", fmt:(val,r)=>renderMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap", rawKey:"_mappedMaterial"},
+    {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap", rawKey:"_mappedDesc"},
     {key:"Material Group Name",       label:"Material Group"},
     {key:"Plant Name",                label:"Plant"},
     {key:"Stock in Transit",          label:"Transit Qty",       fmt:fmtQty, rawKey:"Stock in Transit",          cellClass:"col-qty"},
@@ -2252,8 +2252,8 @@ function renderExpiry() {
       const [yr, mo] = monthKey.split("-").map(Number);
       const monthItems = expiring.filter(r => r._expiry.getFullYear() === yr && r._expiry.getMonth() + 1 === mo);
       const drillCols = [
-        {key:"Material", label:"Material Code", fmt:(val,r)=>renderMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap"},
-        {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap"},
+        {key:"Material", label:"Material Code", fmt:(val,r)=>renderMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap", rawKey:"_mappedMaterial"},
+        {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap", rawKey:"_mappedDesc"},
         {key:"Material Group Name",         label:"Material Group"},
         {key:"Plant Name",                  label:"Plant"},
         {key:"Description of Storage Location", label:"Storage Location"},
@@ -2304,8 +2304,8 @@ function renderExpiry() {
     document.getElementById("expired-header").innerHTML = `🔴 Already Expired Items (${expiredWithStock.length})${zeroNote}`;
     const expiredRows = expiredWithStock.map(r => ({...r, _expiryStr: r._expiry ? fmtLocalDate(r._expiry) : ""}));
     const expiredCols = [
-      {key:"Material", label:"Material Code", fmt:(val,r)=>renderMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap"},
-      {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap"},
+      {key:"Material", label:"Material Code", fmt:(val,r)=>renderMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap", rawKey:"_mappedMaterial"},
+      {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap", rawKey:"_mappedDesc"},
       {key:"Material Group Name",            label:"Material Group"},
       {key:"Plant Name",                     label:"Plant"},
       {key:"Description of Storage Location",label:"Storage Location"},
@@ -2362,8 +2362,8 @@ function renderExpiryDetailTable(baseDf, today) {
   </div>`;
 
   const cols = [
-    {key:"Material", label:"Material Code", fmt:(val,r)=>renderMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap"},
-    {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap"},
+    {key:"Material", label:"Material Code", fmt:(val,r)=>renderMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap", rawKey:"_mappedMaterial"},
+    {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap", rawKey:"_mappedDesc"},
     {key:"Plant Name",                     label:"Plant"},
     {key:"Description of Storage Location",label:"Storage Location"},
     {key:"Batch",                          label:"Batch"},
@@ -2439,8 +2439,8 @@ function renderQC() {
   });
 
   const qcCols = [
-    {key:"Material", label:"Material Code", fmt:(val,r)=>renderMappedMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap"},
-    {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMappedMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap"},
+    {key:"Material", label:"Material Code", fmt:(val,r)=>renderMappedMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap", rawKey:"_mappedMaterial"},
+    {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMappedMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap", rawKey:"_mappedDesc"},
     {key:"Material Group Name",                  label:"Material Group"},
     {key:"_plantList",                           label:"Plant(s)"},
     {key:"_expiryStr",                           label:"Shelf Life Expiry"},
