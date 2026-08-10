@@ -277,6 +277,26 @@
     return out;
   }
 
+  // Canonical code -> total stock currently sitting "Stock in Quality
+  // Inspection" at the hub, summed raw (native units) across every raw SAP
+  // code that maps to that canonical material. This is stock that's
+  // physically at HO01 but not yet released/usable — useful context next to
+  // the live SOH figure, since it's already counted inside that total.
+  function buildCanonicalQcMap(hub) {
+    const out = new Map();
+    const base = (typeof getReconciledBase === "function") ? getReconciledBase() : (typeof rawDf !== "undefined" ? rawDf : []);
+    base.forEach(row => {
+      const plt = String(row["Plant"] || "").trim().toUpperCase();
+      if (plt !== hub) return;
+      const canonical = String(row._mappedMaterial || row["Material"] || "").trim();
+      if (!canonical) return;
+      const qc = Number(row["Stock in Quality Inspection"] || 0);
+      if (!qc) return;
+      out.set(canonical, (out.get(canonical) || 0) + qc);
+    });
+    return out;
+  }
+
   // Canonical code -> responsible person, sourced from mosMerged (same
   // "r.person" field who-responsible.js / the global sidebar person filter
   // use) so "assigned to" here means the same thing it means everywhere
@@ -295,6 +315,7 @@
     const sohMap = (typeof buildMosSohMap === "function") ? buildMosSohMap() : new Map();
     const descMap = buildCanonicalDescMap();
     const rawCodeMap = buildHo01RawCodeMap(hub); // canonical -> [{code, qty}], live SAP codes only
+    const qcMap = buildCanonicalQcMap(hub); // canonical -> stock currently in Quality Inspection at hub
     const personMap = buildPersonMap();
 
     const requestedCanonical = new Set();
@@ -307,6 +328,14 @@
       // every raw code for this material) — this is unchanged and intentional.
       const liveHo01   = inInventory ? (sohMap.get(canonical)[hub] || 0) : 0;
       const desc       = r.shortText || resolved.desc || descMap.get(canonical) || "";
+      // Description of the MAPPED/canonical material the live HO01 figure was
+      // actually pulled for — separate from `desc` above, which prefers the
+      // requester's own free-text Short Text. This always reflects the
+      // canonical code's description (mapping table target, or live-inventory
+      // lookup), so it stays accurate even when the requester's Short Text
+      // doesn't match the resolved material.
+      const mappedDesc = resolved.desc || descMap.get(canonical) || "";
+      const qcHo01     = canonical ? (qcMap.get(canonical) || 0) : 0;
       const person     = canonical ? (personMap.get(canonical) || "") : "";
 
       let status;
@@ -351,7 +380,7 @@
       return {
         ...r,
         canonical, desc, status, person,
-        liveHo01, sohMismatch,
+        liveHo01, mappedDesc, qcHo01, sohMismatch,
         hasSuggestion,
         suggestedCode: hasSuggestion
           ? suggestionCandidates.map(c => `${c.code} (${fmtQty(c.qty)})`).join(" or ")
@@ -553,10 +582,11 @@
       { key: "desc", label: "Description", cellClass: "col-mat-desc-wrap" },
       { key: "reqQty", label: "Requested Qty", fmt: v => fmtQty(v), cellClass: "col-qty" },
       { key: "reqSoh", label: "SOH (per Request File)", fmt: v => fmtQty(v), cellClass: "col-qty" },
-      { key: "liveHo01", label: "SOH (Live, HO01)",
+      { key: "liveHo01", label: "SOH (HO01)",
         fmt: (v, r) => r.sohMismatch ? `<b style="color:var(--amber)">${fmtQty(v)}</b>` : fmtQty(v),
         raw: true, cellClass: "col-qty" },
-      { key: "deliveryDate", label: "Delivery Date", fmt: v => fmtReqDate(v) },
+      { key: "mappedDesc", label: "Description (mapped, HO01)", cellClass: "col-mat-desc-wrap" },
+      { key: "qcHo01", label: "Under Quality Inspection (HO01)", fmt: v => v > 0 ? fmtQty(v) : "—", cellClass: "col-qty" },
       { key: "status", label: "Status", fmt: v => reqStatusBadge(v), raw: true },
       { key: "isDuplicate", label: "Duplicate Check",
         fmt: (v, r) => v
@@ -571,7 +601,7 @@
     );
     wireTableExport("reqan-export-all", filteredRows.map(r => ({
       prNum: r.prNum, poste: r.poste, createdBy: r.createdBy, material: r.material, canonical: r.canonical, desc: r.desc,
-      reqQty: r.reqQty, reqSoh: r.reqSoh, liveHo01: r.liveHo01,
+      reqQty: r.reqQty, reqSoh: r.reqSoh, liveHo01: r.liveHo01, mappedDesc: r.mappedDesc, qcHo01: r.qcHo01,
       deliveryDate: fmtReqDate(r.deliveryDate), status: r.status,
       isDuplicate: r.isDuplicate ? "Yes" : "No", duplicateCount: r.duplicateCount,
       duplicateTotalQty: r.duplicateTotalQty, duplicateSiblingsLabel: r.duplicateSiblingsLabel,
@@ -580,7 +610,9 @@
       { key: "createdBy", label: "Created By" },
       { key: "material", label: "Requested Code" }, { key: "canonical", label: "Resolved SAP Code" },
       { key: "desc", label: "Description" }, { key: "reqQty", label: "Requested Quantity" },
-      { key: "reqSoh", label: "Stock on Hand (Request File)" }, { key: "liveHo01", label: "Stock on Hand (Live, HO01)" },
+      { key: "reqSoh", label: "Stock on Hand (Request File)" }, { key: "liveHo01", label: "Stock on Hand (HO01)" },
+      { key: "mappedDesc", label: "Description (mapped, HO01)" },
+      { key: "qcHo01", label: "Under Quality Inspection (HO01)" },
       { key: "deliveryDate", label: "Delivery Date" }, { key: "status", label: "Status" },
       { key: "isDuplicate", label: "Possible Duplicate?" }, { key: "duplicateCount", label: "Times Requested" },
       { key: "duplicateTotalQty", label: "Combined Requested Qty" }, { key: "duplicateSiblingsLabel", label: "Other Lines (Same Item)" },
