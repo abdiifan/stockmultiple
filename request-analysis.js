@@ -71,7 +71,8 @@
 //
 // Requires: script.js (rawDf, mappingTable, escHtml, fmtQty, kpiCard, buildTable,
 //           wireTableExport, downloadCSV, downloadExcel, parseExpiryDate,
-//           fmtLocalDate, getReconciledBase, PAGE_RENDERERS, renderPage, currentPage)
+//           fmtLocalDate, getReconciledBase, PAGE_RENDERERS, renderPage, currentPage,
+//           buildMultiSelect)
 //           mos.js (HUB_PLANT, buildMosSohMap)
 // Must be loaded AFTER both script.js and mos.js.
 // =============================================================================
@@ -91,7 +92,6 @@
   // column on the main inventory data (rawDf), keyed by canonical code, and
   // applies across all 4 tabs.
   let reqMatTypeFilter = new Set();
-  let matTypeDropdownOpen = false;
 
   const REQUIRED_COLS = [
     "Purchase Req Num", "Poste", "Material", "Short Text",
@@ -503,9 +503,13 @@
 
   // ── MATERIAL TYPE FILTER BAR ────────────────────────────────────────────────
   // Multi-select dropdown injected inline next to the existing status filter
-  // (reqan-status-filter). Rebuilt on every render so its option list stays
-  // in sync with whatever Material Types are actually present in the
-  // currently loaded data; checked state is preserved via reqMatTypeFilter.
+  // (reqan-status-filter). Same searchable checkbox-dropdown control used for
+  // Material Type / Material Group / Plant everywhere else in the app (see
+  // script.js's buildMultiSelect() + the .ms-wrap/.ms-btn/.ms-dropdown markup
+  // on the Material tab) rather than a bespoke panel, so it looks and behaves
+  // consistently. Rebuilt on every render so its option list stays in sync
+  // with whatever Material Types are actually present in the currently
+  // loaded data; checked state is preserved via reqMatTypeFilter.
   function renderMatTypeFilterBar(types) {
     const statusEl = document.getElementById("reqan-status-filter");
     if (!statusEl || !statusEl.parentElement) return;
@@ -514,33 +518,28 @@
     if (!wrap) {
       wrap = document.createElement("div");
       wrap.id = "reqan-mattype-wrap";
-      wrap.style.cssText = "position:relative;display:inline-block;margin-left:0.5rem;vertical-align:middle;";
+      wrap.className = "ms-wrap";
+      wrap.style.cssText = "min-width:170px;display:inline-block;margin-left:0.5rem;vertical-align:middle;";
       wrap.innerHTML =
-        `<button type="button" id="reqan-mattype-btn" class="btn" style="font-size:0.8rem;padding:0.35rem 0.7rem;">` +
-        `🧪 Material Type <span id="reqan-mattype-count" style="opacity:0.7"></span> ▾</button>` +
-        `<div id="reqan-mattype-panel" style="display:none;position:absolute;top:100%;left:0;z-index:50;margin-top:0.25rem;` +
-        `background:var(--panel-bg,#fff);border:1px solid var(--border,#ddd);border-radius:8px;` +
-        `box-shadow:0 4px 14px rgba(0,0,0,0.12);padding:0.5rem;min-width:150px;max-height:220px;overflow-y:auto;"></div>`;
+        `<button class="ms-btn" type="button">All Material Types <span class="ms-arrow">▾</span></button>` +
+        `<div class="ms-dropdown" id="reqan-mattype-dd"></div>`;
       statusEl.parentElement.insertBefore(wrap, statusEl.nextSibling);
     }
 
-    const countEl = document.getElementById("reqan-mattype-count");
-    if (countEl) countEl.textContent = reqMatTypeFilter.size ? `(${reqMatTypeFilter.size})` : "";
-
-    const panel = document.getElementById("reqan-mattype-panel");
-    if (panel) {
-      if (!types.length) {
-        panel.innerHTML = `<div style="font-size:0.75rem;opacity:0.6;padding:0.2rem 0.3rem;">No Material Type data loaded</div>`;
-      } else {
-        panel.innerHTML = types.map(t =>
-          `<label style="display:flex;align-items:center;gap:0.4rem;font-size:0.78rem;padding:0.2rem 0.3rem;cursor:pointer;white-space:nowrap;">` +
-          `<input type="checkbox" class="reqan-mattype-checkbox" value="${escHtml(t)}" ${reqMatTypeFilter.has(t) ? "checked" : ""}> ${escHtml(t)}</label>`
-        ).join("") +
-          `<div style="border-top:1px solid var(--border,#eee);margin-top:0.35rem;padding-top:0.35rem;">` +
-          `<button type="button" id="reqan-mattype-clear-inline" style="font-size:0.72rem;background:none;border:none;color:var(--muted);cursor:pointer;padding:0;">Clear selection</button></div>`;
-      }
-      panel.style.display = matTypeDropdownOpen ? "block" : "none";
+    // buildMultiSelect() fully rebuilds the search box + checkbox list each
+    // call, so we re-seed the checked state from reqMatTypeFilter afterward
+    // (this control isn't tied to the pageFilters store buildMultiSelect
+    // normally reads its initial selection from).
+    buildMultiSelect("reqan-mattype-wrap", "reqan-mattype-dd", types, "All Material Types");
+    const dd = document.getElementById("reqan-mattype-dd");
+    if (dd) {
+      dd.querySelectorAll(".ms-item input").forEach(cb => {
+        cb.checked = reqMatTypeFilter.has(cb.value);
+      });
     }
+    // Re-render from the checked state we just restored (also refreshes the
+    // button label / selected-count badge).
+    if (wrap._refreshOptions) wrap._refreshOptions();
   }
 
   // ── SMALL HELPERS ──────────────────────────────────────────────────────────
@@ -832,38 +831,24 @@
         const s = document.getElementById("reqan-search"); if (s) s.value = "";
         const st = document.getElementById("reqan-status-filter"); if (st) st.value = "";
         reqMatTypeFilter.clear();
+        const mtWrap = document.getElementById("reqan-mattype-wrap");
+        if (mtWrap && mtWrap._clearSelected) mtWrap._clearSelected();
         renderRequestAnalysis();
         return;
       }
-
-      // ── Material Type filter dropdown ──────────────────────────────────
-      if (e.target.closest("#reqan-mattype-btn")) {
-        e.preventDefault();
-        matTypeDropdownOpen = !matTypeDropdownOpen;
-        const panel = document.getElementById("reqan-mattype-panel");
-        if (panel) panel.style.display = matTypeDropdownOpen ? "block" : "none";
-        return;
-      }
-      if (e.target.id === "reqan-mattype-clear-inline") {
-        e.preventDefault();
-        reqMatTypeFilter.clear();
-        renderRequestAnalysis();
-        return;
-      }
-      // Click outside the dropdown closes it (but not when clicking inside
-      // the panel itself, e.g. on a checkbox/label).
-      if (matTypeDropdownOpen && !e.target.closest("#reqan-mattype-wrap")) {
-        matTypeDropdownOpen = false;
-        const panel = document.getElementById("reqan-mattype-panel");
-        if (panel) panel.style.display = "none";
-      }
+      // Open/close and outside-click-to-close for the Material Type dropdown
+      // are handled by buildMultiSelect()'s own listeners (same as every
+      // other .ms-wrap control in the app) — nothing to wire here.
     });
 
     document.body.addEventListener("change", (e) => {
-      if (e.target.classList && e.target.classList.contains("reqan-mattype-checkbox")) {
-        const val = e.target.value;
-        if (e.target.checked) reqMatTypeFilter.add(val);
-        else reqMatTypeFilter.delete(val);
+      // Material Type filter — checkbox lives inside the shared .ms-dropdown
+      // control built by buildMultiSelect(); sync our Set from whatever's
+      // currently checked and re-render.
+      if (e.target.closest && e.target.closest("#reqan-mattype-dd") && e.target.type === "checkbox") {
+        const wrap = document.getElementById("reqan-mattype-wrap");
+        const selected = wrap && wrap._getSelected ? wrap._getSelected() : [];
+        reqMatTypeFilter = new Set(selected);
         renderRequestAnalysis();
       }
     });
