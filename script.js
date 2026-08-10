@@ -2719,10 +2719,19 @@ function renderBranch() {
     const mat = (mappingTable.size > 0 ? r._mappedMaterial : null) || r["Material"];
     const pln = r["Plant Name"];
     if (!matPlantMap[mat]) {
+      // FEAT-BRANCH-MAPPED-DESC: also capture whether this material is a
+      // mapping target and its pre-mapping (original) code/description, so
+      // the Tab 2 table can show the same "STD" badge + italic original-desc
+      // subtitle used on every other page (dashboard, transit, QC, etc.)
+      // instead of just the bare mapped text.
+      const isMapped = mappingTable.size > 0 && !!r._isMapped;
       matPlantMap[mat] = {
-        desc:    (mappingTable.size > 0 ? r._mappedDesc : null) || r["Material Description"],
-        group:   r["Material Group Name"],
-        valType: getValuationType(r),
+        desc:        (mappingTable.size > 0 ? r._mappedDesc : null) || r["Material Description"],
+        group:       r["Material Group Name"],
+        valType:     getValuationType(r),
+        isMapped:    isMapped,
+        origMaterial: isMapped ? (r._origMaterial || r["Material"]) : mat,
+        origDesc:    isMapped ? (r._origDesc || r["Material Description"]) : ((mappingTable.size > 0 ? r._mappedDesc : null) || r["Material Description"]),
       };
     }
     if (!matPlantMap[mat][pln]) matPlantMap[mat][pln] = {Unrestricted:0,Transit:0,QC:0,TotalValue:0,TotalQty:0,UnrestrictedQty:0,TransitQty:0,QCQty:0};
@@ -2939,10 +2948,19 @@ function renderBranch() {
       matTabInitialized = true;
       // FIX-BRANCH-MG: use baseDf (not aggregated df) so all material groups are available
       const mgNamesForFilter = [...new Set(baseDf.map(r => r["Material Group Name"]))].filter(Boolean).filter(name => !isNonMedicalGroup(name)).sort();
-      // Build list of all materials for the multi-select
+      // Build list of all materials for the multi-select.
+      // BUGFIX-MAT-FILTER-DEDUP: previously built from the RAW "Material" /
+      // "Material Description" fields on every baseDf row, so a material
+      // mapped from several source SKUs (e.g. 105-PHEN-0104,
+      // 105-PHEN-0104-01, -03, -04 all mapping to 105-PHEN-0104-02) showed
+      // up as separate, confusing entries in the dropdown instead of one.
+      // Now: when mapping is active, use the mapped/canonical code + mapped
+      // description (r._mappedMaterial / r._mappedDesc) so all rows sharing
+      // a target collapse into a single entry. A code with no mapping entry
+      // still falls back to its own raw code/description, unchanged.
       const allMatOptions = [...new Set(baseDf.map(r => {
-        const code = String(r["Material"] || "").trim();
-        const desc = String(r["Material Description"] || "").trim();
+        const code = String((mappingTable.size > 0 ? r._mappedMaterial : null) || r["Material"] || "").trim();
+        const desc = String((mappingTable.size > 0 ? r._mappedDesc     : null) || r["Material Description"] || "").trim();
         return code + (desc && desc !== code ? " — " + desc : "");
       }))].filter(Boolean).sort();
 
@@ -3315,7 +3333,7 @@ function renderBranch() {
             }
           }
 
-          return {mat, desc:info.desc, group:info.group, valType:info.valType, plantData, mosData, amcData, exportMosData, exportAmcData, grandTotal, branchCount};
+          return {mat, desc:info.desc, group:info.group, valType:info.valType, isMapped:info.isMapped, origMaterial:info.origMaterial, origDesc:info.origDesc, plantData, mosData, amcData, exportMosData, exportAmcData, grandTotal, branchCount};
         });
 
       if (sortMode === "total_desc") materials.sort((a,b) => b.grandTotal - a.grandTotal);
@@ -3367,7 +3385,17 @@ function renderBranch() {
       // buildMatRow: shared shape-builder used both for the on-screen (capped)
       // table and for the full-data export below, so the two never drift apart.
       function buildMatRow(m) {
-        const row = {mat:m.mat, desc:m.desc, group:m.group, grandTotal:m.grandTotal, branchCount:m.branchCount};
+        const row = {
+          mat:m.mat, desc:m.desc, group:m.group, grandTotal:m.grandTotal, branchCount:m.branchCount,
+          // FEAT-BRANCH-MAPPED-DESC: lets renderMatCode/renderMatDesc detect a
+          // mapped row and render the "STD" badge + original code/description
+          // subtitle, same as dashboard/transit/QC/etc.
+          _isMapped:      m.isMapped,
+          _mappedMaterial: m.mat,
+          _origMaterial:  m.origMaterial,
+          _mappedDesc:    m.desc,
+          _origDesc:      m.origDesc,
+        };
         allPlantNames.forEach(pn => { row[`__p__${pn}`] = m.plantData[pn] || 0; row[`__r__${pn}`] = m.plantData[pn] || 0; });
         row["__r__grandTotal"] = m.grandTotal;
         row.__mosData = m.mosData; // FEAT-BRANCH-MOS: consumed by plant/national column fmt()
@@ -3399,11 +3427,19 @@ function renderBranch() {
       }).join("")}</tr></thead>`;
       const tbody = tableRows.map(r => {
         const cells = colDefs.map((c, i) => {
-          const v       = r[c.key];
-          const raw     = c.raw ? v : null;           // raw HTML — don't escape
-          const display = raw != null ? (raw ?? "")
-                        : c.fmt ? c.fmt(v, r)
-                        : (v == null ? "" : escHtml(String(v)));
+          const v         = r[c.key];
+          // BUGFIX-MAT-TAB-FMT: previously this skipped calling c.fmt entirely
+          // whenever c.raw was true, and just used the unformatted value `v`
+          // as the cell's HTML. That meant renderMatCode()/renderMatDesc() —
+          // which apply the mapped material code/description, the "STD"
+          // badge, and the original (pre-mapping) value as an italic
+          // subtitle — never ran for this table, so mapped rows silently
+          // fell back to showing the plain (sometimes unmapped-looking) text.
+          // Mirrors buildTable()'s pattern: always compute via c.fmt first,
+          // then only escape the result if c.raw is NOT set.
+          const formatted = c.fmt ? c.fmt(v, r) : v;
+          const display   = c.raw ? (formatted ?? "")
+                        : (formatted == null ? "" : escHtml(String(formatted)));
           const isZero  = typeof v === "number" && v === 0;
           // FIX-CENTRAL-COL-CONTRAST: previously hardcoded color:#58a6ff;background:#0d2035
           // here — a fixed dark background that never adapted to light theme, while the
