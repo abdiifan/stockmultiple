@@ -86,6 +86,13 @@
   let reqPlant  = "";   // the (single) requesting plant this file is for
   let reqPlantMismatch = false; // true if the file had more than one distinct Plant value
 
+  // Material Type filter (e.g. ZME, ZMS…) — multi-select. Empty set = no
+  // filter applied (show everything). Populated from the "Material Type"
+  // column on the main inventory data (rawDf), keyed by canonical code, and
+  // applies across all 4 tabs.
+  let reqMatTypeFilter = new Set();
+  let matTypeDropdownOpen = false;
+
   const REQUIRED_COLS = [
     "Purchase Req Num", "Poste", "Material", "Short Text",
     "Requested Quantity", "Stock on hand", "Delivery date",
@@ -297,6 +304,22 @@
     return out;
   }
 
+  // Canonical code -> Material Type (e.g. "ZME", "ZMS"…), sourced from the
+  // main inventory data's "Material Type" column, keyed the same way as
+  // buildCanonicalDescMap (first non-blank value wins). Used to power the
+  // Material Type filter bar across all 4 tabs.
+  function buildMaterialTypeMap() {
+    const out = new Map();
+    const base = (typeof getReconciledBase === "function") ? getReconciledBase() : (typeof rawDf !== "undefined" ? rawDf : []);
+    base.forEach(row => {
+      const code = String(row._mappedMaterial || row["Material"] || "").trim();
+      if (!code || out.has(code)) return;
+      const type = String(row["Material Type"] || "").trim().toUpperCase();
+      if (type) out.set(code, type);
+    });
+    return out;
+  }
+
   // Canonical code -> responsible person, sourced from mosMerged (same
   // "r.person" field who-responsible.js / the global sidebar person filter
   // use) so "assigned to" here means the same thing it means everywhere
@@ -317,6 +340,7 @@
     const rawCodeMap = buildHo01RawCodeMap(hub); // canonical -> [{code, qty}], live SAP codes only
     const qcMap = buildCanonicalQcMap(hub); // canonical -> stock currently in Quality Inspection at hub
     const personMap = buildPersonMap();
+    const matTypeMap = buildMaterialTypeMap(); // canonical -> "ZME"/"ZMS"/…
 
     const requestedCanonical = new Set();
 
@@ -342,6 +366,7 @@
       // now for comparison against what the request file claims.
       const liveReqPlant = (canonical && reqPlant && sohMap.has(canonical)) ? (sohMap.get(canonical)[reqPlant] || 0) : 0;
       const person     = canonical ? (personMap.get(canonical) || "") : "";
+      const materialType = canonical ? (matTypeMap.get(canonical) || "") : "";
 
       let status;
       if (!canonical || !inInventory) status = "no-match";
@@ -384,7 +409,7 @@
 
       return {
         ...r,
-        canonical, desc, status, person,
+        canonical, desc, status, person, materialType,
         liveHo01, mappedDesc, qcHo01, liveReqPlant, sohMismatch,
         hasSuggestion,
         suggestedCode: hasSuggestion
@@ -429,7 +454,7 @@
     sohMap.forEach((plantMap, code) => {
       const qty = plantMap[hub] || 0;
       if (qty > 0 && !requestedCanonical.has(code)) {
-        ho01NotRequestedAll.push({ code, desc: descMap.get(code) || "", qty, person: personMap.get(code) || "" });
+        ho01NotRequestedAll.push({ code, desc: descMap.get(code) || "", qty, person: personMap.get(code) || "", materialType: matTypeMap.get(code) || "" });
       }
     });
 
@@ -463,7 +488,59 @@
         .sort((a, b) => Math.min(...a.criticalBranches.map(c => c.mos)) - Math.min(...b.criticalBranches.map(c => c.mos)));
     }
 
-    return { rows, ho01NotRequested, ho01NotRequestedAllCount: ho01NotRequestedAll.length, mosDataLoaded };
+    // All distinct Material Types present in this analysis (request lines +
+    // HO01 stock not requested), sorted alphabetically — powers the filter
+    // bar's option list. Blank/unknown types are excluded from the list
+    // itself (there's nothing meaningful to filter on for them), but their
+    // rows remain visible whenever the filter is inactive.
+    const availableMatTypes = [...new Set([
+      ...rows.map(r => r.materialType),
+      ...ho01NotRequestedAll.map(r => r.materialType),
+    ].filter(Boolean))].sort();
+
+    return { rows, ho01NotRequested, ho01NotRequestedAllCount: ho01NotRequestedAll.length, mosDataLoaded, availableMatTypes };
+  }
+
+  // ── MATERIAL TYPE FILTER BAR ────────────────────────────────────────────────
+  // Multi-select dropdown injected inline next to the existing status filter
+  // (reqan-status-filter). Rebuilt on every render so its option list stays
+  // in sync with whatever Material Types are actually present in the
+  // currently loaded data; checked state is preserved via reqMatTypeFilter.
+  function renderMatTypeFilterBar(types) {
+    const statusEl = document.getElementById("reqan-status-filter");
+    if (!statusEl || !statusEl.parentElement) return;
+
+    let wrap = document.getElementById("reqan-mattype-wrap");
+    if (!wrap) {
+      wrap = document.createElement("div");
+      wrap.id = "reqan-mattype-wrap";
+      wrap.style.cssText = "position:relative;display:inline-block;margin-left:0.5rem;vertical-align:middle;";
+      wrap.innerHTML =
+        `<button type="button" id="reqan-mattype-btn" class="btn" style="font-size:0.8rem;padding:0.35rem 0.7rem;">` +
+        `🧪 Material Type <span id="reqan-mattype-count" style="opacity:0.7"></span> ▾</button>` +
+        `<div id="reqan-mattype-panel" style="display:none;position:absolute;top:100%;left:0;z-index:50;margin-top:0.25rem;` +
+        `background:var(--panel-bg,#fff);border:1px solid var(--border,#ddd);border-radius:8px;` +
+        `box-shadow:0 4px 14px rgba(0,0,0,0.12);padding:0.5rem;min-width:150px;max-height:220px;overflow-y:auto;"></div>`;
+      statusEl.parentElement.insertBefore(wrap, statusEl.nextSibling);
+    }
+
+    const countEl = document.getElementById("reqan-mattype-count");
+    if (countEl) countEl.textContent = reqMatTypeFilter.size ? `(${reqMatTypeFilter.size})` : "";
+
+    const panel = document.getElementById("reqan-mattype-panel");
+    if (panel) {
+      if (!types.length) {
+        panel.innerHTML = `<div style="font-size:0.75rem;opacity:0.6;padding:0.2rem 0.3rem;">No Material Type data loaded</div>`;
+      } else {
+        panel.innerHTML = types.map(t =>
+          `<label style="display:flex;align-items:center;gap:0.4rem;font-size:0.78rem;padding:0.2rem 0.3rem;cursor:pointer;white-space:nowrap;">` +
+          `<input type="checkbox" class="reqan-mattype-checkbox" value="${escHtml(t)}" ${reqMatTypeFilter.has(t) ? "checked" : ""}> ${escHtml(t)}</label>`
+        ).join("") +
+          `<div style="border-top:1px solid var(--border,#eee);margin-top:0.35rem;padding-top:0.35rem;">` +
+          `<button type="button" id="reqan-mattype-clear-inline" style="font-size:0.72rem;background:none;border:none;color:var(--muted);cursor:pointer;padding:0;">Clear selection</button></div>`;
+      }
+      panel.style.display = matTypeDropdownOpen ? "block" : "none";
+    }
   }
 
   // ── SMALL HELPERS ──────────────────────────────────────────────────────────
@@ -516,7 +593,9 @@
     const searchQ  = searchEl ? searchEl.value.trim().toLowerCase() : "";
     const statusF  = statusEl ? statusEl.value : "";
 
-    const { rows, ho01NotRequested, ho01NotRequestedAllCount, mosDataLoaded } = buildRequestAnalysis();
+    const { rows, ho01NotRequested, ho01NotRequestedAllCount, mosDataLoaded, availableMatTypes } = buildRequestAnalysis();
+
+    renderMatTypeFilterBar(availableMatTypes);
 
     const matches = r => {
       if (!searchQ) return true;
@@ -525,6 +604,11 @@
           || (r.desc || "").toLowerCase().includes(searchQ);
     };
 
+    // Material Type filter (ZME, ZMS…) — multi-select, applies to all 4
+    // tabs. Empty selection = no filtering.
+    const matTypeActive = reqMatTypeFilter.size > 0;
+    const matTypeMatches = r => !matTypeActive || reqMatTypeFilter.has(r.materialType);
+
     // "Assigned to" = the same global sidebar person filter used everywhere
     // else in the app (who-responsible.js, dashboard, expiry-risk, etc.) —
     // NOT the request file's "Created By" column. Applies to every tab here,
@@ -532,14 +616,14 @@
     const personActive = typeof personFilter !== "undefined" && personFilter.size > 0;
     const personMatches = r => !personActive || (r.person && personFilter.has(r.person));
 
-    let filteredRows = rows.filter(r => matches(r) && personMatches(r));
+    let filteredRows = rows.filter(r => matches(r) && personMatches(r) && matTypeMatches(r));
     if (statusF) filteredRows = filteredRows.filter(r => r.status === statusF);
 
-    const suggestionRows = rows.filter(r => r.hasSuggestion && matches(r) && personMatches(r));
-    const stockoutRows   = rows.filter(r => r.status === "stockout" && matches(r) && personMatches(r));
+    const suggestionRows = rows.filter(r => r.hasSuggestion && matches(r) && personMatches(r) && matTypeMatches(r));
+    const stockoutRows   = rows.filter(r => r.status === "stockout" && matches(r) && personMatches(r) && matTypeMatches(r));
     const notRequested   = ho01NotRequested.filter(r =>
       (!searchQ || r.code.toLowerCase().includes(searchQ) || (r.desc || "").toLowerCase().includes(searchQ))
-      && personMatches(r)
+      && personMatches(r) && matTypeMatches(r)
     );
 
     // ── KPIs ─────────────────────────────────────────────────────────────────
@@ -747,8 +831,40 @@
       if (e.target.id === "reqan-clear") {
         const s = document.getElementById("reqan-search"); if (s) s.value = "";
         const st = document.getElementById("reqan-status-filter"); if (st) st.value = "";
+        reqMatTypeFilter.clear();
         renderRequestAnalysis();
         return;
+      }
+
+      // ── Material Type filter dropdown ──────────────────────────────────
+      if (e.target.closest("#reqan-mattype-btn")) {
+        e.preventDefault();
+        matTypeDropdownOpen = !matTypeDropdownOpen;
+        const panel = document.getElementById("reqan-mattype-panel");
+        if (panel) panel.style.display = matTypeDropdownOpen ? "block" : "none";
+        return;
+      }
+      if (e.target.id === "reqan-mattype-clear-inline") {
+        e.preventDefault();
+        reqMatTypeFilter.clear();
+        renderRequestAnalysis();
+        return;
+      }
+      // Click outside the dropdown closes it (but not when clicking inside
+      // the panel itself, e.g. on a checkbox/label).
+      if (matTypeDropdownOpen && !e.target.closest("#reqan-mattype-wrap")) {
+        matTypeDropdownOpen = false;
+        const panel = document.getElementById("reqan-mattype-panel");
+        if (panel) panel.style.display = "none";
+      }
+    });
+
+    document.body.addEventListener("change", (e) => {
+      if (e.target.classList && e.target.classList.contains("reqan-mattype-checkbox")) {
+        const val = e.target.value;
+        if (e.target.checked) reqMatTypeFilter.add(val);
+        else reqMatTypeFilter.delete(val);
+        renderRequestAnalysis();
       }
     });
 
