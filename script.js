@@ -1534,11 +1534,36 @@ function loadMappingFile(file) {
           "conversion factor","factor","conv factor","conversion",
           "conv. factor","uom factor","unit factor","qty factor","quantity factor"
         );
-        const colTgtDesc = gc(
+        let colTgtDesc = gc(
           "material description (target)","target description","target desc",
           "material description target","target material description","desc target",
           "description (target)","description target"
         );
+
+        // POSITIONAL-TARGET-DESC-FIX: some mapping files reuse the exact same
+        // header text for both the source and target description columns
+        // (e.g. "Material Description " for source and "Material
+        // Description" for target — after trimming, both collide on the
+        // same normalized key, so name-based lookup above can only ever
+        // resolve to one of them and has no way to tell which). Whenever a
+        // description-like column follows "Material Code Target" in the
+        // sheet's actual column order, that positional column IS the target
+        // description — this takes priority over the name-based match
+        // above, since a name match found under ambiguous/colliding headers
+        // isn't trustworthy.
+        if (colTarget) {
+          const headerKeys = Object.keys(data[0]);
+          const targetIdx  = headerKeys.indexOf(colTarget);
+          const isDescLike = k => {
+            const n = k.toLowerCase().trim();
+            return n === "material description" || n === "description" || n === "desc"
+                || n === "material desc" || n.includes("description");
+          };
+          if (targetIdx !== -1) {
+            const positionalTgtDesc = headerKeys.slice(targetIdx + 1).find(isDescLike);
+            if (positionalTgtDesc) colTgtDesc = positionalTgtDesc;
+          }
+        }
 
         if (!colSource || !colTarget || !colFactor) {
           const missing = [
