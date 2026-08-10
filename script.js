@@ -422,8 +422,40 @@ function getSiblingCode(row) {
   ).trim();
 }
 
-// ── MAPPED MATERIAL RENDER HELPERS ────────────────────────────────────────
-// These are used by renderMatCode/renderMatDesc when row._isMapped is true.
+// ── renderMatCodeRaw / renderMatDescRaw ─────────────────────────────────────
+// Used exclusively by the Expiry Watch List page. Per user request, that page
+// always shows the plain SAP Material Code and Material Description exactly
+// as they came from SAP — no STD/mapped substitution and no "via mapping"
+// badge, even when a material-standardization mapping file is loaded and the
+// row IS mapped. The click-to-drilldown target still uses the mapped/STD
+// code under the hood (row._mappedMaterial) so navigating elsewhere in the
+// app — Concentration, or being reached FROM Branch Comparison — continues
+// to line up with every other page's mapped-code filtering; only what's
+// DISPLAYED on Expiry Watch List changes.
+function renderMatCodeRaw(val, row) {
+  const s = escHtml(String(val ?? "").trim());
+  if (!s) return '<span style="color:var(--dim)">—</span>';
+
+  if (looksLikeDescription(val)) {
+    return `<span class="mat-name-as-code" title="No structured code — SAP stores the name here">${s}</span>`
+         + `<span class="mat-desc-badge" title="Material field contains a name, not a code">NAME</span>`;
+  }
+  const drillCode = escHtml(String((row && row._mappedMaterial) || val || "").trim());
+  return `<span class="col-mat-code mat-code-clickable" data-drill-mat="${drillCode}" title="${_matCodeClickTitle()}">${s}</span>`;
+}
+
+function renderMatDescRaw(val, row) {
+  const desc = String(val ?? "").trim();
+  const code = getSiblingCode(row);
+
+  if (!desc) return '<span style="color:var(--dim)">—</span>';
+  if (desc === code) {
+    return `<span class="mat-desc-same" title="Description is identical to the material code field">— same as code —</span>`;
+  }
+  return `<span class="col-mat-desc">${escHtml(desc)}</span>`;
+}
+
+
 // Defined here (before renderMatCode) so the mutual reference resolves cleanly.
 
 // Branch Comparison is the one page where clicking a material code jumps to
@@ -2343,8 +2375,8 @@ function renderExpiry() {
       const [yr, mo] = monthKey.split("-").map(Number);
       const monthItems = expiring.filter(r => r._expiry.getFullYear() === yr && r._expiry.getMonth() + 1 === mo);
       const drillCols = [
-        {key:"Material", label:"Material Code", fmt:(val,r)=>renderMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap"},
-        {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap"},
+        {key:"Material", label:"Material Code", fmt:(val,r)=>renderMatCodeRaw(val,r), raw:true, cellClass:"col-mat-code-wrap"},
+        {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMatDescRaw(val,r), raw:true, cellClass:"col-mat-desc-wrap"},
         {key:"Material Group Name",         label:"Material Group"},
         {key:"Plant Name",                  label:"Plant"},
         {key:"Description of Storage Location", label:"Storage Location"},
@@ -2395,8 +2427,8 @@ function renderExpiry() {
     document.getElementById("expired-header").innerHTML = `🔴 Already Expired Items (${expiredWithStock.length})${zeroNote}`;
     const expiredRows = expiredWithStock.map(r => ({...r, _expiryStr: r._expiry ? fmtLocalDate(r._expiry) : ""}));
     const expiredCols = [
-      {key:"Material", label:"Material Code", fmt:(val,r)=>renderMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap"},
-      {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap"},
+      {key:"Material", label:"Material Code", fmt:(val,r)=>renderMatCodeRaw(val,r), raw:true, cellClass:"col-mat-code-wrap"},
+      {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMatDescRaw(val,r), raw:true, cellClass:"col-mat-desc-wrap"},
       {key:"Material Group Name",            label:"Material Group"},
       {key:"Plant Name",                     label:"Plant"},
       {key:"Description of Storage Location",label:"Storage Location"},
@@ -2453,8 +2485,8 @@ function renderExpiryDetailTable(baseDf, today) {
   </div>`;
 
   const cols = [
-    {key:"Material", label:"Material Code", fmt:(val,r)=>renderMatCode(val,r), raw:true, cellClass:"col-mat-code-wrap"},
-    {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap"},
+    {key:"Material", label:"Material Code", fmt:(val,r)=>renderMatCodeRaw(val,r), raw:true, cellClass:"col-mat-code-wrap"},
+    {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMatDescRaw(val,r), raw:true, cellClass:"col-mat-desc-wrap"},
     {key:"Plant Name",                     label:"Plant"},
     {key:"Description of Storage Location",label:"Storage Location"},
     {key:"Batch",                          label:"Batch"},
