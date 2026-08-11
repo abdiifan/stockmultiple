@@ -514,17 +514,26 @@
     const statusEl = document.getElementById("reqan-status-filter");
     if (!statusEl || !statusEl.parentElement) return;
 
-    let wrap = document.getElementById("reqan-mattype-wrap");
-    if (!wrap) {
-      wrap = document.createElement("div");
-      wrap.id = "reqan-mattype-wrap";
-      wrap.className = "ms-wrap";
-      wrap.style.cssText = "min-width:170px;display:inline-block;margin-left:0.5rem;vertical-align:middle;";
-      wrap.innerHTML =
-        `<button class="ms-btn" type="button">All Material Types <span class="ms-arrow">▾</span></button>` +
-        `<div class="ms-dropdown" id="reqan-mattype-dd"></div>`;
-      statusEl.parentElement.insertBefore(wrap, statusEl.nextSibling);
+    // FIX-MATTYPE-LOOK: match the same labeled-box pattern the Material tab
+    // and Branch Comparison use for their multi-selects (a small "nav-label"
+    // caption sitting above the .ms-wrap button), instead of a bare unlabeled
+    // button — that's what made this control look out of place next to the
+    // rest of the filter bar.
+    let outer = document.getElementById("reqan-mattype-outer");
+    if (!outer) {
+      outer = document.createElement("div");
+      outer.id = "reqan-mattype-outer";
+      outer.style.cssText =
+        "display:inline-flex;flex-direction:column;gap:5px;margin-left:0.5rem;vertical-align:bottom;min-width:170px;";
+      outer.innerHTML =
+        `<div class="nav-label" style="font-size:0.65rem">Material Type</div>` +
+        `<div class="ms-wrap" id="reqan-mattype-wrap" style="min-width:0;width:100%">` +
+          `<button class="ms-btn" type="button" style="width:100%">All Material Types <span class="ms-arrow">▾</span></button>` +
+          `<div class="ms-dropdown" id="reqan-mattype-dd"></div>` +
+        `</div>`;
+      statusEl.parentElement.insertBefore(outer, statusEl.nextSibling);
     }
+    const wrap = document.getElementById("reqan-mattype-wrap");
 
     // buildMultiSelect() fully rebuilds the search box + checkbox list each
     // call, so we re-seed the checked state from reqMatTypeFilter afterward
