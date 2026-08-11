@@ -493,22 +493,22 @@
     // bar's option list. Blank/unknown types are excluded from the list
     // itself (there's nothing meaningful to filter on for them), but their
     // rows remain visible whenever the filter is inactive.
-    let availableMatTypes = [...new Set([
+    const availableMatTypes = [...new Set([
       ...rows.map(r => r.materialType),
       ...ho01NotRequestedAll.map(r => r.materialType),
     ].filter(Boolean))].sort();
 
-    // FIX-MATTYPE-EMPTY: if the main inventory data isn't loaded/reconciled
-    // yet (or its "Material Type" column can't be matched to these request
-    // lines), buildMaterialTypeMap() has nothing to key off of and every row
-    // ends up with materialType === "" — leaving this list empty and the
-    // filter dropdown blank even though it renders. Fall back to the same
-    // fixed set of types the Material tab always offers (ZME/ZMS/ZLC/ZMD) so
-    // the control is never empty; once real inventory data is loaded this
-    // reverts to the dynamically-derived list above.
-    if (!availableMatTypes.length) availableMatTypes = ["ZME", "ZMS", "ZLC", "ZMD"];
+    // FIX-MATTYPE-EMPTY (corrected): an earlier version of this fallback
+    // quietly offered ZME/ZMS/ZLC/ZMD as clickable options whenever
+    // availableMatTypes came back empty — but every row's materialType is
+    // ALSO "" in that exact situation (matTypeMap has nothing to key off
+    // of, see buildMaterialTypeMap()), so those options matched zero rows
+    // and made the filter look broken ("I picked ZME and everything
+    // disappeared"). Surface the real reason instead: whether Material Type
+    // could be resolved for ANY material at all (matTypeMap wasn't empty).
+    const matTypeDataAvailable = matTypeMap.size > 0;
 
-    return { rows, ho01NotRequested, ho01NotRequestedAllCount: ho01NotRequestedAll.length, mosDataLoaded, availableMatTypes };
+    return { rows, ho01NotRequested, ho01NotRequestedAllCount: ho01NotRequestedAll.length, mosDataLoaded, availableMatTypes, matTypeDataAvailable };
   }
 
   // ── MATERIAL TYPE FILTER BAR ────────────────────────────────────────────────
@@ -520,7 +520,7 @@
   // consistently. Rebuilt on every render so its option list stays in sync
   // with whatever Material Types are actually present in the currently
   // loaded data; checked state is preserved via reqMatTypeFilter.
-  function renderMatTypeFilterBar(types) {
+  function renderMatTypeFilterBar(types, dataAvailable) {
     const statusEl = document.getElementById("reqan-status-filter");
     if (!statusEl || !statusEl.parentElement) return;
 
@@ -544,6 +544,35 @@
       statusEl.parentElement.insertBefore(outer, statusEl.nextSibling);
     }
     const wrap = document.getElementById("reqan-mattype-wrap");
+    const btn  = wrap ? wrap.querySelector(".ms-btn") : null;
+
+    // FIX-MATTYPE-NO-DATA: don't show ZME/ZMS/ZLC/ZMD (or any options) as
+    // if they'll filter something when they can't — that's what caused
+    // "I picked an item and everything disappeared." Material Type can only
+    // ever be resolved from the main inventory data's "Material Type"
+    // column (buildMaterialTypeMap()); if that data isn't loaded/reconciled
+    // this session, disable the control entirely and say why, rather than
+    // pretending it works.
+    let note = document.getElementById("reqan-mattype-note");
+    if (!dataAvailable) {
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "";
+        btn.innerHTML = "Unavailable <span class=\"ms-arrow\">▾</span>";
+        btn.style.opacity = "0.5";
+        btn.style.cursor = "not-allowed";
+      }
+      if (!note) {
+        note = document.createElement("div");
+        note.id = "reqan-mattype-note";
+        note.style.cssText = "font-size:0.65rem;color:var(--dim);max-width:220px;line-height:1.3;";
+        note.textContent = "Load the main inventory file to enable filtering by Material Type.";
+        outer.appendChild(note);
+      }
+      return; // nothing to wire up — leave any previously-checked filter as is
+    }
+    if (note) note.remove();
+    if (btn) { btn.disabled = false; btn.style.opacity = ""; btn.style.cursor = ""; }
 
     // buildMultiSelect() fully rebuilds the search box + checkbox list each
     // call, so we re-seed the checked state from reqMatTypeFilter afterward
@@ -611,9 +640,9 @@
     const searchQ  = searchEl ? searchEl.value.trim().toLowerCase() : "";
     const statusF  = statusEl ? statusEl.value : "";
 
-    const { rows, ho01NotRequested, ho01NotRequestedAllCount, mosDataLoaded, availableMatTypes } = buildRequestAnalysis();
+    const { rows, ho01NotRequested, ho01NotRequestedAllCount, mosDataLoaded, availableMatTypes, matTypeDataAvailable } = buildRequestAnalysis();
 
-    renderMatTypeFilterBar(availableMatTypes);
+    renderMatTypeFilterBar(availableMatTypes, matTypeDataAvailable);
 
     const matches = r => {
       if (!searchQ) return true;
