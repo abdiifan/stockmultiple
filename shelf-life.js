@@ -694,9 +694,16 @@
     document.removeEventListener("keydown", escHandlerIncoming);
   }
 
-  function buildNewIncomingRows(fromDate, toDate) {
+  function buildNewIncomingRows(fromDate, toDate, valTypeFilter) {
     const out = [];
     if (!grLoaded || !grMap.size) return out;
+
+    // Material Type filter (ZME/ZMS/ZLC/ZMD, checklist). Batches with no
+    // known/matched Valuation Type (already consumed / moved on, so there's
+    // no current stock row to read a type from) are excluded whenever this
+    // filter is active — we can't confirm they match, so they don't show.
+    const hasValTypeFilter = !!(valTypeFilter && valTypeFilter.length);
+    let excludedUnknownType = 0;
 
     let allowedCodes = null;
     if (typeof personFilter !== "undefined" && personFilter.size > 0 && typeof getPersonFilteredCodes === "function") {
@@ -721,14 +728,18 @@
         const prod   = r._prodDate instanceof Date && !isNaN(r._prodDate) ? r._prodDate : null;
         const plant = String(r["Plant"] || "").trim().toUpperCase();
         const storageLoc = String(r["Storage Location"] || "").trim();
+        const valType = (typeof getValuationType === "function"
+          ? getValuationType(r)
+          : String(r["Inventory Valuation Type"] || "").trim()) || null;
         const existing = stockByKey.get(key);
         if (existing) {
           existing.qty += qty;
           existing.plants.add(plant);
           if (storageLoc) existing.storageLocs.add(storageLoc);
           if (!existing.prod && prod) existing.prod = prod;
+          if (!existing.valType && valType) existing.valType = valType;
         } else {
-          stockByKey.set(key, { qty, expiry, nonExpiring: isNonExpiring(expiry), prod, plants: new Set([plant]), storageLocs: new Set(storageLoc ? [storageLoc] : []) });
+          stockByKey.set(key, { qty, expiry, nonExpiring: isNonExpiring(expiry), prod, valType, plants: new Set([plant]), storageLocs: new Set(storageLoc ? [storageLoc] : []) });
         }
       }
     }
@@ -756,6 +767,13 @@
       // excluded classification doesn't still surface here.
       if (!stock && typeof excludedMaterialCodes !== "undefined" && excludedMaterialCodes.has(material)) continue;
 
+      // Material Type filter: a batch with no matched stock row has no known
+      // Valuation Type to check against, so it's excluded while the filter
+      // is active rather than guessed at.
+      const valType = stock ? (stock.valType || null) : null;
+      if (hasValTypeFilter && !valType) { excludedUnknownType++; continue; }
+      if (hasValTypeFilter && !valTypeFilter.includes(valType)) continue;
+
       const nonExpiring = stock ? stock.nonExpiring : false;
       const expiry = stock ? stock.expiry : null;
       const prod   = stock ? stock.prod   : null;
@@ -779,15 +797,18 @@
         prod, expiry, nonExpiring,
         totalShelfDays, remainAtReceiptDays, remainPct,
         inStock: !!stock,
+        valType,
       });
     }
 
     out.sort((a, b) => b.posting - a.posting); // most recently received first
+    out.excludedUnknownType = excludedUnknownType;
     return out;
   }
 
-  function showNewIncoming(fromDate, toDate) {
-    const rows = buildNewIncomingRows(fromDate, toDate);
+  function showNewIncoming(fromDate, toDate, valTypeFilter) {
+    const rows = buildNewIncomingRows(fromDate, toDate, valTypeFilter);
+    const hasValTypeFilter = !!(valTypeFilter && valTypeFilter.length);
     const materials = new Set(rows.map(r => r.material));
     const notInStock = rows.filter(r => !r.inStock).length;
     const totalQty = rows.reduce((s, r) => s + (r.qty || 0), 0);
@@ -809,6 +830,7 @@
       { key: "batch",   label: "Batch", cellClass: "col-mat-code-wrap" },
       { key: "plant",   label: "Plant" },
       { key: "storageLoc", label: "Storage Location" },
+      { key: "valType", label: "Material Type", fmt: v => v || "—" },
       { key: "posting", label: "GR Posting Date", fmt: v => v ? fmtLocalDate(v) : "—" },
       { key: "qty",     label: "Qty", fmt: (v, r) => r.inStock ? fmtQty(v) : "—" },
       { key: "expiry",  label: "Expiration Date", fmt: (v, r) => !r.inStock ? "—" : (r.nonExpiring ? "No expiry" : (v ? fmtLocalDate(v) : "—")) },
@@ -821,9 +843,10 @@
     ];
 
     const noteParts = [];
-    if (!rows.length) noteParts.push(`📌 No Goods Receipt rows posted between <b>${escHtml(fmtLocalDate(fromDate))}</b> and <b>${escHtml(fmtLocalDate(toDate))}</b>.`);
+    if (!rows.length) noteParts.push(`📌 No Goods Receipt rows posted between <b>${escHtml(fmtLocalDate(fromDate))}</b> and <b>${escHtml(fmtLocalDate(toDate))}</b>${hasValTypeFilter ? ` matching the selected Material Type${valTypeFilter.length === 1 ? "" : "s"}` : ""}.`);
     if (notInStock) noteParts.push(`📌 ${notInStock} batch${notInStock === 1 ? "" : "es"} above ${notInStock === 1 ? "was" : "were"} received in this window but ${notInStock === 1 ? "doesn't" : "don't"} currently match an on-hand row in the main inventory (likely already issued out or fully consumed).`);
     if (missingProd) noteParts.push(`📌 ${missingProd} in-stock batch${missingProd === 1 ? "" : "es"} above ${missingProd === 1 ? "has" : "have"} no <b>Production Date</b> on file, so Total Shelf Life and Remaining % can't be calculated for ${missingProd === 1 ? "it" : "them"} — GR Posting Date and Expiration Date are still shown.`);
+    if (hasValTypeFilter && rows.excludedUnknownType) noteParts.push(`📌 ${rows.excludedUnknownType} batch${rows.excludedUnknownType === 1 ? "" : "es"} received in this window ${rows.excludedUnknownType === 1 ? "was" : "were"} hidden by the Material Type filter — ${rows.excludedUnknownType === 1 ? "it has" : "they have"} no matching on-hand row, so ${rows.excludedUnknownType === 1 ? "its" : "their"} Material Type can't be confirmed.`);
     const note = noteParts.length ? `<div class="shelf-note">${noteParts.join("<br>")}</div>` : "";
 
     const overlay = document.createElement("div");
@@ -834,7 +857,7 @@
         <button class="who-resp-modal-close" id="incoming-modal-close" type="button" aria-label="Close">✕</button>
         <div class="who-resp-modal-header">
           <div class="who-resp-modal-code">🆕 New Received Stock</div>
-          <div class="who-resp-modal-desc">${escHtml(fmtLocalDate(fromDate))} – ${escHtml(fmtLocalDate(toDate))}</div>
+          <div class="who-resp-modal-desc">${escHtml(fmtLocalDate(fromDate))} – ${escHtml(fmtLocalDate(toDate))}${hasValTypeFilter ? ` · Material Type: ${escHtml(valTypeFilter.join(", "))}` : ""}</div>
         </div>
         <div class="shelf-kpi-row">${kpis.join("")}</div>
         ${note}
@@ -851,6 +874,7 @@
       const exportCols = [
         { key: "material", label: "Material" }, { key: "materialDesc", label: "Description" },
         { key: "batch", label: "Batch" }, { key: "plant", label: "Plant" }, { key: "storageLoc", label: "Storage Location" },
+        { key: "valType", label: "Material Type", fmt: v => v || "" },
         { key: "posting", label: "GR Posting Date", fmt: v => v ? fmtLocalDate(v) : "" },
         { key: "qty", label: "Qty", fmt: (v, r) => r.inStock ? Number(v).toFixed(2) : "" },
         { key: "expiry", label: "Expiration Date", fmt: (v, r) => !r.inStock ? "" : (r.nonExpiring ? "No expiry" : (v ? fmtLocalDate(v) : "")) },
@@ -859,7 +883,8 @@
         { key: "remainPct", label: "Remaining %", fmt: (v, r) => (!r.inStock || v === null) ? "" : Number(v).toFixed(1) },
         { key: "inStock", label: "Currently On Hand", fmt: v => v ? "Yes" : "No" },
       ];
-      wireTableExport("incoming-new-export", rows, exportCols, `new_incoming_${fmtLocalDate(fromDate)}_to_${fmtLocalDate(toDate)}`.replace(/\s+/g, "_"));
+      const vtSuffix = hasValTypeFilter ? `_${valTypeFilter.join("-")}` : "";
+      wireTableExport("incoming-new-export", rows, exportCols, `new_incoming_${fmtLocalDate(fromDate)}_to_${fmtLocalDate(toDate)}${vtSuffix}`.replace(/\s+/g, "_"));
     }
 
     overlay.addEventListener("click", (e) => { if (e.target === overlay) closeIncomingModal(); });
@@ -899,7 +924,10 @@
       fromDate = new Date(today.getTime() - (days - 1) * MS_PER_DAY);
     }
 
-    showNewIncoming(fromDate, toDate);
+    const vtWrap = document.getElementById("ms-incoming-new-vt");
+    const valTypeFilter = (vtWrap && vtWrap._getSelected) ? vtWrap._getSelected() : [];
+
+    showNewIncoming(fromDate, toDate, valTypeFilter);
   }
 
   // ── Wiring ─────────────────────────────────────────────────────────────────
@@ -985,6 +1013,13 @@
 
     const incomingShowBtn = document.getElementById("incoming-new-show-btn");
     if (incomingShowBtn) incomingShowBtn.addEventListener("click", runNewIncoming);
+
+    // Material Type checklist (ZME/ZMS/ZLC/ZMD) for New Received Stock —
+    // same fixed set and multi-select control used for Material Type
+    // elsewhere in the app.
+    if (typeof buildMultiSelect === "function" && document.getElementById("ms-incoming-new-vt")) {
+      buildMultiSelect("ms-incoming-new-vt", "ms-incoming-new-vt-dd", ["ZME", "ZMS", "ZLC", "ZMD"], "All Material Types");
+    }
 
     // Picking an explicit date clears the "last N days" quick input so it's
     // obvious which mode will be used, and vice versa.
