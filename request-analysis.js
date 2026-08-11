@@ -10,19 +10,15 @@
 //
 // LOCATION MISMATCH CHECK
 // ------------------------
-// The request file's "Location" column is the Storage Location the requester
-// typed for that line — this is where the REQUESTING plant/branch itself
-// keeps the item, NOT HO01. It's compared against the real Storage
-// Location(s) that material actually sits in AT THE REQUESTING PLANT
-// (row["Storage Location"] on the main inventory file, restricted to
-// reqPlant — the same plant this whole file is scoped to). If the
-// requester's material resolves fine and storage-location data exists for
-// it at their own plant, but the typed Location isn't one of that plant's
-// actual storage locations for the material, the line is flagged
-// "⚠ check location" — this catches requests sent against the wrong
-// storage location even when the material/code itself is correct. If the
-// requesting plant has no storage-location data for the material at all,
-// it's left unverified (shown as "—") rather than guessed at as a mismatch.
+// The request file's "Location" column is which HO01 storage location the
+// material is meant to be pulled FROM. Every request line goes through HO01
+// regardless of which plant is requesting or which material it's for, so
+// the check is simple and doesn't depend on inventory data at all: is the
+// typed Location one of HO01's known storage locations
+// (HO01_STORAGE_LOCATIONS = HOM3, HOM8, HOM9)? If not, the line is flagged
+// "⚠ check location". This list is a hand-maintained constant (from HO01's
+// own rows in a plant/storage-location reference list) — update it in code
+// if HO01 ever adds, renames, or retires a storage location.
 //
 // PLANT SCOPING
 // -------------
@@ -377,33 +373,14 @@
     return out;
   }
 
-  // Canonical code -> Set of Storage Locations that carry it at a given
-  // plant, sourced from the literal "Storage Location" column on the main
-  // inventory data — the same field script.js's own Storage Location
-  // filters/columns use. Used to catch requests where the requester typed
-  // the WRONG storage location for an otherwise-correct material — checked
-  // against the REQUESTING plant's own storage locations (e.g. plant HA01's
-  // real locations), NOT HO01's, since the "Location" column in the request
-  // file is where the requesting branch itself keeps the item, not where
-  // HO01 keeps it. Includes every storage location seen for the material at
-  // that plant, not just ones with current stock > 0, since a location can
-  // still be the "right" one to request against even if it's momentarily
-  // empty.
-  function buildPlantStorageLocationMap(plant) {
-    const out = new Map(); // canonical -> Set<string>
-    if (!plant) return out;
-    const base = (typeof getReconciledBase === "function") ? getReconciledBase() : (typeof rawDf !== "undefined" ? rawDf : []);
-    base.forEach(row => {
-      const plt = String(row["Plant"] || "").trim().toUpperCase();
-      if (plt !== plant) return;
-      const canonical = String(row._mappedMaterial || row["Material"] || "").trim();
-      const loc = String(row["Storage Location"] || "").trim().toUpperCase();
-      if (!canonical || !loc) return;
-      if (!out.has(canonical)) out.set(canonical, new Set());
-      out.get(canonical).add(loc);
-    });
-    return out;
-  }
+  // HO01's known Storage Locations — the request's "Location" column is
+  // where the material is pulled FROM at HO01 (not the requesting branch's
+  // own storage), so it's only ever valid if it's one of these, regardless
+  // of which plant is requesting or which material the line is for. Sourced
+  // from a one-off reference list (Plant "HO01" rows only) rather than any
+  // uploaded/live data — update this list by hand if HO01 ever adds,
+  // renames, or retires a storage location.
+  const HO01_STORAGE_LOCATIONS = ["HOM3", "HOM8", "HOM9"];
 
   // Canonical code -> responsible person, sourced from mosMerged (same
   // "r.person" field who-responsible.js / the global sidebar person filter
@@ -427,7 +404,8 @@
     const personMap = buildPersonMap();
     const matTypeMap = buildMaterialTypeMap(); // canonical -> "ZME"/"ZMS"/…
     const matGroupMap = buildMaterialGroupMap(); // canonical -> "Material Group" value
-    const storageLocMap = buildPlantStorageLocationMap(reqPlant); // canonical -> Set of Storage Locations at the REQUESTING plant
+    // Location check now uses the hardcoded HO01_STORAGE_LOCATIONS list —
+    // no per-material/per-plant inventory lookup needed.
 
     const requestedCanonical = new Set();
 
@@ -457,14 +435,11 @@
       const materialGroup = canonical ? (matGroupMap.get(canonical) || "") : "";
 
       // Storage Location check: is the location the requester typed one of
-      // the actual Storage Location(s) this material sits in at HO01? Only
-      // flagged when we HAVE location data for this material at HO01 (an
-      // empty/unknown set means "can't verify" — not a mismatch), the
-      // requester actually typed a location, and it's a real, resolvable
-      // material — same "don't guess" principle used for AMC criticality.
-      const actualLocations = canonical ? [...(storageLocMap.get(canonical) || [])].sort() : [];
-      const locationKnown = actualLocations.length > 0;
-      const locationMismatch = !!canonical && !!r.location && locationKnown && !actualLocations.includes(r.location);
+      // HO01's known storage locations (HOM3/HOM8/HOM9)? This no longer
+      // depends on the material or the requesting plant at all — every
+      // request line is pulled from HO01, so the Location column is only
+      // ever valid if it's actually one of HO01's own storage locations.
+      const locationMismatch = !!r.location && !HO01_STORAGE_LOCATIONS.includes(r.location);
 
       let status;
       if (!canonical || !inInventory) status = "no-match";
@@ -509,7 +484,7 @@
         ...r,
         canonical, desc, status, person, materialType, materialGroup,
         liveHo01, mappedDesc, qcHo01, liveReqPlant, sohMismatch,
-        actualLocations, locationKnown, locationMismatch,
+        locationMismatch,
         hasSuggestion,
         suggestedCode: hasSuggestion
           ? suggestionCandidates.map(c => `${c.code} (${fmtQty(c.qty)})`).join(" or ")
@@ -954,7 +929,7 @@
       reqKpi("HO01 Stockout (Requested)", rows.filter(r => r.status === "stockout").length.toLocaleString(), "Zero HO01 stock right now", "red"),
       reqKpi("Suggested Code Corrections", rows.filter(r => r.hasSuggestion).length.toLocaleString(), "Stock exists under a different code", "amber"),
       reqKpi("Possible Double Requests", `${dupLineCount.toLocaleString()} lines / ${dupGroupCount.toLocaleString()} items`, "Same item requested more than once — same or different code", "amber"),
-      reqKpi("Location Mismatches", locMismatchCount.toLocaleString(), `Requested Location ≠ ${reqPlant || "requesting plant"}'s actual Storage Location`, "red"),
+      reqKpi("Location Mismatches", locMismatchCount.toLocaleString(), `Requested Location isn't one of HO01's (${HO01_STORAGE_LOCATIONS.join("/")})`, "red"),
       reqKpi("Critical & Not Requested", ho01NotRequested.length.toLocaleString(),
         mosDataLoaded
           ? `Branch MOS < 1mo, absent from this request (${ho01NotRequestedAllCount.toLocaleString()} idle at HO01 in total)`
@@ -998,15 +973,11 @@
         fmt: (v, r) => {
           if (!v) return "—";
           if (r.locationMismatch) {
-            const actual = r.actualLocations.join(", ");
-            return `<span style="display:inline-block;padding:0.15rem 0.55rem;border-radius:999px;font-size:0.72rem;font-weight:700;white-space:nowrap;background:rgba(220,38,38,0.14);color:var(--red)" title="${escHtml(reqPlant || 'The requesting plant')} actually holds this material in: ${escHtml(actual)}">⚠ ${escHtml(v)} — check location</span>`;
+            return `<span style="display:inline-block;padding:0.15rem 0.55rem;border-radius:999px;font-size:0.72rem;font-weight:700;white-space:nowrap;background:rgba(220,38,38,0.14);color:var(--red)" title="Valid HO01 storage locations: ${escHtml(HO01_STORAGE_LOCATIONS.join(', '))}">⚠ ${escHtml(v)} — check location</span>`;
           }
           return escHtml(v);
         },
         raw: true },
-      { key: "actualLocations", label: `${reqPlant || "Requesting Plant"} Storage Location(s)`,
-        fmt: (v, r) => r.locationKnown ? escHtml(r.actualLocations.join(", ")) : "—",
-        raw: true, cellClass: "col-qty" },
       { key: "mappedDesc", label: "Description (mapped, HO01)", cellClass: "col-mat-desc-wrap" },
       { key: "qcHo01", label: "Under Quality Inspection (HO01)", fmt: v => v > 0 ? fmtQty(v) : "—", cellClass: "col-qty" },
       { key: "status", label: "Status", fmt: v => reqStatusBadge(v), raw: true },
@@ -1024,8 +995,7 @@
     wireTableExport("reqan-export-all", filteredRows.map(r => ({
       prNum: r.prNum, poste: r.poste, createdBy: r.createdBy, material: r.material, canonical: r.canonical, desc: r.desc,
       reqQty: r.reqQty, reqSoh: r.reqSoh, liveHo01: r.liveHo01, liveReqPlant: r.liveReqPlant,
-      location: r.location, actualLocations: r.locationKnown ? r.actualLocations.join(", ") : "",
-      locationMismatch: r.locationMismatch ? "Yes" : "No",
+      location: r.location, locationMismatch: r.locationMismatch ? "Yes" : "No",
       mappedDesc: r.mappedDesc, qcHo01: r.qcHo01,
       deliveryDate: fmtReqDate(r.deliveryDate), status: r.status,
       isDuplicate: r.isDuplicate ? "Yes" : "No", duplicateCount: r.duplicateCount,
@@ -1037,8 +1007,7 @@
       { key: "desc", label: "Description" }, { key: "reqQty", label: "Requested Quantity" },
       { key: "reqSoh", label: "Stock on Hand (Request File)" }, { key: "liveHo01", label: "Stock on Hand (HO01)" },
       { key: "liveReqPlant", label: `Stock on Hand (${reqPlant || "Requesting Plant"})` },
-      { key: "location", label: "Requested Location" }, { key: "actualLocations", label: `${reqPlant || "Requesting Plant"} Storage Location(s)` },
-      { key: "locationMismatch", label: "Location Mismatch?" },
+      { key: "location", label: "Requested Location" }, { key: "locationMismatch", label: "Location Mismatch? (vs HO01: HOM3/HOM8/HOM9)" },
       { key: "mappedDesc", label: "Description (mapped, HO01)" },
       { key: "qcHo01", label: "Under Quality Inspection (HO01)" },
       { key: "deliveryDate", label: "Delivery Date" }, { key: "status", label: "Status" },
