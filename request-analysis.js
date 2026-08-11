@@ -93,6 +93,11 @@
   // applies across all 4 tabs.
   let reqMatTypeFilter = new Set();
 
+  // Material Group filter — same pattern as Material Type above, but sourced
+  // from the literal "Material Group" column on the main inventory data
+  // (rawDf), not a helper function. Multi-select; empty set = no filter.
+  let reqMatGroupFilter = new Set();
+
   // FEAT-COPY-CODES: click-to-select on the "Requested Code" cells in Tab 1
   // (Request vs Stock table) so users can grab several material codes at
   // once without click-dragging across the whole table (which also grabs
@@ -333,6 +338,23 @@
     return out;
   }
 
+  // Canonical code -> Material Group, sourced directly from the literal
+  // "Material Group" column on the main inventory data (rawDf) — unlike
+  // Material Type, there's no helper function for this; it's a real SAP
+  // field. Keyed the same way as buildCanonicalDescMap/buildMaterialTypeMap
+  // (first non-blank value wins). Used to power the Material Group filter bar.
+  function buildMaterialGroupMap() {
+    const out = new Map();
+    const base = (typeof getReconciledBase === "function") ? getReconciledBase() : (typeof rawDf !== "undefined" ? rawDf : []);
+    base.forEach(row => {
+      const code = String(row._mappedMaterial || row["Material"] || "").trim();
+      if (!code || out.has(code)) return;
+      const group = String(row["Material Group"] || "").trim();
+      if (group) out.set(code, group);
+    });
+    return out;
+  }
+
   // Canonical code -> responsible person, sourced from mosMerged (same
   // "r.person" field who-responsible.js / the global sidebar person filter
   // use) so "assigned to" here means the same thing it means everywhere
@@ -354,6 +376,7 @@
     const qcMap = buildCanonicalQcMap(hub); // canonical -> stock currently in Quality Inspection at hub
     const personMap = buildPersonMap();
     const matTypeMap = buildMaterialTypeMap(); // canonical -> "ZME"/"ZMS"/…
+    const matGroupMap = buildMaterialGroupMap(); // canonical -> "Material Group" value
 
     const requestedCanonical = new Set();
 
@@ -380,6 +403,7 @@
       const liveReqPlant = (canonical && reqPlant && sohMap.has(canonical)) ? (sohMap.get(canonical)[reqPlant] || 0) : 0;
       const person     = canonical ? (personMap.get(canonical) || "") : "";
       const materialType = canonical ? (matTypeMap.get(canonical) || "") : "";
+      const materialGroup = canonical ? (matGroupMap.get(canonical) || "") : "";
 
       let status;
       if (!canonical || !inInventory) status = "no-match";
@@ -422,7 +446,7 @@
 
       return {
         ...r,
-        canonical, desc, status, person, materialType,
+        canonical, desc, status, person, materialType, materialGroup,
         liveHo01, mappedDesc, qcHo01, liveReqPlant, sohMismatch,
         hasSuggestion,
         suggestedCode: hasSuggestion
@@ -467,7 +491,7 @@
     sohMap.forEach((plantMap, code) => {
       const qty = plantMap[hub] || 0;
       if (qty > 0 && !requestedCanonical.has(code)) {
-        ho01NotRequestedAll.push({ code, desc: descMap.get(code) || "", qty, person: personMap.get(code) || "", materialType: matTypeMap.get(code) || "" });
+        ho01NotRequestedAll.push({ code, desc: descMap.get(code) || "", qty, person: personMap.get(code) || "", materialType: matTypeMap.get(code) || "", materialGroup: matGroupMap.get(code) || "" });
       }
     });
 
@@ -521,7 +545,20 @@
     // could be resolved for ANY material at all (matTypeMap wasn't empty).
     const matTypeDataAvailable = matTypeMap.size > 0;
 
-    return { rows, ho01NotRequested, ho01NotRequestedAllCount: ho01NotRequestedAll.length, mosDataLoaded, availableMatTypes, matTypeDataAvailable };
+    // Same idea as availableMatTypes/matTypeDataAvailable above, for Material
+    // Group — sourced straight from the literal column, so "data available"
+    // just means at least one row had that column populated.
+    const availableMatGroups = [...new Set([
+      ...rows.map(r => r.materialGroup),
+      ...ho01NotRequestedAll.map(r => r.materialGroup),
+    ].filter(Boolean))].sort();
+    const matGroupDataAvailable = matGroupMap.size > 0;
+
+    return {
+      rows, ho01NotRequested, ho01NotRequestedAllCount: ho01NotRequestedAll.length, mosDataLoaded,
+      availableMatTypes, matTypeDataAvailable,
+      availableMatGroups, matGroupDataAvailable,
+    };
   }
 
   // ── MATERIAL TYPE FILTER BAR ────────────────────────────────────────────────
@@ -600,6 +637,65 @@
     }
     // Re-render from the checked state we just restored (also refreshes the
     // button label / selected-count badge).
+    if (wrap._refreshOptions) wrap._refreshOptions();
+  }
+
+  // ── MATERIAL GROUP FILTER BAR ───────────────────────────────────────────────
+  // Identical control/pattern to renderMatTypeFilterBar() above, just sourced
+  // from the literal "Material Group" column instead of getValuationType().
+  // Anchored right after the Material Type filter bar so the two sit
+  // together in the filter row.
+  function renderMatGroupFilterBar(groups, dataAvailable) {
+    const mtOuter = document.getElementById("reqan-mattype-outer");
+    const statusEl = document.getElementById("reqan-status-filter");
+    const anchor = mtOuter || statusEl;
+    if (!anchor || !anchor.parentElement) return;
+
+    let outer = document.getElementById("reqan-matgroup-outer");
+    if (!outer) {
+      outer = document.createElement("div");
+      outer.id = "reqan-matgroup-outer";
+      outer.style.cssText =
+        "display:inline-flex;flex-direction:column;gap:5px;margin-left:0.5rem;vertical-align:bottom;min-width:170px;";
+      outer.innerHTML =
+        `<div class="nav-label" style="font-size:0.65rem">Material Group</div>` +
+        `<div class="ms-wrap" id="reqan-matgroup-wrap" style="min-width:0;width:100%">` +
+          `<button class="ms-btn" type="button" style="width:100%">All Material Groups <span class="ms-arrow">▾</span></button>` +
+          `<div class="ms-dropdown" id="reqan-matgroup-dd"></div>` +
+        `</div>`;
+      anchor.parentElement.insertBefore(outer, anchor.nextSibling);
+    }
+    const wrap = document.getElementById("reqan-matgroup-wrap");
+    const btn  = wrap ? wrap.querySelector(".ms-btn") : null;
+
+    let note = document.getElementById("reqan-matgroup-note");
+    if (!dataAvailable) {
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "";
+        btn.innerHTML = "Unavailable <span class=\"ms-arrow\">▾</span>";
+        btn.style.opacity = "0.5";
+        btn.style.cursor = "not-allowed";
+      }
+      if (!note) {
+        note = document.createElement("div");
+        note.id = "reqan-matgroup-note";
+        note.style.cssText = "font-size:0.65rem;color:var(--dim);max-width:220px;line-height:1.3;";
+        note.textContent = "Load the main inventory file to enable filtering by Material Group.";
+        outer.appendChild(note);
+      }
+      return;
+    }
+    if (note) note.remove();
+    if (btn) { btn.disabled = false; btn.style.opacity = ""; btn.style.cursor = ""; }
+
+    buildMultiSelect("reqan-matgroup-wrap", "reqan-matgroup-dd", groups, "All Material Groups");
+    const dd = document.getElementById("reqan-matgroup-dd");
+    if (dd) {
+      dd.querySelectorAll(".ms-item input").forEach(cb => {
+        cb.checked = reqMatGroupFilter.has(cb.value);
+      });
+    }
     if (wrap._refreshOptions) wrap._refreshOptions();
   }
 
@@ -743,9 +839,14 @@
     const searchQ  = searchEl ? searchEl.value.trim().toLowerCase() : "";
     const statusF  = statusEl ? statusEl.value : "";
 
-    const { rows, ho01NotRequested, ho01NotRequestedAllCount, mosDataLoaded, availableMatTypes, matTypeDataAvailable } = buildRequestAnalysis();
+    const {
+      rows, ho01NotRequested, ho01NotRequestedAllCount, mosDataLoaded,
+      availableMatTypes, matTypeDataAvailable,
+      availableMatGroups, matGroupDataAvailable,
+    } = buildRequestAnalysis();
 
     renderMatTypeFilterBar(availableMatTypes, matTypeDataAvailable);
+    renderMatGroupFilterBar(availableMatGroups, matGroupDataAvailable);
 
     const matches = r => {
       if (!searchQ) return true;
@@ -759,6 +860,10 @@
     const matTypeActive = reqMatTypeFilter.size > 0;
     const matTypeMatches = r => !matTypeActive || reqMatTypeFilter.has(r.materialType);
 
+    // Material Group filter — same shape as Material Type, applies to all 4 tabs.
+    const matGroupActive = reqMatGroupFilter.size > 0;
+    const matGroupMatches = r => !matGroupActive || reqMatGroupFilter.has(r.materialGroup);
+
     // "Assigned to" = the same global sidebar person filter used everywhere
     // else in the app (who-responsible.js, dashboard, expiry-risk, etc.) —
     // NOT the request file's "Created By" column. Applies to every tab here,
@@ -766,14 +871,14 @@
     const personActive = typeof personFilter !== "undefined" && personFilter.size > 0;
     const personMatches = r => !personActive || (r.person && personFilter.has(r.person));
 
-    let filteredRows = rows.filter(r => matches(r) && personMatches(r) && matTypeMatches(r));
+    let filteredRows = rows.filter(r => matches(r) && personMatches(r) && matTypeMatches(r) && matGroupMatches(r));
     if (statusF) filteredRows = filteredRows.filter(r => r.status === statusF);
 
-    const suggestionRows = rows.filter(r => r.hasSuggestion && matches(r) && personMatches(r) && matTypeMatches(r));
-    const stockoutRows   = rows.filter(r => r.status === "stockout" && matches(r) && personMatches(r) && matTypeMatches(r));
+    const suggestionRows = rows.filter(r => r.hasSuggestion && matches(r) && personMatches(r) && matTypeMatches(r) && matGroupMatches(r));
+    const stockoutRows   = rows.filter(r => r.status === "stockout" && matches(r) && personMatches(r) && matTypeMatches(r) && matGroupMatches(r));
     const notRequested   = ho01NotRequested.filter(r =>
       (!searchQ || r.code.toLowerCase().includes(searchQ) || (r.desc || "").toLowerCase().includes(searchQ))
-      && personMatches(r) && matTypeMatches(r)
+      && personMatches(r) && matTypeMatches(r) && matGroupMatches(r)
     );
 
     // ── KPIs ─────────────────────────────────────────────────────────────────
@@ -991,6 +1096,9 @@
         reqMatTypeFilter.clear();
         const mtWrap = document.getElementById("reqan-mattype-wrap");
         if (mtWrap && mtWrap._clearSelected) mtWrap._clearSelected();
+        reqMatGroupFilter.clear();
+        const mgWrap = document.getElementById("reqan-matgroup-wrap");
+        if (mgWrap && mgWrap._clearSelected) mgWrap._clearSelected();
         renderRequestAnalysis();
         return;
       }
@@ -1041,6 +1149,12 @@
         const wrap = document.getElementById("reqan-mattype-wrap");
         const selected = wrap && wrap._getSelected ? wrap._getSelected() : [];
         reqMatTypeFilter = new Set(selected);
+        renderRequestAnalysis();
+      }
+      if (e.target.closest && e.target.closest("#reqan-matgroup-dd") && e.target.type === "checkbox") {
+        const wrap = document.getElementById("reqan-matgroup-wrap");
+        const selected = wrap && wrap._getSelected ? wrap._getSelected() : [];
+        reqMatGroupFilter = new Set(selected);
         renderRequestAnalysis();
       }
     });
