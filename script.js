@@ -71,6 +71,54 @@ function showSpreadDrilldownToast(count, groupLabel) {
   setTimeout(() => { if (toast.parentElement) toast.remove(); }, 4500);
 }
 
+// FEAT-MS-PASTE-SEARCH: Shows a brief toast confirming how many pasted codes
+// were auto-checked in a multi-select dropdown (see buildMultiSelect's paste
+// handler below). Lists a few unmatched codes (if any) so the user immediately
+// knows which pasted entries didn't exist in the list, instead of silently
+// dropping them. Auto-dismisses after 5 seconds (slightly longer than the
+// drilldown toast since there may be more to read).
+function showPasteMatchToast(matchedCount, totalCount, unmatchedCodes) {
+  const existing = document.getElementById("ms-paste-toast");
+  if (existing) existing.remove();
+
+  const toast = document.createElement("div");
+  toast.id = "ms-paste-toast";
+  const allMatched = matchedCount === totalCount;
+  const unmatchedPreview = (unmatchedCodes || []).slice(0, 6).map(escHtml).join(", ")
+    + ((unmatchedCodes || []).length > 6 ? `, +${unmatchedCodes.length - 6} more` : "");
+  toast.innerHTML = `
+    <span style="font-size:1.1em">${allMatched ? "✅" : "⚠️"}</span>
+    <span>
+      Pasted <strong>${totalCount}</strong> code${totalCount !== 1 ? "s" : ""} — checked <strong>${matchedCount}</strong> match${matchedCount !== 1 ? "es" : ""}
+      ${allMatched ? "" : `<br><span style="opacity:0.85">Not found: ${unmatchedPreview}</span>`}
+    </span>
+    <button onclick="this.parentElement.remove()" style="margin-left:auto;background:none;border:none;color:inherit;cursor:pointer;font-size:1rem;opacity:0.7;padding:0 0.25rem" title="Dismiss">✕</button>
+  `;
+  Object.assign(toast.style, {
+    position:       "fixed",
+    bottom:         "1.5rem",
+    left:           "50%",
+    transform:      "translateX(-50%)",
+    background:     allMatched ? "var(--green, #2e9e5a)" : "var(--orange, #c47f17)",
+    color:          "#fff",
+    padding:        "0.65rem 1.1rem",
+    borderRadius:   "8px",
+    boxShadow:      "0 4px 18px rgba(0,0,0,0.35)",
+    display:        "flex",
+    alignItems:     "flex-start",
+    gap:            "0.6rem",
+    fontSize:       "0.82rem",
+    fontFamily:     "Inter, sans-serif",
+    lineHeight:     "1.45",
+    zIndex:         "9999",
+    maxWidth:       "560px",
+    animation:      "fadeInUp 0.25s ease",
+    pointerEvents:  "auto",
+  });
+  document.body.appendChild(toast);
+  setTimeout(() => { if (toast.parentElement) toast.remove(); }, 5000);
+}
+
 // ── THEME-AWARE PLOTLY LAYOUT ─────────────────────────────────────────────
 // Reads CSS vars at call time so chart colours match the active theme.
 function getPlotlyThemeColors() {
@@ -798,11 +846,57 @@ function buildMultiSelect(wrapId, ddId, items, placeholder) {
   dd.innerHTML = "";
   const searchInput = document.createElement("input");
   searchInput.className   = "ms-search";
-  searchInput.placeholder = "Search…";
+  searchInput.placeholder = "Search… (or paste a list of codes)";
   searchInput.type        = "text";
   searchInput.addEventListener("input", e => renderItems(e.target.value));
   dd.appendChild(searchInput);
   renderItems("");
+
+  // FEAT-MS-PASTE-SEARCH: Support pasting a whole list of codes at once
+  // (e.g. copied from Excel/SAP as a column, or comma-separated from an
+  // email) into any buildMultiSelect search box — most usefully the
+  // Material field on Branch Comparison's "Material Across Branches" tab,
+  // so a user can paste 50 material codes and have every match auto-checked
+  // instead of typing/ticking them one at a time.
+  //
+  // Only kicks in when the pasted text actually contains more than one
+  // token (split on newlines/commas/semicolons/tabs) — a normal single-word
+  // paste (e.g. pasting one code to search for it) falls through to the
+  // default paste behaviour and the existing live "input" filter above.
+  searchInput.addEventListener("paste", e => {
+    const clip = e.clipboardData || window.clipboardData;
+    const text = clip ? clip.getData("text") : "";
+    const tokens = [...new Set(
+      text.split(/[\n\r,;\t]+/).map(s => s.trim()).filter(Boolean)
+    )];
+    if (tokens.length <= 1) return; // let the default single-value paste + search happen
+
+    e.preventDefault();
+
+    // Show the full (unfiltered) list so every checkbox we're about to tick
+    // actually exists in the DOM, then match each pasted token against
+    // either the item's leading code (before " — description") or its
+    // full text, case-insensitively.
+    renderItems("");
+    const tokenSet = new Set(tokens.map(t => t.toUpperCase()));
+    const matchedTokens = new Set();
+    dd.querySelectorAll(".ms-item input[type=checkbox]").forEach(cb => {
+      const fullUpper = cb.value.toUpperCase();
+      const codeUpper = cb.value.split(" — ")[0].trim().toUpperCase();
+      const hit = tokenSet.has(codeUpper) ? codeUpper : (tokenSet.has(fullUpper) ? fullUpper : null);
+      if (hit) {
+        cb.checked = true;
+        cb.dispatchEvent(new Event("change"));
+        matchedTokens.add(hit);
+      }
+    });
+
+    const unmatched = tokens.filter(t => !matchedTokens.has(t.toUpperCase()));
+    searchInput.value = "";
+    if (typeof showPasteMatchToast === "function") {
+      showPasteMatchToast(tokens.length - unmatched.length, tokens.length, unmatched);
+    }
+  });
 
   // Toggle open/close
   // FIX-LISTENER: clone btn to strip any previously registered click listeners from
