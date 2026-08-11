@@ -2427,7 +2427,14 @@ function renderExpiry() {
   const cutoff  = new Date(today); cutoff.setMonth(cutoff.getMonth() + months);
   const valid   = baseDf.filter(r => r._expiry instanceof Date && !isNaN(r._expiry));
 
-  const expiring     = valid.filter(r => r._expiry >= today && r._expiry <= cutoff && (r["Unrestricted Stock"]||0) > 0 && (r["Value of Unrestricted Stock"]||0) > 0);
+  // FIX-QC-EXPIRY: broadened from Unrestricted-only so QC-held batches with an
+  // expiry date also surface here (previously invisible if all their stock was
+  // sitting in QC). Rows carry _qcOnly so the UI can badge them as "In QC" —
+  // they aren't available/sellable stock, just visible for planning.
+  const expiring     = valid.filter(r => r._expiry >= today && r._expiry <= cutoff &&
+    ((r["Unrestricted Stock"]||0) + (r["Stock in Quality Inspection"]||0)) > 0 &&
+    ((r["Value of Unrestricted Stock"]||0) + (r["Value of Stock in Quality Inspection"]||0)) > 0
+  ).map(r => ({ ...r, _qcOnly: (r["Unrestricted Stock"]||0) <= 0 && (r["Stock in Quality Inspection"]||0) > 0 }));
   const expired      = valid.filter(r => r._expiry < today);
   // FIX BUG-4: filter zero-qty BEFORE the KPI count so KPI matches the table
   const expiredWithStock = expired.filter(r => (r["Unrestricted Stock"] || 0) > 0);
@@ -2443,8 +2450,8 @@ function renderExpiry() {
     ["Expiring in Window", String(expiringUniq),      `Items within next ${months} months`,             "amber"],
     // FIX BUG-4: use expiredWithStock count; FIX-MAPPED-COUNT: unique target materials
     ["Already Expired",   String(expiredStockUniq),  "Items with stock on hand requiring action",      "red"],
-    ["At-Risk Value",     fmtETB(expiring.reduce((s,r) => s+getMappedVal(r,"Value of Unrestricted Stock"),0)), "Unrestricted stock value","purple"],
-    ["At-Risk Quantity",  fmtQty(expiring.reduce((s,r) => s+getMappedQty(r,"Unrestricted Stock"),0)),          "Units expiring soon",     "amber"],
+    ["At-Risk Value",     fmtETB(expiring.reduce((s,r) => s+getMappedVal(r,"Value of Unrestricted Stock")+getMappedVal(r,"Value of Stock in Quality Inspection"),0)), "Unrestricted + QC stock value","purple"],
+    ["At-Risk Quantity",  fmtQty(expiring.reduce((s,r) => s+getMappedQty(r,"Unrestricted Stock")+getMappedQty(r,"Stock in Quality Inspection"),0)),          "Units expiring soon (incl. QC)",     "amber"],
   ]);
 
   if (expiring.length) {
@@ -2455,7 +2462,7 @@ function renderExpiry() {
     const valMap = {}, uniqMatSets = {};
     expiring.forEach(r => {
       const key = `${r._expiry.getFullYear()}-${String(r._expiry.getMonth()+1).padStart(2,"0")}`;
-      valMap[key] = (valMap[key] || 0) + r["Value of Unrestricted Stock"];
+      valMap[key] = (valMap[key] || 0) + (r["Value of Unrestricted Stock"]||0) + (r["Value of Stock in Quality Inspection"]||0);
       if (!uniqMatSets[key]) uniqMatSets[key] = new Set();
       uniqMatSets[key].add(getMatKey(r));
     });
@@ -2478,6 +2485,9 @@ function renderExpiry() {
       const monthKey = pt.x;
       const [yr, mo] = monthKey.split("-").map(Number);
       const monthItems = expiring.filter(r => r._expiry.getFullYear() === yr && r._expiry.getMonth() + 1 === mo);
+      // FIX-QC-EXPIRY: _qty/_val roll Unrestricted + QC together so QC-only
+      // rows (Unrestricted Stock = 0) still show their real quantity/value
+      // instead of a misleading zero; _availBadge marks which is which.
       const drillCols = [
         {key:"Material", label:"Material Code", fmt:(val,r)=>renderMatCodeRaw(val,r), raw:true, cellClass:"col-mat-code-wrap"},
         {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMatDescRaw(val,r), raw:true, cellClass:"col-mat-desc-wrap"},
@@ -2485,8 +2495,9 @@ function renderExpiry() {
         {key:"Plant Name",                  label:"Plant"},
         {key:"Description of Storage Location", label:"Storage Location"},
         {key:"_expiryStr",                  label:"Expiry Date"},
-        {key:"Unrestricted Stock",          label:"Qty",        fmt:fmtQty, rawKey:"Unrestricted Stock",       cellClass:"col-qty"},
-        {key:"Value of Unrestricted Stock", label:"Value (ETB)",fmt:fmtETB, rawKey:"Value of Unrestricted Stock",cellClass:"col-val"},
+        {key:"_availBadge",                 label:"Availability",fmt:v=>v, raw:true},
+        {key:"_qty",                        label:"Qty",        fmt:fmtQty, cellClass:"col-qty"},
+        {key:"_val",                        label:"Value (ETB)",fmt:fmtETB, cellClass:"col-val"},
         {key:"_daysLeft",                   label:"Days Left"},
       ];
       const drillRows = sortBy(
@@ -2494,11 +2505,16 @@ function renderExpiry() {
           ...r,
           _expiryStr: r._expiry ? fmtLocalDate(r._expiry) : "",
           _daysLeft:  r._expiry ? Math.floor((r._expiry - new Date()) / 86400000) : 9999,
+          _qty:       (r["Unrestricted Stock"]||0) + (r["Stock in Quality Inspection"]||0),
+          _val:       (r["Value of Unrestricted Stock"]||0) + (r["Value of Stock in Quality Inspection"]||0),
+          _availBadge: r._qcOnly
+            ? "<span class='badge badge-amber'>In QC</span>"
+            : "<span class='badge badge-green'>Available</span>",
         })),
         "_daysLeft", true
       );
-      const totalVal   = monthItems.reduce((s,r) => s+r["Value of Unrestricted Stock"], 0);
-      const totalQty   = monthItems.reduce((s,r) => s+r["Unrestricted Stock"], 0);
+      const totalVal   = monthItems.reduce((s,r) => s+(r["Value of Unrestricted Stock"]||0)+(r["Value of Stock in Quality Inspection"]||0), 0);
+      const totalQty   = monthItems.reduce((s,r) => s+(r["Unrestricted Stock"]||0)+(r["Stock in Quality Inspection"]||0), 0);
       const monthLabel = new Date(yr, mo-1, 1).toLocaleString("default", {month:"long", year:"numeric"});
       document.getElementById("expiry-drill-title").textContent = "📅 " + monthLabel;
       document.getElementById("expiry-drill-meta").textContent  = `${drillRows.length} items · ${fmtQty(totalQty)} units · ${fmtETB(totalVal)}`;
@@ -2562,7 +2578,14 @@ function renderExpiryDetailTable(baseDf, today) {
     return;
   }
 
-  const matches = baseDf.filter(r => (r["Unrestricted Stock"] || 0) > 0 && (r["Value of Unrestricted Stock"] || 0) > 0);
+  // FIX-QC-EXPIRY: broadened from Unrestricted-only so QC-held batches with an
+  // expiry date also surface here (mirrors the same fix on the "expiring"
+  // watch-list filter above). _qcOnly flags rows with zero Unrestricted stock
+  // so the UI can badge them as "In QC" rather than showing them as available.
+  const matches = baseDf.filter(r =>
+    ((r["Unrestricted Stock"]||0) + (r["Stock in Quality Inspection"]||0)) > 0 &&
+    ((r["Value of Unrestricted Stock"]||0) + (r["Value of Stock in Quality Inspection"]||0)) > 0
+  );
   if (!matches.length) {
     wrap.innerHTML = `<div class="alert-info">No batch/location records found for the selected material(s).</div>`;
     return;
@@ -2578,7 +2601,17 @@ function renderExpiryDetailTable(baseDf, today) {
       else if (daysLeft <= 180) { statusLabel = `${daysLeft}d left`;                  statusClass = "row-amber"; }
       else                      { statusLabel = `${daysLeft}d left`;                  statusClass = "";          }
     }
-    return { ...r, _expiryStr: expiryStr, _daysLeft: daysLeft ?? 99999, _statusLabel: statusLabel, _statusClass: statusClass };
+    const qcOnly = (r["Unrestricted Stock"]||0) <= 0 && (r["Stock in Quality Inspection"]||0) > 0;
+    return {
+      ...r,
+      _expiryStr: expiryStr, _daysLeft: daysLeft ?? 99999, _statusLabel: statusLabel, _statusClass: statusClass,
+      _qcOnly: qcOnly,
+      _qty: (r["Unrestricted Stock"]||0) + (r["Stock in Quality Inspection"]||0),
+      _val: (r["Value of Unrestricted Stock"]||0) + (r["Value of Stock in Quality Inspection"]||0),
+      _availBadge: qcOnly
+        ? "<span class='badge badge-amber'>In QC</span>"
+        : "<span class='badge badge-green'>Available</span>",
+    };
   });
 
   const sorted     = annotated.sort((a,b) => a._daysLeft - b._daysLeft);
@@ -2596,8 +2629,9 @@ function renderExpiryDetailTable(baseDf, today) {
     {key:"Batch",                          label:"Batch"},
     {key:"_expiryStr",                     label:"Expiry Date"},
     {key:"_statusLabel",                   label:"Status"},
-    {key:"Unrestricted Stock",             label:"Avail Qty",   fmt:fmtQty, rawKey:"Unrestricted Stock",          cellClass:"col-qty"},
-    {key:"Value of Unrestricted Stock",    label:"Value (ETB)", fmt:fmtETB, rawKey:"Value of Unrestricted Stock", cellClass:"col-val"},
+    {key:"_availBadge",                    label:"Availability", fmt:v=>v, raw:true},
+    {key:"_qty",                           label:"Qty",   fmt:fmtQty, cellClass:"col-qty"},
+    {key:"_val",                           label:"Value (ETB)", fmt:fmtETB, cellClass:"col-val"},
   ];
 
   wrap.innerHTML = summary + buildTable(sorted, cols, r => r._statusClass, "", {id:"expiry-export", title:"Expiry Detail"});
