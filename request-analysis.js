@@ -1020,13 +1020,11 @@
     );
 
     // ── KPIs ─────────────────────────────────────────────────────────────────
-    const matchedCount  = rows.filter(r => r.status !== "no-match").length;
     const dupLineCount   = rows.filter(r => r.isDuplicate).length;
     const dupGroupCount  = new Set(rows.filter(r => r.isDuplicate).map(r => r.canonical || `__raw__${r.material.toUpperCase()}`)).size;
     const locMismatchCount = rows.filter(r => r.locationMismatch).length;
     document.getElementById("reqan-kpis").innerHTML = [
       reqKpi("Request Lines Uploaded", rows.length.toLocaleString(), reqFileName ? `${reqFileName} · Plant ${reqPlant}` : "", "blue"),
-      reqKpi("Matched to SAP Stock", `${matchedCount.toLocaleString()} / ${rows.length.toLocaleString()}`, "Resolved via SAP code or mapping", "green"),
       reqKpi("HO01 Stockout (Requested)", rows.filter(r => r.status === "stockout").length.toLocaleString(), "Zero HO01 stock right now", "red"),
       reqKpi("Suggested Code Corrections", rows.filter(r => r.hasSuggestion).length.toLocaleString(), "Stock exists under a different code", "amber"),
       reqKpi("Possible Double Requests", `${dupLineCount.toLocaleString()} lines / ${dupGroupCount.toLocaleString()} items`, "Same item requested more than once — same or different code", "amber"),
