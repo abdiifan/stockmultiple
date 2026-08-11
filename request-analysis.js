@@ -94,7 +94,7 @@
   let reqMatTypeFilter = new Set();
 
   // Material Group filter — same pattern as Material Type above, but sourced
-  // from the literal "Material Group" column on the main inventory data
+  // from the literal "Material Group Name" column on the main inventory data
   // (rawDf), not a helper function. Multi-select; empty set = no filter.
   let reqMatGroupFilter = new Set();
 
@@ -339,17 +339,22 @@
   }
 
   // Canonical code -> Material Group, sourced directly from the literal
-  // "Material Group" column on the main inventory data (rawDf) — unlike
-  // Material Type, there's no helper function for this; it's a real SAP
-  // field. Keyed the same way as buildCanonicalDescMap/buildMaterialTypeMap
-  // (first non-blank value wins). Used to power the Material Group filter bar.
+  // "Material Group Name" column on the main inventory data (rawDf) — this
+  // is the real SAP field name used throughout script.js (Dashboard,
+  // Branch Comparison, Expiry Risk, etc. all read row["Material Group Name"],
+  // NOT "Material Group" — that key doesn't exist, which is why this filter
+  // showed "Unavailable" even with data loaded). getReconciledBase() already
+  // excludes non-medical groups (isNonMedicalGroup) before we ever see it,
+  // same as every other Material Group control in the app. Keyed the same
+  // way as buildCanonicalDescMap/buildMaterialTypeMap (first non-blank value
+  // wins). Used to power the Material Group filter bar.
   function buildMaterialGroupMap() {
     const out = new Map();
     const base = (typeof getReconciledBase === "function") ? getReconciledBase() : (typeof rawDf !== "undefined" ? rawDf : []);
     base.forEach(row => {
       const code = String(row._mappedMaterial || row["Material"] || "").trim();
       if (!code || out.has(code)) return;
-      const group = String(row["Material Group"] || "").trim();
+      const group = String(row["Material Group Name"] || "").trim();
       if (group) out.set(code, group);
     });
     return out;
@@ -642,7 +647,7 @@
 
   // ── MATERIAL GROUP FILTER BAR ───────────────────────────────────────────────
   // Identical control/pattern to renderMatTypeFilterBar() above, just sourced
-  // from the literal "Material Group" column instead of getValuationType().
+  // from the literal "Material Group Name" column instead of getValuationType().
   // Anchored right after the Material Type filter bar so the two sit
   // together in the filter row.
   function renderMatGroupFilterBar(groups, dataAvailable) {
