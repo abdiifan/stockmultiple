@@ -93,6 +93,14 @@
   // applies across all 4 tabs.
   let reqMatTypeFilter = new Set();
 
+  // FEAT-COPY-CODES: click-to-select on the "Requested Code" cells in Tab 1
+  // (Request vs Stock table) so users can grab several material codes at
+  // once without click-dragging across the whole table (which also grabs
+  // Description/Qty/SOH text from other columns). Selecting persists across
+  // re-renders (filter changes, etc.) by code value, not DOM node.
+  let reqCodeCopySelection = new Set();
+
+
   const REQUIRED_COLS = [
     "Purchase Req Num", "Poste", "Material", "Short Text",
     "Requested Quantity", "Stock on hand", "Delivery date",
@@ -595,6 +603,79 @@
     if (wrap._refreshOptions) wrap._refreshOptions();
   }
 
+  // ── COPY SELECTED CODES TOOLBAR ─────────────────────────────────────────────
+  // Lets users click individual "Requested Code" cells in Tab 1 to build up a
+  // multi-code selection, then copy just those codes (one per line) to the
+  // clipboard — without click-dragging across the table, which would also
+  // grab Description/Qty/SOH text from neighboring columns. Selection is
+  // tracked in reqCodeCopySelection (by code value) so it survives table
+  // re-renders (filtering, sorting, etc.).
+  function renderCopyCodesToolbar() {
+    const tableEl = document.getElementById("reqan-table-all");
+    if (!tableEl || !tableEl.parentElement) return;
+    let bar = document.getElementById("reqan-copycode-bar");
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.id = "reqan-copycode-bar";
+      bar.style.cssText =
+        "display:none;align-items:center;gap:0.6rem;margin-bottom:0.6rem;" +
+        "padding:0.5rem 0.75rem;background:var(--surface2);border:1px solid var(--border2);" +
+        "border-radius:var(--radius-sm);font-size:0.78rem;";
+      bar.innerHTML =
+        `<span id="reqan-copycode-count" style="color:var(--text);font-weight:600"></span>` +
+        `<button id="reqan-copycode-btn" class="dl-btn" type="button" style="padding:3px 12px">⧉ Copy Codes</button>` +
+        `<button id="reqan-copycode-clear" type="button" style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:0.76rem;padding:0">Clear selection</button>` +
+        `<span style="color:var(--dim);font-size:0.72rem;margin-left:auto">Tip: click a Requested Code to select it — click again to deselect</span>`;
+      tableEl.parentElement.insertBefore(bar, tableEl);
+    }
+    updateCopyCodesToolbar();
+  }
+
+  function updateCopyCodesToolbar() {
+    const bar = document.getElementById("reqan-copycode-bar");
+    if (!bar) return;
+    const n = reqCodeCopySelection.size;
+    bar.style.display = n > 0 ? "flex" : "none";
+    const countEl = document.getElementById("reqan-copycode-count");
+    if (countEl) countEl.textContent = `${n} code${n === 1 ? "" : "s"} selected`;
+  }
+
+  // Re-applies the "picked" highlight to whichever Requested Code cells (by
+  // text, not DOM identity) are currently in reqCodeCopySelection — needed
+  // every time buildTable() replaces the table's innerHTML.
+  function applyCopySelectionHighlight() {
+    document.querySelectorAll("#reqan-table-all td.col-mat-code-wrap").forEach(td => {
+      td.style.cursor = "pointer";
+      const codeSpan = td.querySelector(".col-mat-code");
+      const code = (codeSpan ? codeSpan.textContent : td.textContent).trim();
+      const picked = reqCodeCopySelection.has(code);
+      td.style.background = picked ? "var(--accent-glow)" : "";
+      td.style.outline = picked ? "1px solid var(--blue)" : "";
+      td.title = picked ? "Click to deselect" : "Click to select for copying";
+    });
+  }
+
+  // Copies text to the clipboard, falling back to a hidden textarea +
+  // execCommand for browsers/contexts where navigator.clipboard is
+  // unavailable (e.g. non-HTTPS).
+  function copyTextToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(() => fallbackCopyToClipboard(text));
+    } else {
+      fallbackCopyToClipboard(text);
+    }
+  }
+  function fallbackCopyToClipboard(text) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); } catch (err) { /* no-op */ }
+    document.body.removeChild(ta);
+  }
+
   // ── SMALL HELPERS ──────────────────────────────────────────────────────────
   function reqStatusBadge(status) {
     const M = {
@@ -761,6 +842,12 @@
       { key: "duplicateTotalQty", label: "Combined Requested Qty" }, { key: "duplicateSiblingsLabel", label: "Other Lines (Same Item)" },
     ], "request_analysis_all_lines");
 
+    // FEAT-COPY-CODES: (re)build the toolbar and re-apply highlighting to
+    // whichever Requested Code cells match a currently-selected code, since
+    // buildTable() just replaced the table's DOM.
+    renderCopyCodesToolbar();
+    applyCopySelectionHighlight();
+
     // ── TAB 2: Suggested Code Corrections ───────────────────────────────────
     const cols2 = [
       { key: "prNum", label: "PR Num" },
@@ -892,6 +979,37 @@
       // Open/close and outside-click-to-close for the Material Type dropdown
       // are handled by buildMultiSelect()'s own listeners (same as every
       // other .ms-wrap control in the app) — nothing to wire here.
+
+      // FEAT-COPY-CODES: click a Requested Code cell to toggle it into the
+      // copy selection — scoped to just that <td> (col-mat-code-wrap), so
+      // clicking never grabs Description/Qty/SOH from other columns the way
+      // a click-drag text selection across the row would.
+      const codeCell = e.target.closest("#reqan-table-all td.col-mat-code-wrap");
+      if (codeCell) {
+        const codeSpan = codeCell.querySelector(".col-mat-code");
+        const code = (codeSpan ? codeSpan.textContent : codeCell.textContent).trim();
+        if (code) {
+          if (reqCodeCopySelection.has(code)) reqCodeCopySelection.delete(code);
+          else reqCodeCopySelection.add(code);
+          applyCopySelectionHighlight();
+          updateCopyCodesToolbar();
+        }
+        return;
+      }
+      if (e.target.id === "reqan-copycode-btn") {
+        copyTextToClipboard([...reqCodeCopySelection].join("\n"));
+        const btn = e.target;
+        const original = btn.textContent;
+        btn.textContent = "✓ Copied";
+        setTimeout(() => { btn.textContent = original; }, 1200);
+        return;
+      }
+      if (e.target.id === "reqan-copycode-clear") {
+        reqCodeCopySelection.clear();
+        applyCopySelectionHighlight();
+        updateCopyCodesToolbar();
+        return;
+      }
     });
 
     document.body.addEventListener("change", (e) => {
