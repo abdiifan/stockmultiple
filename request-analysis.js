@@ -16,7 +16,7 @@
 // the check is simple and doesn't depend on inventory data at all: is the
 // typed Location one of HO01's known storage locations
 // (HO01_STORAGE_LOCATIONS = HOM3, HOM8, HOM9)? If not, the line is flagged
-// "⚠ check location". This list is a hand-maintained constant (from HO01's
+// "CODE, mismatch" (e.g. "DEC1, mismatch"). This list is a hand-maintained constant (from HO01's
 // own rows in a plant/storage-location reference list) — update it in code
 // if HO01 ever adds, renames, or retires a storage location.
 //
@@ -973,7 +973,7 @@
         fmt: (v, r) => {
           if (!v) return "—";
           if (r.locationMismatch) {
-            return `<span style="display:inline-block;padding:0.15rem 0.55rem;border-radius:999px;font-size:0.72rem;font-weight:700;white-space:nowrap;background:rgba(220,38,38,0.14);color:var(--red)" title="Valid HO01 storage locations: ${escHtml(HO01_STORAGE_LOCATIONS.join(', '))}">⚠ ${escHtml(v)} — check location</span>`;
+            return `<span style="display:inline-block;padding:0.15rem 0.55rem;border-radius:999px;font-size:0.72rem;font-weight:700;white-space:nowrap;background:rgba(220,38,38,0.14);color:var(--red)" title="Valid HO01 storage locations: ${escHtml(HO01_STORAGE_LOCATIONS.join(', '))}">${escHtml(v)}, mismatch</span>`;
           }
           return escHtml(v);
         },
