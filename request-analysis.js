@@ -304,18 +304,23 @@
     return out;
   }
 
-  // Canonical code -> Material Type (e.g. "ZME", "ZMS"…), sourced from the
-  // main inventory data's "Material Type" column, keyed the same way as
-  // buildCanonicalDescMap (first non-blank value wins). Used to power the
-  // Material Type filter bar across all 4 tabs.
+  // Canonical code -> Material Type (e.g. "ZME", "ZMS"…), sourced the same
+  // way the rest of the app derives it (Dashboard/Transit/Expiry/QC filter
+  // bars all use getValuationType(row) — see script.js — NOT a literal
+  // "Material Type" column, which doesn't exist under that name in the SAP
+  // export). This previously read row["Material Type"] directly, which was
+  // always blank/undefined, so this map came back empty regardless of what
+  // was loaded — the filter looked "connected" but could never resolve a
+  // single type. Keyed the same way as buildCanonicalDescMap (first
+  // non-blank value wins). Used to power the Material Type filter bar.
   function buildMaterialTypeMap() {
     const out = new Map();
     const base = (typeof getReconciledBase === "function") ? getReconciledBase() : (typeof rawDf !== "undefined" ? rawDf : []);
     base.forEach(row => {
       const code = String(row._mappedMaterial || row["Material"] || "").trim();
       if (!code || out.has(code)) return;
-      const type = String(row["Material Type"] || "").trim().toUpperCase();
-      if (type) out.set(code, type);
+      const type = (typeof getValuationType === "function" ? String(getValuationType(row) || "") : "").trim().toUpperCase();
+      if (type && type !== "(NONE)") out.set(code, type);
     });
     return out;
   }
