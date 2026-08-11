@@ -2037,6 +2037,7 @@ function aggregateByMappedMaterial(df) {
         "Material Description": useMapped ? (row._mappedDesc || row["Material Description"]) : row["Material Description"],
         _mappedMaterial:        mat,
         _allPlants:             [],
+        _allStorageLocs:        [],
         _origCodes:             new Set(),
       };
       // FIX-AGG-FIRST-ROW: zero all fields first then add the first row's
@@ -2047,6 +2048,9 @@ function aggregateByMappedMaterial(df) {
       QTY_FIELDS.forEach(c => { matMap[mat][c] = getMappedQty(row, c); });
       VAL_FIELDS.forEach(c => { matMap[mat][c] = getMappedVal(row, c); });
       if (row["Plant Name"]) matMap[mat]._allPlants.push(row["Plant Name"]);
+      if (row["Description of Storage Location"] || row["Storage Location"]) {
+        matMap[mat]._allStorageLocs.push(row["Description of Storage Location"] || row["Storage Location"]);
+      }
       if (row._origMaterial)  matMap[mat]._origCodes.add(row._origMaterial);
     } else {
       const target = matMap[mat];
@@ -2060,6 +2064,10 @@ function aggregateByMappedMaterial(df) {
       if (row["Plant Name"] && !target._allPlants.includes(row["Plant Name"])) {
         target._allPlants.push(row["Plant Name"]);
       }
+      const sloc = row["Description of Storage Location"] || row["Storage Location"];
+      if (sloc && !target._allStorageLocs.includes(sloc)) {
+        target._allStorageLocs.push(sloc);
+      }
       if (row._origMaterial)  target._origCodes.add(row._origMaterial);
       if (!target["Material Group Name"] && row["Material Group Name"]) target["Material Group Name"] = row["Material Group Name"];
     }
@@ -2070,6 +2078,8 @@ function aggregateByMappedMaterial(df) {
     row["Total Value"] = (row["Value of Unrestricted Stock"] || 0) + (row["Value of Stock in Transit"] || 0) + (row["Value of Stock in Quality Inspection"] || 0);
     const plants = (row._allPlants || []).filter(Boolean).sort();
     row["_plantList"]  = plants.length ? plants.join(", ") : (row["Plant Name"] || "—");
+    const storageLocs = (row._allStorageLocs || []).filter(Boolean).sort();
+    row["_storageLocList"] = storageLocs.length ? storageLocs.join(", ") : (row["Description of Storage Location"] || row["Storage Location"] || "—");
     // Build traceability string for detail tables
     const origCodes    = [...(row._origCodes || [])].filter(c => c !== row["Material"]);
     row._traceCodes    = origCodes.length ? origCodes.join(", ") : "";
@@ -2660,6 +2670,7 @@ function renderQC() {
     {key:"Material Description", label:"Material Description", fmt:(val,r)=>renderMappedMatDesc(val,r), raw:true, cellClass:"col-mat-desc-wrap"},
     {key:"Material Group Name",                  label:"Material Group"},
     {key:"_plantList",                           label:"Plant(s)"},
+    {key:"_storageLocList",                      label:"Storage Location"},
     {key:"_expiryStr",                           label:"Shelf Life Expiry"},
     {key:"Stock in Quality Inspection",          label:"QC Qty",        fmt:fmtQty, rawKey:"Stock in Quality Inspection", cellClass:"col-qty"},
     {key:"Value of Stock in Quality Inspection", label:"QC Value (ETB)",fmt:fmtETB, rawKey:"Value of Stock in Quality Inspection", cellClass:"col-val"},
