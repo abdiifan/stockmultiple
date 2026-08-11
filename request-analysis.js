@@ -493,10 +493,20 @@
     // bar's option list. Blank/unknown types are excluded from the list
     // itself (there's nothing meaningful to filter on for them), but their
     // rows remain visible whenever the filter is inactive.
-    const availableMatTypes = [...new Set([
+    let availableMatTypes = [...new Set([
       ...rows.map(r => r.materialType),
       ...ho01NotRequestedAll.map(r => r.materialType),
     ].filter(Boolean))].sort();
+
+    // FIX-MATTYPE-EMPTY: if the main inventory data isn't loaded/reconciled
+    // yet (or its "Material Type" column can't be matched to these request
+    // lines), buildMaterialTypeMap() has nothing to key off of and every row
+    // ends up with materialType === "" — leaving this list empty and the
+    // filter dropdown blank even though it renders. Fall back to the same
+    // fixed set of types the Material tab always offers (ZME/ZMS/ZLC/ZMD) so
+    // the control is never empty; once real inventory data is loaded this
+    // reverts to the dynamically-derived list above.
+    if (!availableMatTypes.length) availableMatTypes = ["ZME", "ZMS", "ZLC", "ZMD"];
 
     return { rows, ho01NotRequested, ho01NotRequestedAllCount: ho01NotRequestedAll.length, mosDataLoaded, availableMatTypes };
   }
