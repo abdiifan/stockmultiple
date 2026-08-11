@@ -42,7 +42,11 @@ document.addEventListener('DOMContentLoaded', () => {
   setupExportDropdown();
   setupMenuToggle();
   setupDashTypeFilter();
-  initCharts();
+  try {
+    initCharts();
+  } catch (e) {
+    console.error('Chart initialization failed (charts will be unavailable, rest of app still works):', e);
+  }
   loadSavedState();
 });
 
@@ -452,7 +456,11 @@ function runAllCalculations() {
   state.filteredData = [...results];
   saveState();
   renderAllocationTable(results);
-  updateDashboard(results);
+  try {
+    updateDashboard(results);
+  } catch (e) {
+    console.error('Dashboard update failed (table + KPIs are still fine):', e);
+  }
   showToast(`✓ Calculated ${results.length} items`, 'success');
   switchTab('allocation');
 }
@@ -493,14 +501,17 @@ function updateDashboard(data) {
   document.getElementById('kpi-avgpct').textContent = (avgPct * 100).toFixed(1) + '%';
   document.getElementById('kpi-centralsoh').textContent = totalCentralSOH.toLocaleString();
 
-  updateStatusChart(filtered);
-  updateUrgentChart(filtered);
+  try { updateStatusChart(filtered); } catch (e) { console.error('Status chart update failed:', e); }
+  try { updateUrgentChart(filtered); } catch (e) { console.error('Urgent chart update failed:', e); }
   renderUrgentTable(filtered);
   renderOverstockTable(filtered);
 }
 
 // ─── Charts ──────────────────────────────────────────────────
 function initCharts() {
+  if (typeof Chart === 'undefined') {
+    throw new Error('Chart.js did not load (CDN blocked or unreachable) — dashboard charts will be skipped.');
+  }
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   const textColor = isDark ? '#94a3b8' : '#718096';
 
@@ -548,6 +559,7 @@ function updateStatusChart(data) {
   };
   data.forEach(r => { if (r.allocationStatus in counts) counts[r.allocationStatus]++; });
   const c = state.charts.status;
+  if (!c) return; // Chart.js unavailable — skip silently, rest of dashboard still works
   c.data.datasets[0].data = Object.values(counts);
   c.update();
 }
@@ -558,6 +570,7 @@ function updateUrgentChart(data) {
     .sort((a, b) => b.branchRemainingNeed - a.branchRemainingNeed)
     .slice(0, 10);
   const c = state.charts.urgent;
+  if (!c) return; // Chart.js unavailable — skip silently, rest of dashboard still works
   c.data.labels = urgent.map(r => r.materialCode);
   c.data.datasets[0].data = urgent.map(r => r.branchRemainingNeed);
   c.update();
