@@ -604,54 +604,71 @@
   }
 
   // ── COPY SELECTED CODES TOOLBAR ─────────────────────────────────────────────
-  // Lets users click individual "Requested Code" cells in Tab 1 to build up a
-  // multi-code selection, then copy just those codes (one per line) to the
-  // clipboard — without click-dragging across the table, which would also
-  // grab Description/Qty/SOH text from neighboring columns. Selection is
-  // tracked in reqCodeCopySelection (by code value) so it survives table
-  // re-renders (filtering, sorting, etc.).
-  function renderCopyCodesToolbar() {
-    const tableEl = document.getElementById("reqan-table-all");
-    if (!tableEl || !tableEl.parentElement) return;
-    let bar = document.getElementById("reqan-copycode-bar");
-    if (!bar) {
-      bar = document.createElement("div");
-      bar.id = "reqan-copycode-bar";
-      bar.style.cssText =
-        "display:none;align-items:center;gap:0.6rem;margin-bottom:0.6rem;" +
-        "padding:0.5rem 0.75rem;background:var(--surface2);border:1px solid var(--border2);" +
-        "border-radius:var(--radius-sm);font-size:0.78rem;";
-      bar.innerHTML =
-        `<span id="reqan-copycode-count" style="color:var(--text);font-weight:600"></span>` +
-        `<button id="reqan-copycode-btn" class="dl-btn" type="button" style="padding:3px 12px">⧉ Copy Codes</button>` +
-        `<button id="reqan-copycode-clear" type="button" style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:0.76rem;padding:0">Clear selection</button>` +
-        `<span style="color:var(--dim);font-size:0.72rem;margin-left:auto">Tip: click a Requested Code to select it — click again to deselect</span>`;
-      tableEl.parentElement.insertBefore(bar, tableEl);
-    }
-    updateCopyCodesToolbar();
+  // Lets users click individual material-code cells — across ALL 4 tabs
+  // (Request vs Stock, Suggested Code Corrections, HO01 Stockout, HO01 Not
+  // Requested) — to build up a multi-code selection, then copy just those
+  // codes (one per line) to the clipboard. Clicking is scoped to the
+  // .col-mat-code-wrap cell (or the specific .col-mat-code span, for cells
+  // that hold more than one code, like Suggested Code Corrections' "X or Y"
+  // list), so it never grabs Description/Qty/SOH text from other columns the
+  // way click-dragging across a row would. Selection is shared across tabs
+  // (tracked in reqCodeCopySelection by code text, not DOM identity or tab),
+  // so you can pick codes from more than one tab and copy them together —
+  // every tab's toolbar shows the same live count.
+  const REQ_CODE_TABLE_IDS = ["reqan-table-all", "reqan-table-suggest", "reqan-table-stockout", "reqan-table-notreq"];
+
+  function renderCopyCodesToolbars() {
+    REQ_CODE_TABLE_IDS.forEach(id => {
+      const tableEl = document.getElementById(id);
+      if (!tableEl || !tableEl.parentElement) return;
+      let bar = document.getElementById(id + "-copybar");
+      if (!bar) {
+        bar = document.createElement("div");
+        bar.id = id + "-copybar";
+        bar.className = "reqan-copycode-bar";
+        bar.style.cssText =
+          "display:none;align-items:center;gap:0.6rem;margin-bottom:0.6rem;" +
+          "padding:0.5rem 0.75rem;background:var(--surface2);border:1px solid var(--border2);" +
+          "border-radius:var(--radius-sm);font-size:0.78rem;";
+        bar.innerHTML =
+          `<span class="reqan-copycode-count" style="color:var(--text);font-weight:600"></span>` +
+          `<button class="reqan-copycode-btn dl-btn" type="button" style="padding:3px 12px">⧉ Copy Codes</button>` +
+          `<button class="reqan-copycode-clear" type="button" style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:0.76rem;padding:0">Clear selection</button>` +
+          `<span style="color:var(--dim);font-size:0.72rem;margin-left:auto">Tip: click a code to select it — click again to deselect. Selection carries across tabs.</span>`;
+        tableEl.parentElement.insertBefore(bar, tableEl);
+      }
+    });
+    updateCopyCodesToolbars();
   }
 
-  function updateCopyCodesToolbar() {
-    const bar = document.getElementById("reqan-copycode-bar");
-    if (!bar) return;
+  function updateCopyCodesToolbars() {
     const n = reqCodeCopySelection.size;
-    bar.style.display = n > 0 ? "flex" : "none";
-    const countEl = document.getElementById("reqan-copycode-count");
-    if (countEl) countEl.textContent = `${n} code${n === 1 ? "" : "s"} selected`;
+    document.querySelectorAll(".reqan-copycode-bar").forEach(bar => {
+      bar.style.display = n > 0 ? "flex" : "none";
+      const countEl = bar.querySelector(".reqan-copycode-count");
+      if (countEl) countEl.textContent = `${n} code${n === 1 ? "" : "s"} selected`;
+    });
   }
 
-  // Re-applies the "picked" highlight to whichever Requested Code cells (by
+  // Re-applies the "picked" highlight to whichever code cells/spans (by
   // text, not DOM identity) are currently in reqCodeCopySelection — needed
-  // every time buildTable() replaces the table's innerHTML.
+  // every time buildTable() replaces a table's innerHTML. Highlights the
+  // specific .col-mat-code span when a cell holds more than one code (e.g.
+  // Suggested Code Corrections' "X or Y" cells), otherwise the whole cell.
   function applyCopySelectionHighlight() {
-    document.querySelectorAll("#reqan-table-all td.col-mat-code-wrap").forEach(td => {
+    const sel = REQ_CODE_TABLE_IDS.map(id => `#${id} td.col-mat-code-wrap`).join(", ");
+    document.querySelectorAll(sel).forEach(td => {
       td.style.cursor = "pointer";
-      const codeSpan = td.querySelector(".col-mat-code");
-      const code = (codeSpan ? codeSpan.textContent : td.textContent).trim();
-      const picked = reqCodeCopySelection.has(code);
-      td.style.background = picked ? "var(--accent-glow)" : "";
-      td.style.outline = picked ? "1px solid var(--blue)" : "";
-      td.title = picked ? "Click to deselect" : "Click to select for copying";
+      const spans = td.querySelectorAll(".col-mat-code");
+      const targets = spans.length ? [...spans] : [td];
+      targets.forEach(el => {
+        const code = el.textContent.trim();
+        const picked = reqCodeCopySelection.has(code);
+        el.style.background = picked ? "var(--accent-glow)" : "";
+        el.style.outline = picked ? "1px solid var(--blue)" : "";
+        el.style.borderRadius = picked ? "3px" : "";
+        el.title = picked ? "Click to deselect" : "Click to select for copying";
+      });
     });
   }
 
@@ -842,12 +859,6 @@
       { key: "duplicateTotalQty", label: "Combined Requested Qty" }, { key: "duplicateSiblingsLabel", label: "Other Lines (Same Item)" },
     ], "request_analysis_all_lines");
 
-    // FEAT-COPY-CODES: (re)build the toolbar and re-apply highlighting to
-    // whichever Requested Code cells match a currently-selected code, since
-    // buildTable() just replaced the table's DOM.
-    renderCopyCodesToolbar();
-    applyCopySelectionHighlight();
-
     // ── TAB 2: Suggested Code Corrections ───────────────────────────────────
     const cols2 = [
       { key: "prNum", label: "PR Num" },
@@ -927,6 +938,13 @@
       ], "request_analysis_ho01_not_requested");
     }
 
+    // FEAT-COPY-CODES: (re)build the toolbar for every tab that has a code
+    // column and re-apply highlighting, since buildTable() just replaced
+    // each table's DOM. Done once here (not per-tab above) since all 4
+    // table elements exist by this point in the render.
+    renderCopyCodesToolbars();
+    applyCopySelectionHighlight();
+
     // ── Tab counts (badges in tab labels) ───────────────────────────────────
     setTabCount("reqan-tab-count-all", filteredRows.length);
     setTabCount("reqan-tab-count-suggest", suggestionRows.length);
@@ -980,23 +998,26 @@
       // are handled by buildMultiSelect()'s own listeners (same as every
       // other .ms-wrap control in the app) — nothing to wire here.
 
-      // FEAT-COPY-CODES: click a Requested Code cell to toggle it into the
-      // copy selection — scoped to just that <td> (col-mat-code-wrap), so
-      // clicking never grabs Description/Qty/SOH from other columns the way
-      // a click-drag text selection across the row would.
-      const codeCell = e.target.closest("#reqan-table-all td.col-mat-code-wrap");
+      // FEAT-COPY-CODES: click a material-code cell (any of the 4 tabs) to
+      // toggle it into the copy selection — scoped to just the code
+      // cell/span, so clicking never grabs Description/Qty/SOH from other
+      // columns the way a click-drag text selection across the row would.
+      // For cells holding more than one code (Suggested Code Corrections'
+      // "X or Y" list), the specific .col-mat-code span clicked is used so
+      // the two codes in that cell can be selected independently.
+      const codeCell = e.target.closest(REQ_CODE_TABLE_IDS.map(id => `#${id} td.col-mat-code-wrap`).join(", "));
       if (codeCell) {
-        const codeSpan = codeCell.querySelector(".col-mat-code");
+        const codeSpan = e.target.closest(".col-mat-code") || codeCell.querySelector(".col-mat-code");
         const code = (codeSpan ? codeSpan.textContent : codeCell.textContent).trim();
         if (code) {
           if (reqCodeCopySelection.has(code)) reqCodeCopySelection.delete(code);
           else reqCodeCopySelection.add(code);
           applyCopySelectionHighlight();
-          updateCopyCodesToolbar();
+          updateCopyCodesToolbars();
         }
         return;
       }
-      if (e.target.id === "reqan-copycode-btn") {
+      if (e.target.classList && e.target.classList.contains("reqan-copycode-btn")) {
         copyTextToClipboard([...reqCodeCopySelection].join("\n"));
         const btn = e.target;
         const original = btn.textContent;
@@ -1004,10 +1025,10 @@
         setTimeout(() => { btn.textContent = original; }, 1200);
         return;
       }
-      if (e.target.id === "reqan-copycode-clear") {
+      if (e.target.classList && e.target.classList.contains("reqan-copycode-clear")) {
         reqCodeCopySelection.clear();
         applyCopySelectionHighlight();
-        updateCopyCodesToolbar();
+        updateCopyCodesToolbars();
         return;
       }
     });
