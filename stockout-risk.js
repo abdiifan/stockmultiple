@@ -4,25 +4,28 @@
 //
 // RULE (per product decision)
 // ----------------------------
-//   A material is AT RISK OF STOCKOUT when:
-//       National MOS < 4 months
-//   where National MOS is EXACTLY mos.js's existing computeNationalMOS():
+//   Every material in scope is classified into ONE of five MOS bands, where
+//   National MOS is EXACTLY mos.js's existing computeNationalMOS():
 //       National MOS = (SOH at every plant, including HO01)
 //                     ÷ (AMC at every BRANCH plant, excluding HO01)
 //
-//   Within that <4mo band, rows are split by urgency (status field):
-//       status = "out"  → National MOS < 1 month  → CURRENTLY STOCKED OUT
-//                          (already exhausted or nearly so — not a future
-//                          "risk," this needs emergency action now)
-//       status = "risk" → 1 ≤ National MOS < 4     → AT RISK (forward-looking
-//                          window to act before it becomes a stockout)
-//       status = "ok"   → National MOS ≥ 4         → not flagged
-//   atRisk (boolean) = status is "out" or "risk", i.e. MOS < 4 — kept for
-//   backward compatibility with filtering/sorting logic that predates the split.
+//   status = "out"       → National MOS < 1 month        → STOCKOUT
+//                           (already exhausted or nearly so — not a future
+//                           "risk," this needs emergency action now)
+//   status = "high"      → 1 ≤ National MOS < 3 month     → HIGH RISK
+//   status = "medium"    → 3 ≤ National MOS < 6 month     → MEDIUM RISK
+//   status = "optimal"   → 6 ≤ National MOS < 12 month    → OPTIMAL
+//   status = "overstock" → National MOS ≥ 12 month        → OVERSTOCK
+//
+//   atRisk (boolean) = status is "out" or "high", i.e. MOS < 3 — kept for
+//   backward compatibility with filtering/sorting logic that predates the
+//   5-way split (this is the same "needs attention soon" boundary the old
+//   single at-risk threshold used to represent).
 //
 // SCOPE DECISIONS (confirmed)
 // ---------------------------
-//   - Threshold is a fixed constant (STOCKOUT_MOS_THRESHOLD = 4), not a UI input.
+//   - Thresholds are fixed constants (see STOCKOUT_*_THRESHOLD below), not UI
+//     inputs.
 //   - Respects the global sidebar Person Filter (rows are still scoped by it,
 //     same as every other MOS-derived page) — but the Person column itself is
 //     NOT displayed on this page or in its export.
@@ -30,11 +33,12 @@
 //     Type dropdown selection: ZME, ZMS, ZLC. Any other type (e.g. ZMD) is
 //     excluded from this page entirely, even under "All Types."
 //   - Materials with National MOS = null (no branch committed at all) or
-//     = Infinity (stock but zero branch demand) are EXCLUDED from this page.
+//     = Infinity (stock but zero branch demand) are EXCLUDED from this page —
+//     there's no finite MOS to place in a band.
 //   - No Material Group filter — removed per product decision.
 //   - NO ETB value anywhere on this page, NO chart — KPIs + table only.
-//   - KPI row shows a per-type at-risk breakdown (ZME / ZMS / ZLC counts)
-//     instead of an average-MOS figure.
+//   - KPI row shows a per-type at-risk breakdown (ZME / ZMS / ZLC counts,
+//     Stockout + High Risk only) instead of an average-MOS figure.
 //
 // Requires: script.js (fmtQty, escHtml, buildTable, wireTableExport,
 //           downloadCSV, downloadExcel, PAGE_RENDERERS, renderPage,
@@ -44,9 +48,20 @@
 // Must be loaded AFTER both script.js and mos.js.
 // =============================================================================
 
-const STOCKOUT_MOS_THRESHOLD = 4; // months — "at risk" ceiling, fixed per product decision, network-wide only
-const STOCKOUT_OUT_THRESHOLD = 1; // months — below this, treated as CURRENTLY STOCKED OUT, not merely "at risk"
+const STOCKOUT_OUT_THRESHOLD     = 1;  // months — below this: STOCKOUT
+const STOCKOUT_HIGH_THRESHOLD    = 3;  // months — below this (and >= out): HIGH RISK; also the "at risk" / expiry cross-check ceiling
+const STOCKOUT_MEDIUM_THRESHOLD  = 6;  // months — below this (and >= high): MEDIUM RISK
+const STOCKOUT_OPTIMAL_THRESHOLD = 12; // months — below this (and >= medium): OPTIMAL; at/above this: OVERSTOCK
 const STOCKOUT_ALLOWED_TYPES = new Set(["ZME", "ZMS", "ZLC"]); // page scope is fixed to these three
+
+// Classify a finite National MOS value into one of the five status bands.
+function stkoClassifyStatus(mos) {
+  if (mos < STOCKOUT_OUT_THRESHOLD)     return "out";
+  if (mos < STOCKOUT_HIGH_THRESHOLD)    return "high";
+  if (mos < STOCKOUT_MEDIUM_THRESHOLD)  return "medium";
+  if (mos < STOCKOUT_OPTIMAL_THRESHOLD) return "optimal";
+  return "overstock";
+}
 
 // ── EXPIRY-ADJUSTED RISK (extra cross-check signal, does NOT alter the core
 //    National MOS rule or "confirmed" status thresholds above) ───────────────
@@ -59,14 +74,16 @@ const STOCKOUT_ALLOWED_TYPES = new Set(["ZME", "ZMS", "ZLC"]); // page scope is 
 // page — so the two pages agree on what "expiring soon" means.
 //
 //   expiringQty  = national SOH (all plants incl. HO01) whose earliest-
-//                  expiring batch falls within the next STOCKOUT_MOS_THRESHOLD
+//                  expiring batch falls within the next STOCKOUT_HIGH_THRESHOLD
 //                  months (already-expired batches count too — they're gone).
 //   adjustedMos  = (totalSoh - expiringQty) ÷ totalAmc
 //                  → what National MOS becomes once that soon-to-expire
 //                  stock is excluded from the count.
-//   exprAdjustedRisk = true ONLY when a material is currently "ok"
-//                  (MOS >= 4) but adjustedMos < STOCKOUT_MOS_THRESHOLD —
-//                  i.e. looks safe today, won't be once that batch expires.
+//   exprAdjustedRisk = true ONLY when a material is currently NOT already
+//                  atRisk (status is "medium", "optimal", or "overstock")
+//                  but adjustedMos < STOCKOUT_HIGH_THRESHOLD — i.e. it looks
+//                  safe today (Medium Risk or better) but would drop into
+//                  High Risk / Stockout territory once that batch expires.
 function buildNationalExpiringQtyMap(thresholdMonths) {
   const map = new Map(); // code -> national qty expiring within thresholdMonths
   if (typeof buildExpiryMap !== "function") return map; // expiry-risk.js not loaded
@@ -89,9 +106,11 @@ function buildNationalExpiringQtyMap(thresholdMonths) {
 
 // ── BUILD THE NATIONAL STOCKOUT-RISK SNAPSHOT ─────────────────────────────────
 // Returns an array of { code, desc, type, totalSoh, totalAmc, mos, atRisk, status }
-// status: "out"  → MOS < 1   (currently stocked out, not merely "at risk")
-//         "risk" → 1 ≤ MOS < 4 (at risk of stocking out)
-//         "ok"   → MOS ≥ 4   (not flagged; only ever appears when "at-risk only" is unchecked)
+// status: "out"       → MOS < 1        → STOCKOUT
+//         "high"      → 1 ≤ MOS < 3    → HIGH RISK
+//         "medium"    → 3 ≤ MOS < 6    → MEDIUM RISK
+//         "optimal"   → 6 ≤ MOS < 12   → OPTIMAL
+//         "overstock" → MOS ≥ 12       → OVERSTOCK
 // Only ZME/ZMS/ZLC types are ever included, and only materials where National
 // MOS is a real, finite number (null/Infinity dropped).
 function buildStockoutSnapshot(typeFilter, searchQ) {
@@ -110,16 +129,15 @@ function buildStockoutSnapshot(typeFilter, searchQ) {
   // or anything else.
   rows = rows.filter(r => STOCKOUT_ALLOWED_TYPES.has(r.type));
 
-  const expiringQtyMap = buildNationalExpiringQtyMap(STOCKOUT_MOS_THRESHOLD);
+  const expiringQtyMap = buildNationalExpiringQtyMap(STOCKOUT_HIGH_THRESHOLD);
 
   const out = [];
   for (const r of rows) {
     const nat = computeNationalMOS(r, sohMap); // from mos.js
     if (nat.mos === null || nat.mos === Infinity) continue; // no basis / no real demand
 
-    const status = nat.mos < STOCKOUT_OUT_THRESHOLD ? "out"
-                  : nat.mos < STOCKOUT_MOS_THRESHOLD ? "risk"
-                  : "ok";
+    const status = stkoClassifyStatus(nat.mos);
+    const atRisk = status === "out" || status === "high"; // MOS < 3
 
     // Expiry-adjusted cross-check — doesn't affect status/atRisk above.
     const rawExpiringQty = expiringQtyMap.get(r.code) || 0;
@@ -127,13 +145,13 @@ function buildStockoutSnapshot(typeFilter, searchQ) {
     const adjustedMos      = (expiringQty > 0 && nat.totalAmc > 0)
       ? (nat.totalSoh - expiringQty) / nat.totalAmc
       : null;
-    const exprAdjustedRisk = status === "ok" && adjustedMos !== null && adjustedMos < STOCKOUT_MOS_THRESHOLD;
+    const exprAdjustedRisk = !atRisk && adjustedMos !== null && adjustedMos < STOCKOUT_HIGH_THRESHOLD;
 
     out.push({
       code: r.code, desc: r.desc, type: r.type,
       isMerged: r.isMerged, origCodes: r.origCodes,
       totalSoh: nat.totalSoh, totalAmc: nat.totalAmc, mos: nat.mos,
-      atRisk: nat.mos < STOCKOUT_MOS_THRESHOLD, status,
+      atRisk, status,
       expiringQty, adjustedMos, exprAdjustedRisk,
     });
   }
@@ -143,8 +161,9 @@ function buildStockoutSnapshot(typeFilter, searchQ) {
 // ── CLICKABLE KPI CARDS ────────────────────────────────────────────────────────
 // Clicking a KPI card on this page filters the table below to just the
 // materials behind that number. Clicking the same (active) card again clears
-// the filter. filterKey values: "out" | "risk" | "ZME" | "ZMS" | "ZLC" |
-// "exprAdj" | "all" (the "Materials Screened" card, which always resets).
+// the filter. filterKey values: "out" | "high" | "medium" | "optimal" |
+// "overstock" | "ZME" | "ZMS" | "ZLC" | "exprAdj" | "all" (the "Materials
+// Screened" card, which always resets).
 let stkoCardFilter = null;
 
 // ── FORMATTING HELPERS ────────────────────────────────────────────────────────
@@ -165,20 +184,32 @@ function stkoKpiRow(cards) {
   const el = document.getElementById("stko-kpis");
   if (el) el.innerHTML = cards.join("");
 }
-// MOS cell text color: "out" (< 1mo) gets the strongest red, "risk" (1–4mo)
-// gets standard red, "ok" (≥4mo) is left neutral.
+// MOS cell text color: "out" (<1mo) gets the strongest red, "high" (1–3mo)
+// standard red, "medium" (3–6mo) amber, "optimal" (6–12mo) green,
+// "overstock" (>=12mo) blue.
 function stkoMosCellStyle(status) {
-  if (status === "out")  return "color:var(--red);font-weight:800";
-  if (status === "risk") return "color:var(--red);font-weight:700";
+  if (status === "out")       return "color:var(--red);font-weight:800";
+  if (status === "high")      return "color:var(--red);font-weight:700";
+  if (status === "medium")    return "color:var(--amber);font-weight:700";
+  if (status === "optimal")   return "color:var(--green);font-weight:600";
+  if (status === "overstock") return "color:var(--blue);font-weight:700";
   return "color:var(--text)";
 }
 function stkoStatusBadge(status) {
-  if (status === "out")  return '<span class="stko-badge stko-badge-out">STOCKED OUT</span>';
-  if (status === "risk") return '<span class="stko-badge stko-badge-risk">AT RISK</span>';
-  return '<span class="stko-badge stko-badge-ok">OK</span>';
+  if (status === "out")       return '<span class="stko-badge stko-badge-out">STOCKOUT</span>';
+  if (status === "high")      return '<span class="stko-badge stko-badge-risk">HIGH RISK</span>';
+  if (status === "medium")    return '<span class="stko-badge stko-badge-medium">MEDIUM RISK</span>';
+  if (status === "optimal")   return '<span class="stko-badge stko-badge-ok">OPTIMAL</span>';
+  if (status === "overstock") return '<span class="stko-badge stko-badge-overstock">OVERSTOCK</span>';
+  return '<span class="stko-badge">—</span>';
 }
 function stkoStatusLabel(status) {
-  return status === "out" ? "Stocked Out" : status === "risk" ? "At Risk" : "OK";
+  if (status === "out")       return "Stockout";
+  if (status === "high")      return "High Risk";
+  if (status === "medium")    return "Medium Risk";
+  if (status === "optimal")   return "Optimal";
+  if (status === "overstock") return "Overstock";
+  return "—";
 }
 // Expiry-adjusted MOS cell: shows "—" when there's no expiry basis to judge,
 // the adjusted figure in neutral text when it's informational only, or a
@@ -188,7 +219,7 @@ function stkoExprAdjCell(r) {
   if (r.adjustedMos === null) return '<span style="color:var(--muted)">—</span>';
   const style = r.exprAdjustedRisk ? "color:var(--amber);font-weight:700" : "color:var(--text)";
   const badge = r.exprAdjustedRisk
-    ? ` <span class="stko-badge stko-badge-expadj" title="${fmtQty(r.expiringQty)} units expire within ${STOCKOUT_MOS_THRESHOLD}mo nationally">⚠ EXPIRY-ADJUSTED</span>`
+    ? ` <span class="stko-badge stko-badge-expadj" title="${fmtQty(r.expiringQty)} units expire within ${STOCKOUT_HIGH_THRESHOLD}mo nationally">⚠ EXPIRY-ADJUSTED</span>`
     : "";
   return `<span style="${style}">${fmtMosVal(r.adjustedMos)}</span>${badge}`;
 }
@@ -230,48 +261,55 @@ function renderStockoutRisk() {
   const snapshot = buildStockoutSnapshot(typeVal, searchQ);
 
   const screenedCount = snapshot.length;
-  const atRiskRows     = snapshot.filter(r => r.atRisk);           // MOS < 4 (out + risk combined)
-  const outRows        = snapshot.filter(r => r.status === "out"); // MOS < 1
-  const riskOnlyRows   = snapshot.filter(r => r.status === "risk"); // 1 ≤ MOS < 4
-  const exprAdjRows    = snapshot.filter(r => r.exprAdjustedRisk);  // "ok" today, but not once near-expiry stock excluded
+  const atRiskRows     = snapshot.filter(r => r.atRisk);                // MOS < 3 (out + high combined)
+  const outRows        = snapshot.filter(r => r.status === "out");       // MOS < 1
+  const highRows       = snapshot.filter(r => r.status === "high");      // 1 ≤ MOS < 3
+  const mediumRows     = snapshot.filter(r => r.status === "medium");    // 3 ≤ MOS < 6
+  const optimalRows    = snapshot.filter(r => r.status === "optimal");   // 6 ≤ MOS < 12
+  const overstockRows  = snapshot.filter(r => r.status === "overstock"); // MOS ≥ 12
+  const exprAdjRows    = snapshot.filter(r => r.exprAdjustedRisk);       // looks safe today, but not once near-expiry stock excluded
 
   // ── Per-type breakdown (ZME / ZMS / ZLC), split by status ──────────────────
   const countByType = {
-    ZME: { out: 0, risk: 0 },
-    ZMS: { out: 0, risk: 0 },
-    ZLC: { out: 0, risk: 0 },
+    ZME: { out: 0, high: 0 },
+    ZMS: { out: 0, high: 0 },
+    ZLC: { out: 0, high: 0 },
   };
   atRiskRows.forEach(r => {
     const t = countByType[r.type];
     if (!t) return;
     if (r.status === "out") t.out++;
-    else if (r.status === "risk") t.risk++;
+    else if (r.status === "high") t.high++;
   });
   const totalByType = {
-    ZME: countByType.ZME.out + countByType.ZME.risk,
-    ZMS: countByType.ZMS.out + countByType.ZMS.risk,
-    ZLC: countByType.ZLC.out + countByType.ZLC.risk,
+    ZME: countByType.ZME.out + countByType.ZME.high,
+    ZMS: countByType.ZMS.out + countByType.ZMS.high,
+    ZLC: countByType.ZLC.out + countByType.ZLC.high,
   };
   const TYPE_LABELS = { ZME: "Medicines", ZMS: "Medical Supplies", ZLC: "ZLC" };
-  const typeSub = (t) => `${TYPE_LABELS[t]} · ${countByType[t].out.toLocaleString()} out · ${countByType[t].risk.toLocaleString()} at risk`;
+  const typeSub = (t) => `${TYPE_LABELS[t]} · ${countByType[t].out.toLocaleString()} stockout · ${countByType[t].high.toLocaleString()} high risk`;
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
   stkoKpiRow([
     stkoKpiCard("Materials Screened", screenedCount.toLocaleString(), "ZME · ZMS · ZLC · National MOS only", "blue", "all"),
-    stkoKpiCard(`Currently Stocked Out (<${STOCKOUT_OUT_THRESHOLD}mo)`, outRows.length.toLocaleString(), "Needs emergency action now", "red", "out"),
-    stkoKpiCard(`At Risk (${STOCKOUT_OUT_THRESHOLD}–${STOCKOUT_MOS_THRESHOLD}mo)`, riskOnlyRows.length.toLocaleString(), "Window to act before it runs out", "amber", "risk"),
+    stkoKpiCard(`Stockout (<${STOCKOUT_OUT_THRESHOLD}mo)`, outRows.length.toLocaleString(), "Needs emergency action now", "red", "out"),
+    stkoKpiCard(`High Risk (${STOCKOUT_OUT_THRESHOLD}–${STOCKOUT_HIGH_THRESHOLD}mo)`, highRows.length.toLocaleString(), "Window to act before it runs out", "red", "high"),
+    stkoKpiCard(`Medium Risk (${STOCKOUT_HIGH_THRESHOLD}–${STOCKOUT_MEDIUM_THRESHOLD}mo)`, mediumRows.length.toLocaleString(), "Worth monitoring", "amber", "medium"),
+    stkoKpiCard(`Optimal (${STOCKOUT_MEDIUM_THRESHOLD}–${STOCKOUT_OPTIMAL_THRESHOLD}mo)`, optimalRows.length.toLocaleString(), "Healthy coverage band", "green", "optimal"),
+    stkoKpiCard(`Overstock (≥${STOCKOUT_OPTIMAL_THRESHOLD}mo)`, overstockRows.length.toLocaleString(), "More than a year of cover on hand", "blue", "overstock"),
     stkoKpiCard("ZME Flagged", totalByType.ZME.toLocaleString(), typeSub("ZME"), "amber", "ZME"),
     stkoKpiCard("ZMS Flagged", totalByType.ZMS.toLocaleString(), typeSub("ZMS"), "purple", "ZMS"),
     stkoKpiCard("ZLC Flagged", totalByType.ZLC.toLocaleString(), typeSub("ZLC"), "blue", "ZLC"),
-    stkoKpiCard("⚠ Expiry-Adjusted Risk", exprAdjRows.length.toLocaleString(), `MOS ≥ ${STOCKOUT_MOS_THRESHOLD}mo today, but drops below once near-expiry stock is excluded`, "amber", "exprAdj"),
+    stkoKpiCard("⚠ Expiry-Adjusted Risk", exprAdjRows.length.toLocaleString(), `MOS ≥ ${STOCKOUT_HIGH_THRESHOLD}mo today, but drops below once near-expiry stock is excluded`, "amber", "exprAdj"),
   ]);
 
   // ── TABLE ──────────────────────────────────────────────────────────────────
-  // "At-risk only" scopes to MOS < 4 as before. When "Include Expiry-Adjusted
-  // Risk" is also checked, materials that are "ok" by pure MOS but flagged by
-  // the expiry cross-check are pulled into the view too (they're MOS >= 4 so
-  // atRiskOnly alone would otherwise hide them). With at-risk-only unchecked,
-  // the full snapshot already includes them — the checkbox has no extra effect.
+  // "At-risk only" scopes to MOS < 3 (Stockout + High Risk) as before. When
+  // "Include Expiry-Adjusted Risk" is also checked, materials that pass the
+  // pure-MOS cutoff today but are flagged by the expiry cross-check are pulled
+  // into the view too (they're MOS >= 3 so atRiskOnly alone would otherwise
+  // hide them). With at-risk-only unchecked, the full snapshot already
+  // includes them — the checkbox has no extra effect.
   const baseRows = riskOnly
     ? (showExprAdj ? snapshot.filter(r => r.atRisk || r.exprAdjustedRisk) : atRiskRows)
     : snapshot;
@@ -285,16 +323,25 @@ function renderStockoutRisk() {
     cardFilteredRows = snapshot;
   } else if (stkoCardFilter === "out") {
     cardFilteredRows = outRows;
-    cardFilterLabel = `Currently Stocked Out (<${STOCKOUT_OUT_THRESHOLD}mo)`;
-  } else if (stkoCardFilter === "risk") {
-    cardFilteredRows = riskOnlyRows;
-    cardFilterLabel = `At Risk (${STOCKOUT_OUT_THRESHOLD}–${STOCKOUT_MOS_THRESHOLD}mo)`;
+    cardFilterLabel = `Stockout (<${STOCKOUT_OUT_THRESHOLD}mo)`;
+  } else if (stkoCardFilter === "high") {
+    cardFilteredRows = highRows;
+    cardFilterLabel = `High Risk (${STOCKOUT_OUT_THRESHOLD}–${STOCKOUT_HIGH_THRESHOLD}mo)`;
+  } else if (stkoCardFilter === "medium") {
+    cardFilteredRows = mediumRows;
+    cardFilterLabel = `Medium Risk (${STOCKOUT_HIGH_THRESHOLD}–${STOCKOUT_MEDIUM_THRESHOLD}mo)`;
+  } else if (stkoCardFilter === "optimal") {
+    cardFilteredRows = optimalRows;
+    cardFilterLabel = `Optimal (${STOCKOUT_MEDIUM_THRESHOLD}–${STOCKOUT_OPTIMAL_THRESHOLD}mo)`;
+  } else if (stkoCardFilter === "overstock") {
+    cardFilteredRows = overstockRows;
+    cardFilterLabel = `Overstock (≥${STOCKOUT_OPTIMAL_THRESHOLD}mo)`;
   } else if (stkoCardFilter === "ZME" || stkoCardFilter === "ZMS" || stkoCardFilter === "ZLC") {
     cardFilteredRows = atRiskRows.filter(r => r.type === stkoCardFilter);
-    cardFilterLabel = `${stkoCardFilter} Flagged (stocked out + at risk)`;
+    cardFilterLabel = `${stkoCardFilter} Flagged (stockout + high risk)`;
   } else if (stkoCardFilter === "exprAdj") {
-    // Pull straight from the full snapshot — these rows are "ok" by status
-    // and may not be in baseRows unless the expiry-adjusted checkbox is on.
+    // Pull straight from the full snapshot — these rows may not be in
+    // baseRows unless the expiry-adjusted checkbox is on.
     cardFilteredRows = exprAdjRows;
     cardFilterLabel = "Expiry-Adjusted Risk";
   }
@@ -328,8 +375,15 @@ function renderStockoutRisk() {
     { key: "status", label: "Status", fmt: (v) => stkoStatusBadge(v), raw: true },
   ];
 
+  const stkoRowClass = (row) => {
+    if (row.status === "out") return "row-stocked-out";
+    if (row.status === "high") return "row-critical";
+    if (row.exprAdjustedRisk) return "row-expiry-adjusted";
+    if (row.status === "overstock") return "row-overstock";
+    return "";
+  };
   document.getElementById("stko-table").innerHTML = tableRows.length
-    ? buildTable(tableRows, cols, (row) => row.status === "out" ? "row-stocked-out" : row.atRisk ? "row-critical" : row.exprAdjustedRisk ? "row-expiry-adjusted" : "")
+    ? buildTable(tableRows, cols, stkoRowClass)
     : '<div class="alert-info" style="margin:0.5rem 0">✓ No materials match the current filters at national stockout risk.</div>';
 
   // ── EXPORT ────────────────────────────────────────────────────────────────
