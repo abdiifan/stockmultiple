@@ -62,6 +62,10 @@ function stkoClassifyStatus(mos) {
   if (mos < STOCKOUT_OPTIMAL_THRESHOLD) return "optimal";
   return "overstock";
 }
+// Severity order across the FULL range, worst (0) to best (4). Used to detect
+// a band downgrade anywhere in the range — Overstock→Optimal, Optimal→Medium,
+// Medium→High, High→Stockout — not just crossings into the <3mo zone.
+const STKO_BAND_RANK = { out: 0, high: 1, medium: 2, optimal: 3, overstock: 4 };
 
 // ── EXPIRY-ADJUSTED RISK (extra cross-check signal, does NOT alter the core
 //    National MOS rule or "confirmed" status thresholds above) ───────────────
@@ -74,18 +78,49 @@ function stkoClassifyStatus(mos) {
 // page — so the two pages agree on what "expiring soon" means.
 //
 //   expiringQty  = national SOH (all plants incl. HO01) whose earliest-
-//                  expiring batch falls within the next STOCKOUT_HIGH_THRESHOLD
+//                  expiring batch falls within the next STOCKOUT_OPTIMAL_THRESHOLD
 //                  months (already-expired batches count too — they're gone).
+//                  This spans the FULL band range, not just the 3mo High-Risk
+//                  window, so a downgrade anywhere in the range can be seen.
+//   expiringQty_0_3mo / expiringQty_3_6mo / expiringQty_6_12mo =
+//                  the same national expiringQty split into the three bands
+//                  planners actually act on differently. A batch that's
+//                  already expired (negative months left) is folded into the
+//                  0–3mo tier — it's the most urgent case, not a separate one.
+//                  These three always sum to expiringQty.
+//   nearestExpiry = the single earliest expiry date found across ALL plants
+//                  for this material (Date, or null if no plant has expiry
+//                  data at all) — tracked independent of the 12mo threshold,
+//                  since planners want to see the soonest date a material is
+//                  exposed to even if it's further out than the window above.
 //   adjustedMos  = (totalSoh - expiringQty) ÷ totalAmc
 //                  → what National MOS becomes once that soon-to-expire
 //                  stock is excluded from the count.
-//   exprAdjustedRisk = true ONLY when a material is currently NOT already
-//                  atRisk (status is "medium", "optimal", or "overstock")
-//                  but adjustedMos < STOCKOUT_HIGH_THRESHOLD — i.e. it looks
-//                  safe today (Medium Risk or better) but would drop into
-//                  High Risk / Stockout territory once that batch expires.
-function buildNationalExpiringQtyMap(thresholdMonths) {
-  const map = new Map(); // code -> national qty expiring within thresholdMonths
+//   exprAdjustedStatus = adjustedMos run through the SAME 5-tier classifier
+//                  (stkoClassifyStatus) as the headline status — "Expiry-
+//                  Adjusted MOS" always shows the real band, not a raw
+//                  threshold check.
+//   exprAdjustedRisk = true whenever exprAdjustedStatus is a WORSE band than
+//                  the material's current status — checked across the FULL
+//                  range (Overstock→Optimal, Optimal→Medium, Medium→High,
+//                  High→Stockout), not only crossings into the <3mo zone.
+//                  i.e. any material whose coverage would drop a tier once
+//                  its soon-to-expire stock is excluded gets flagged.
+//   nearTermDriver = true when AT LEAST ONE contributing batch behind
+//                  expiringQty is inside the <3mo High-Risk window (this
+//                  includes already-expired batches). Lets the table/export
+//                  distinguish "this adjusted-risk flag is driven by stock
+//                  expiring imminently" from "...driven only by mid/long-
+//                  range (3–12mo) expiry" — the urgency signal a flat
+//                  expiringQty total loses.
+// Tiers within the threshold window that the caller cares about for the
+// urgency breakdown. Fixed to the same STOCKOUT_HIGH/MEDIUM_THRESHOLD
+// boundaries used everywhere else on this page, so "0–3mo" here always
+// means the same thing as the High-Risk band, etc.
+function buildNationalExpiryDetailMap(thresholdMonths) {
+  // code -> { expiringQty, expiringQty_0_3mo, expiringQty_3_6mo,
+  //           expiringQty_6_12mo, nearestExpiry, nearTermDriver }
+  const map = new Map();
   if (typeof buildExpiryMap !== "function") return map; // expiry-risk.js not loaded
   const expiryMap = buildExpiryMap(); // from expiry-risk.js: code -> plant -> {expiry, qtySum, valSum}
   const today = new Date();
@@ -93,19 +128,56 @@ function buildNationalExpiringQtyMap(thresholdMonths) {
 
   for (const [code, plantMap] of expiryMap.entries()) {
     let expiringQty = 0;
+    let qty0to3 = 0, qty3to6 = 0, qty6to12 = 0;
+    let nearestExpiry = null;
+    let nearTermDriver = false;
+
     for (const plant in plantMap) {
       const entry = plantMap[plant];
       if (!entry.expiry) continue; // no expiry data at this plant — can't judge, skip
+
+      // Nearest expiry is tracked across ALL plants regardless of whether it
+      // falls inside thresholdMonths — it's a standalone urgency signal, not
+      // just a byproduct of the expiringQty cutoff.
+      if (nearestExpiry === null || entry.expiry < nearestExpiry) nearestExpiry = entry.expiry;
+
       const left = monthsUntil(entry.expiry, today); // from expiry-risk.js
-      if (left !== null && left < thresholdMonths) expiringQty += entry.qtySum;
+      if (left === null || left >= thresholdMonths) continue;
+
+      expiringQty += entry.qtySum;
+
+      // Already-expired batches (left < 0) fold into the 0–3mo tier — same
+      // "it's already gone" logic as the top-level expiringQty comment above.
+      if (left < STOCKOUT_HIGH_THRESHOLD) {
+        qty0to3 += entry.qtySum;
+        nearTermDriver = true; // at least one contributing batch is <3mo out
+      } else if (left < STOCKOUT_MEDIUM_THRESHOLD) {
+        qty3to6 += entry.qtySum;
+      } else {
+        qty6to12 += entry.qtySum;
+      }
     }
-    if (expiringQty > 0) map.set(code, expiringQty);
+
+    if (expiringQty > 0 || nearestExpiry !== null) {
+      map.set(code, {
+        expiringQty,
+        expiringQty_0_3mo: qty0to3,
+        expiringQty_3_6mo: qty3to6,
+        expiringQty_6_12mo: qty6to12,
+        nearestExpiry,
+        nearTermDriver,
+      });
+    }
   }
   return map;
 }
 
 // ── BUILD THE NATIONAL STOCKOUT-RISK SNAPSHOT ─────────────────────────────────
-// Returns an array of { code, desc, type, totalSoh, totalAmc, mos, atRisk, status }
+// Returns an array of { code, desc, type, totalSoh, totalAmc, mos, atRisk, status,
+//   expiringQty, adjustedMos, exprAdjustedStatus, exprAdjustedRisk,
+//   expiringQty_0_3mo, expiringQty_3_6mo, expiringQty_6_12mo,
+//   nearestExpiry, nearTermDriver } — see the field-by-field comment block
+// above buildNationalExpiryDetailMap() for what each expiry-related field means.
 // status: "out"       → MOS < 1        → STOCKOUT
 //         "high"      → 1 ≤ MOS < 3    → HIGH RISK
 //         "medium"    → 3 ≤ MOS < 6    → MEDIUM RISK
@@ -129,7 +201,11 @@ function buildStockoutSnapshot(typeFilter, searchQ) {
   // or anything else.
   rows = rows.filter(r => STOCKOUT_ALLOWED_TYPES.has(r.type));
 
-  const expiringQtyMap = buildNationalExpiringQtyMap(STOCKOUT_HIGH_THRESHOLD);
+  // Widened to STOCKOUT_OPTIMAL_THRESHOLD (12mo) so the cross-check works
+  // across the FULL range, not just the <3mo High-Risk boundary — a batch
+  // expiring in month 5 or month 10 can still pull an Overstock or Optimal
+  // material down a tier, and a 3mo window would never have seen it.
+  const expiryDetailMap = buildNationalExpiryDetailMap(STOCKOUT_OPTIMAL_THRESHOLD);
 
   const out = [];
   for (const r of rows) {
@@ -140,19 +216,38 @@ function buildStockoutSnapshot(typeFilter, searchQ) {
     const atRisk = status === "out" || status === "high"; // MOS < 3
 
     // Expiry-adjusted cross-check — doesn't affect status/atRisk above.
-    const rawExpiringQty = expiringQtyMap.get(r.code) || 0;
+    // The adjusted MOS is run through the SAME 5-tier classifier as the
+    // headline status (stkoClassifyStatus), so "Expiry-Adjusted MOS" always
+    // shows the real band that value falls into — never a bare threshold
+    // check — and stays in lockstep with the Stockout/High/Medium/Optimal/
+    // Overstock definitions if those bands ever change.
+    const detail = expiryDetailMap.get(r.code) || null;
+    const rawExpiringQty = detail ? detail.expiringQty : 0;
     const expiringQty     = Math.min(rawExpiringQty, nat.totalSoh); // guard vs basis mismatch
     const adjustedMos      = (expiringQty > 0 && nat.totalAmc > 0)
       ? (nat.totalSoh - expiringQty) / nat.totalAmc
       : null;
-    const exprAdjustedRisk = !atRisk && adjustedMos !== null && adjustedMos < STOCKOUT_HIGH_THRESHOLD;
+    const exprAdjustedStatus = adjustedMos !== null ? stkoClassifyStatus(adjustedMos) : null;
+    // Flag ANY downgrade across the full band range once near-expiry stock
+    // is excluded — Overstock→Optimal, Optimal→Medium, Medium→High,
+    // High→Stockout all count, not just crossings into the <3mo zone.
+    const exprAdjustedRisk = exprAdjustedStatus !== null
+      && STKO_BAND_RANK[exprAdjustedStatus] < STKO_BAND_RANK[status];
 
     out.push({
       code: r.code, desc: r.desc, type: r.type,
       isMerged: r.isMerged, origCodes: r.origCodes,
       totalSoh: nat.totalSoh, totalAmc: nat.totalAmc, mos: nat.mos,
       atRisk, status,
-      expiringQty, adjustedMos, exprAdjustedRisk,
+      expiringQty, adjustedMos, exprAdjustedStatus, exprAdjustedRisk,
+      // Tiered breakdown, nearest expiry, and near-term-driver flag — raw,
+      // not capped by the totalSoh guard above (that guard only protects
+      // the adjustedMos math; the tiers/date are reporting-only signals).
+      expiringQty_0_3mo: detail ? detail.expiringQty_0_3mo : 0,
+      expiringQty_3_6mo: detail ? detail.expiringQty_3_6mo : 0,
+      expiringQty_6_12mo: detail ? detail.expiringQty_6_12mo : 0,
+      nearestExpiry: detail ? detail.nearestExpiry : null,
+      nearTermDriver: detail ? detail.nearTermDriver : false,
     });
   }
   return out;
@@ -211,17 +306,59 @@ function stkoStatusLabel(status) {
   if (status === "overstock") return "Overstock";
   return "—";
 }
-// Expiry-adjusted MOS cell: shows "—" when there's no expiry basis to judge,
-// the adjusted figure in neutral text when it's informational only, or a
-// flagged amber badge when a currently-"ok" material would drop below the
-// threshold once its soon-to-expire stock is excluded.
+// Expiry-adjusted MOS cell: shows "—" when there's no expiry basis to judge.
+// Otherwise the adjusted value is colored/weighted per its OWN classified
+// band (exprAdjustedStatus) — same 5-tier styling as the main MOS column —
+// with the matching status badge. An extra flare is appended only for the
+// "looked safe today, expiry pushes it into risk" case (exprAdjustedRisk),
+// and it's split into two variants so the urgency signal survives:
+//   ⚠ NEAR-TERM EXPIRY       → nearTermDriver true, at least one contributing
+//                              batch is inside the <3mo High-Risk window
+//                              (includes already-expired stock).
+//   ⚠ MID/LONG-RANGE EXPIRY  → the downgrade is driven entirely by batches
+//                              in the 3–12mo range — worth watching, but not
+//                              the same urgency as the near-term case.
 function stkoExprAdjCell(r) {
   if (r.adjustedMos === null) return '<span style="color:var(--muted)">—</span>';
-  const style = r.exprAdjustedRisk ? "color:var(--amber);font-weight:700" : "color:var(--text)";
-  const badge = r.exprAdjustedRisk
-    ? ` <span class="stko-badge stko-badge-expadj" title="${fmtQty(r.expiringQty)} units expire within ${STOCKOUT_HIGH_THRESHOLD}mo nationally">⚠ EXPIRY-ADJUSTED</span>`
-    : "";
-  return `<span style="${style}">${fmtMosVal(r.adjustedMos)}</span>${badge}`;
+  const style = stkoMosCellStyle(r.exprAdjustedStatus);
+  const statusBadge = stkoStatusBadge(r.exprAdjustedStatus);
+  let flare = "";
+  if (r.exprAdjustedRisk) {
+    flare = r.nearTermDriver
+      ? ` <span class="stko-badge stko-badge-expadj" title="${fmtQty(r.expiringQty_0_3mo)} units expire within ${STOCKOUT_HIGH_THRESHOLD}mo nationally">⚠ NEAR-TERM EXPIRY</span>`
+      : ` <span class="stko-badge" style="background:rgba(245,158,11,.15);color:var(--amber)" title="${fmtQty(r.expiringQty)} units expire within ${STOCKOUT_OPTIMAL_THRESHOLD}mo nationally, none inside ${STOCKOUT_HIGH_THRESHOLD}mo">⚠ MID/LONG-RANGE EXPIRY</span>`;
+  }
+  return `<span style="${style}">${fmtMosVal(r.adjustedMos)}</span> ${statusBadge}${flare}`;
+}
+
+// Formats a Date (or date-like value) as "12 Aug 2026"; "—" for null/invalid.
+// Self-contained — doesn't assume a shared date formatter exists elsewhere.
+function stkoFmtDate(d) {
+  if (!d) return "—";
+  const dt = (d instanceof Date) ? d : new Date(d);
+  if (isNaN(dt.getTime())) return "—";
+  return dt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+// Nearest-expiry cell: the date itself, colored red when it's the reason
+// nearTermDriver is true (i.e. it falls inside the <3mo window), so the
+// urgency is visible without opening the Expiry-Adjusted MOS tooltip.
+function stkoNearestExpiryCell(r) {
+  if (!r.nearestExpiry) return '<span style="color:var(--muted)">—</span>';
+  const style = r.nearTermDriver ? "color:var(--red);font-weight:700" : "";
+  return `<span style="${style}">${stkoFmtDate(r.nearestExpiry)}</span>`;
+}
+
+// Compact tiered expiringQty cell: "0–3mo / 3–6mo / 6–12mo" units, each
+// colored by urgency, so the FULL breakdown a downgrade is drawn from is
+// visible at a glance instead of just the collapsed total.
+function stkoExpiringTierCell(r) {
+  const t0 = r.expiringQty_0_3mo || 0, t1 = r.expiringQty_3_6mo || 0, t2 = r.expiringQty_6_12mo || 0;
+  if (t0 + t1 + t2 <= 0) return '<span style="color:var(--muted)">—</span>';
+  const seg = (qty, color) => qty > 0
+    ? `<span style="color:var(--${color});font-weight:600">${fmtQty(qty)}</span>`
+    : '<span style="color:var(--muted)">0</span>';
+  return `${seg(t0, "red")} / ${seg(t1, "amber")} / ${seg(t2, "blue")}`;
 }
 
 
@@ -300,7 +437,7 @@ function renderStockoutRisk() {
     stkoKpiCard("ZME Flagged", totalByType.ZME.toLocaleString(), typeSub("ZME"), "amber", "ZME"),
     stkoKpiCard("ZMS Flagged", totalByType.ZMS.toLocaleString(), typeSub("ZMS"), "purple", "ZMS"),
     stkoKpiCard("ZLC Flagged", totalByType.ZLC.toLocaleString(), typeSub("ZLC"), "blue", "ZLC"),
-    stkoKpiCard("⚠ Expiry-Adjusted Risk", exprAdjRows.length.toLocaleString(), `MOS ≥ ${STOCKOUT_HIGH_THRESHOLD}mo today, but drops below once near-expiry stock is excluded`, "amber", "exprAdj"),
+    stkoKpiCard("⚠ Expiry-Adjusted Risk", exprAdjRows.length.toLocaleString(), `Would drop a band once stock expiring within ${STOCKOUT_OPTIMAL_THRESHOLD}mo is excluded`, "amber", "exprAdj"),
   ]);
 
   // ── TABLE ──────────────────────────────────────────────────────────────────
@@ -372,6 +509,10 @@ function renderStockoutRisk() {
       fmt: (v, r) => `<span style="${stkoMosCellStyle(r.status)}">${fmtMosVal(v)}</span>`, raw: true },
     { key: "adjustedMos", label: "Expiry-Adjusted MOS",
       fmt: (v, r) => stkoExprAdjCell(r), raw: true },
+    { key: "nearestExpiry", label: "Nearest Expiry",
+      fmt: (v, r) => stkoNearestExpiryCell(r), raw: true },
+    { key: "expiringQty", label: "Expiring Qty (0–3 / 3–6 / 6–12mo)",
+      fmt: (v, r) => stkoExpiringTierCell(r), raw: true },
     { key: "status", label: "Status", fmt: (v) => stkoStatusBadge(v), raw: true },
   ];
 
@@ -387,10 +528,11 @@ function renderStockoutRisk() {
     : '<div class="alert-info" style="margin:0.5rem 0">✓ No materials match the current filters at national stockout risk.</div>';
 
   // ── EXPORT ────────────────────────────────────────────────────────────────
-  // Export columns are kept in exact 1:1 lockstep with the on-screen `cols`
-  // above — same set, same order, same labels — so the download always
-  // matches what the user is looking at on the page. Nothing extra
-  // (no expiringQty, exprAdjustedRisk flag, or atRisk flag).
+  // Export columns mirror the on-screen `cols` above. The on-screen cell
+  // packs the adjusted MOS value + its classified band into one cell
+  // (stkoExprAdjCell); the export keeps them as two plain columns instead,
+  // since the export helper's fmt callback only ever receives the raw cell
+  // value here (not the row), matching this file's existing export pattern.
   const exportCols = [
     { key: "code", label: "Material Code" },
     { key: "desc", label: "Description" },
@@ -399,6 +541,12 @@ function renderStockoutRisk() {
     { key: "totalAmc", label: "National AMC", fmt: v => Number(v || 0).toFixed(2) },
     { key: "mos", label: "National MOS", fmt: v => Number(v).toFixed(2) },
     { key: "adjustedMos", label: "Expiry-Adjusted MOS", fmt: v => v === null ? "" : Number(v).toFixed(2) },
+    { key: "exprAdjustedStatus", label: "Expiry-Adjusted Status", fmt: v => v === null ? "" : stkoStatusLabel(v) },
+    { key: "nearestExpiry", label: "Nearest Expiry Date", fmt: v => v ? stkoFmtDate(v) : "" },
+    { key: "expiringQty_0_3mo", label: `Expiring Qty (0-${STOCKOUT_HIGH_THRESHOLD}mo)`, fmt: v => Number(v || 0).toFixed(2) },
+    { key: "expiringQty_3_6mo", label: `Expiring Qty (${STOCKOUT_HIGH_THRESHOLD}-${STOCKOUT_MEDIUM_THRESHOLD}mo)`, fmt: v => Number(v || 0).toFixed(2) },
+    { key: "expiringQty_6_12mo", label: `Expiring Qty (${STOCKOUT_MEDIUM_THRESHOLD}-${STOCKOUT_OPTIMAL_THRESHOLD}mo)`, fmt: v => Number(v || 0).toFixed(2) },
+    { key: "nearTermDriver", label: "Near-Term Driver (<3mo)", fmt: v => v ? "Yes" : "No" },
     { key: "status", label: "Status", fmt: v => stkoStatusLabel(v) },
   ];
 
