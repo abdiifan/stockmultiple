@@ -89,6 +89,25 @@ function injectAuthOverlay() {
             <div id="auth-error"></div>
             <div id="auth-loading">Checking session…</div>
           </div>
+
+          <div class="auth-login-card" id="auth-reset-card" style="display:none;">
+            <div class="auth-login-header">
+              <span class="auth-login-icon">🔑</span>
+              <h2>Choose a new password</h2>
+            </div>
+
+            <form id="auth-reset-form">
+              <label class="auth-field-label" for="auth-new-password">New Password</label>
+              <input type="password" id="auth-new-password" placeholder="••••••••" autocomplete="new-password" minlength="6" required />
+
+              <label class="auth-field-label" for="auth-new-password-confirm">Confirm New Password</label>
+              <input type="password" id="auth-new-password-confirm" placeholder="••••••••" autocomplete="new-password" minlength="6" required />
+
+              <button type="submit" id="auth-reset-submit">→ Update Password</button>
+            </form>
+
+            <div id="auth-reset-error"></div>
+          </div>
         </div>
       </section>
 
@@ -213,15 +232,16 @@ function injectAuthOverlay() {
     .auth-login-header { display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-bottom: 1.4rem; }
     .auth-login-icon { font-size: 1.1rem; }
     .auth-login-header h2 { margin: 0; font-size: 1.05rem; font-weight: 700; }
-    #auth-form { display: flex; flex-direction: column; }
+    #auth-form, #auth-reset-form { display: flex; flex-direction: column; }
     .auth-field-label { font-size: 0.74rem; font-weight: 600; color: var(--muted, #7a9ab8); margin: 0.7rem 0 0.35rem; }
     .auth-field-label:first-child { margin-top: 0; }
-    #auth-form input[type="email"], #auth-form input[type="password"] {
+    #auth-form input[type="email"], #auth-form input[type="password"],
+    #auth-reset-form input[type="password"] {
       padding: 10px 12px; border-radius: var(--radius-md, 10px); border: 1.5px solid var(--border, #1f2e44);
       background: var(--surface2, #141c2b); color: var(--text, #dce8f5); font-size: 0.9rem; font-family: inherit;
       width: 100%; box-sizing: border-box;
     }
-    #auth-form input:focus { outline: none; border-color: var(--blue, #3d94e0); box-shadow: 0 0 0 3px var(--blue-glow, rgba(61,148,224,0.22)); }
+    #auth-form input:focus, #auth-reset-form input:focus { outline: none; border-color: var(--blue, #3d94e0); box-shadow: 0 0 0 3px var(--blue-glow, rgba(61,148,224,0.22)); }
     .auth-remember-row {
       display: flex; align-items: center; gap: 0.45rem; margin: 0.9rem 0 0.2rem;
       font-size: 0.78rem; color: var(--muted, #7a9ab8); cursor: pointer;
@@ -232,13 +252,18 @@ function injectAuthOverlay() {
       background: var(--blue, #3d94e0); color: #fff; font-weight: 700; font-size: 0.9rem;
       cursor: pointer; font-family: inherit; transition: opacity 0.15s;
     }
-    #auth-submit:hover { opacity: 0.9; }
-    #auth-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+    #auth-submit:hover, #auth-reset-submit:hover { opacity: 0.9; }
+    #auth-submit:disabled, #auth-reset-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+    #auth-reset-submit {
+      margin-top: 1rem; padding: 11px; border-radius: var(--radius-md, 10px); border: none;
+      background: var(--blue, #3d94e0); color: #fff; font-weight: 700; font-size: 0.9rem;
+      cursor: pointer; font-family: inherit; transition: opacity 0.15s;
+    }
     #auth-forgot-btn {
       background: none; border: none; color: var(--blue, #3d94e0); font-size: 0.78rem;
       cursor: pointer; margin-top: 0.8rem; text-decoration: underline; font-family: inherit; padding: 0;
     }
-    #auth-error { color: var(--red, #e04545); font-size: 0.8rem; margin-top: 0.9rem; min-height: 1em; text-align: center; }
+    #auth-error, #auth-reset-error { color: var(--red, #e04545); font-size: 0.8rem; margin-top: 0.9rem; min-height: 1em; text-align: center; }
     #auth-loading { display: none; color: var(--muted, #7a9ab8); font-size: 0.82rem; margin-top: 1rem; text-align: center; }
     #auth-loading.show { display: block; }
 
@@ -314,7 +339,9 @@ function injectAuthOverlay() {
     }
     errEl.style.color = "var(--muted, #7a9ab8)";
     errEl.textContent = "Sending reset link…";
-    const { error } = await supabaseClient.auth.resetPasswordForEmail(email);
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + window.location.pathname,
+    });
     if (error) {
       errEl.style.color = "var(--red, #e04545)";
       errEl.textContent = error.message;
@@ -323,6 +350,53 @@ function injectAuthOverlay() {
     errEl.style.color = "var(--green, #30a85f)";
     errEl.textContent = "Reset link sent — check your inbox.";
   });
+
+  // Submit new password (shown after the user clicks the emailed reset link)
+  document.getElementById("auth-reset-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const pw1    = document.getElementById("auth-new-password").value;
+    const pw2    = document.getElementById("auth-new-password-confirm").value;
+    const btn    = document.getElementById("auth-reset-submit");
+    const errEl  = document.getElementById("auth-reset-error");
+    errEl.textContent = "";
+
+    if (pw1 !== pw2) {
+      errEl.textContent = "Passwords don't match.";
+      return;
+    }
+    if (pw1.length < 6) {
+      errEl.textContent = "Password must be at least 6 characters.";
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = "Updating…";
+
+    const { error } = await supabaseClient.auth.updateUser({ password: pw1 });
+
+    btn.disabled = false;
+    btn.textContent = "→ Update Password";
+
+    if (error) {
+      errEl.textContent = error.message;
+      return;
+    }
+
+    // Password updated — the recovery session is now a real session, log them in.
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    document.getElementById("auth-reset-card").style.display = "none";
+    document.getElementById("auth-login-card").style.display = "";
+    if (session) await loadProfileAndUnlock(session);
+  });
+}
+
+// Switch the overlay into "set new password" mode
+function showResetPasswordForm() {
+  showAuthOverlay();
+  const loginCard = document.getElementById("auth-login-card");
+  const resetCard = document.getElementById("auth-reset-card");
+  if (loginCard) loginCard.style.display = "none";
+  if (resetCard) resetCard.style.display = "";
 }
 
 function showAuthOverlay() {
@@ -415,6 +489,10 @@ async function initAuth() {
       window.APP_USER = null;
       window.isAdmin  = false;
       location.reload(); // simplest way to fully reset in-memory app state
+    }
+    if (event === "PASSWORD_RECOVERY") {
+      // User arrived via the "reset your password" email link.
+      showResetPasswordForm();
     }
   });
 }
