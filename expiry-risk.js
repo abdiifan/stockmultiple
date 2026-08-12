@@ -76,7 +76,7 @@ function buildExpiryMap() {
 
     if (!map.has(mat)) map.set(mat, {});
     const plantMap = map.get(mat);
-    if (!plantMap[plt]) plantMap[plt] = { expiry: null, valSum: 0, qtySum: 0 };
+    if (!plantMap[plt]) plantMap[plt] = { expiry: null, valSum: 0, qtySum: 0, earliestQty: 0, earliestVal: 0 };
 
     const entry = plantMap[plt];
     entry.valSum += val;
@@ -84,8 +84,29 @@ function buildExpiryMap() {
 
     // Earliest-expiring batch wins (pharma best practice, same rule used
     // elsewhere in this app when collapsing batches).
+    //
+    // BUGFIX-EXPIRY-QTY: qtySum/valSum above are running totals across EVERY
+    // batch at this plant — they answer "how much stock is here in total"
+    // (needed by unitValueFor() below). They do NOT answer "how much of that
+    // stock is the batch that's actually expiring soonest." Callers that need
+    // the latter (e.g. stockout-risk.js's expiring-qty tiers) must use
+    // earliestQty/earliestVal instead, or they end up flagging a plant's
+    // ENTIRE stock as "expiring soon" just because one batch there is.
     const exp = row._expiry instanceof Date && !isNaN(row._expiry) ? row._expiry : null;
-    if (exp && (!entry.expiry || exp < entry.expiry)) entry.expiry = exp;
+    if (exp) {
+      if (!entry.expiry || exp < entry.expiry) {
+        // New strictly-earliest date — replace, don't accumulate onto
+        // whatever batch(es) previously held that title.
+        entry.expiry      = exp;
+        entry.earliestQty = qty;
+        entry.earliestVal = val;
+      } else if (exp.getTime() === entry.expiry.getTime()) {
+        // Tied for earliest — multiple batches sharing that exact date
+        // legitimately all count.
+        entry.earliestQty += qty;
+        entry.earliestVal += val;
+      }
+    }
   }
 
   return map;
