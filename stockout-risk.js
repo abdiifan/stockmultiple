@@ -251,8 +251,16 @@ function buildStockoutSnapshot(typeFilter, searchQ) {
     // columns below. Mirrors stkoExpiryDriverCell()'s tier-based logic
     // exactly, so the export never shows "Long-Range" when the 6–12mo tier
     // is actually empty.
+    //
+    // Shown for ANY material with expiring stock (expiringQty > 0), not just
+    // ones where it drags the status band down — a material can have real
+    // expiring stock and still stay comfortably in its current band (e.g.
+    // Overstock with a small slice expiring). exprAdjustedRisk (separate
+    // field, unchanged) is what differentiates "just some expiring stock" —
+    // no downgrade — from "this expiring stock is bad enough to demote the
+    // band" — see stkoExpiryDriverCell()'s styling split.
     let expiryDriverLabel = "";
-    if (exprAdjustedRisk) {
+    if (expiringQty > 0) {
       if (nearTermDriver) {
         expiryDriverLabel = `Near-Term (<${STOCKOUT_HIGH_THRESHOLD}mo)`;
       } else {
@@ -339,52 +347,68 @@ function stkoStatusLabel(status) {
 }
 // Expiry-adjusted MOS cell: shows "—" when there's no expiry basis to judge.
 // Otherwise the adjusted value is colored/weighted per its OWN classified
-// band (exprAdjustedStatus) — same 5-tier styling as the main MOS column —
-// with the matching status badge. The near-term/mid-long-range driver flare
-// now lives in its own column (stkoExpiryDriverCell) instead of stacking
-// onto this cell.
+// band (exprAdjustedStatus) — same 5-tier styling as the main MOS column.
+// The status badge itself now lives in its own "Expiry-Adjusted Status"
+// column (stkoExprAdjStatusCell) instead of stacking onto this cell — same
+// split the main MOS/Status columns already use.
 function stkoExprAdjCell(r) {
   if (r.adjustedMos === null) return '<span style="color:var(--muted)">—</span>';
   const style = stkoMosCellStyle(r.exprAdjustedStatus);
-  const statusBadge = stkoStatusBadge(r.exprAdjustedStatus);
-  return `<span style="${style}">${fmtMosVal(r.adjustedMos)}</span> ${statusBadge}`;
+  return `<span style="${style}">${fmtMosVal(r.adjustedMos)}</span>`;
+}
+// Dedicated Expiry-Adjusted Status column — same badge as the main Status
+// column (stkoStatusBadge), just driven by exprAdjustedStatus instead of
+// status. "—" when there's no expiry basis to judge (adjustedMos is null).
+function stkoExprAdjStatusCell(r) {
+  if (r.adjustedMos === null) return '<span style="color:var(--muted)">—</span>';
+  return stkoStatusBadge(r.exprAdjustedStatus);
 }
 
-// Dedicated severity-driver column, shown right after Expiry-Adjusted MOS.
-// Blank ("—") when there's no adjusted-risk downgrade at all. Otherwise
-// picks the label from whichever tier(s) actually hold the expiring qty —
-// NOT just a near-term/not-near-term binary — so "long-range" is never
-// shown unless the 6–12mo tier genuinely has stock in it:
-//   ⚠ NEAR-TERM EXPIRY      → nearTermDriver true (some qty is <3mo out,
-//                             including already-expired stock).
-//   ⚠ MID-RANGE EXPIRY      → all non-near-term qty sits in the 3–6mo tier;
-//                             6–12mo tier is empty.
-//   ⚠ LONG-RANGE EXPIRY     → all non-near-term qty sits in the 6–12mo tier;
-//                             3–6mo tier is empty.
-//   ⚠ MID/LONG-RANGE EXPIRY → non-near-term qty is split across BOTH the
-//                             3–6mo and 6–12mo tiers.
+// Dedicated severity-driver column, shown right after Expiry-Adjusted Status.
+// Blank ("—") only when there's NO expiring stock at all. Applies to every
+// material with expiringQty > 0 — not just ones where it drags the band
+// down — but the two cases are styled differently so they stay easy to
+// tell apart at a glance:
+//   ⚠ amber "…EXPIRY" badge   → exprAdjustedRisk true: this expiring stock
+//                                is enough to demote the status band.
+//   ⋯ muted "…expiry watch"   → material has expiring stock, but the band
+//                                stays the same either way (e.g. an
+//                                Overstock item with a small slice expiring
+//                                early still lands in Overstock/Optimal
+//                                after adjustment).
+//
+// Label picks whichever tier(s) actually hold the expiring qty — NOT just a
+// near-term/not-near-term binary — so "long-range" is never shown unless the
+// 6–12mo tier genuinely has stock in it:
+//   NEAR-TERM EXPIRY      → nearTermDriver true (some qty is <3mo out,
+//                           including already-expired stock).
+//   MID-RANGE EXPIRY      → all qty sits in the 3–6mo tier; 6–12mo empty.
+//   LONG-RANGE EXPIRY     → all qty sits in the 6–12mo tier; 3–6mo empty.
+//   MID/LONG-RANGE EXPIRY → qty is split across BOTH the 3–6mo and 6–12mo tiers.
 function stkoExpiryDriverCell(r) {
-  if (!r.exprAdjustedRisk) return '<span style="color:var(--muted)">—</span>';
+  if (!(r.expiringQty > 0)) return '<span style="color:var(--muted)">—</span>';
+
+  let rangeLabel;
   if (r.nearTermDriver) {
-    return `<span class="stko-badge stko-badge-expadj" title="${fmtQty(r.expiringQty_0_3mo)} units expire within ${STOCKOUT_HIGH_THRESHOLD}mo nationally">⚠ NEAR-TERM EXPIRY</span>`;
-  }
-  const hasMid  = (r.expiringQty_3_6mo || 0) > 0;
-  const hasLong = (r.expiringQty_6_12mo || 0) > 0;
-  let label, title;
-  if (hasMid && hasLong) {
-    label = "⚠ MID/LONG-RANGE EXPIRY";
-    title = `${fmtQty(r.expiringQty_3_6mo)} units expire in ${STOCKOUT_HIGH_THRESHOLD}-${STOCKOUT_MEDIUM_THRESHOLD}mo, ${fmtQty(r.expiringQty_6_12mo)} in ${STOCKOUT_MEDIUM_THRESHOLD}-${STOCKOUT_OPTIMAL_THRESHOLD}mo nationally`;
-  } else if (hasLong) {
-    label = "⚠ LONG-RANGE EXPIRY";
-    title = `${fmtQty(r.expiringQty_6_12mo)} units expire in ${STOCKOUT_MEDIUM_THRESHOLD}-${STOCKOUT_OPTIMAL_THRESHOLD}mo nationally, none inside ${STOCKOUT_MEDIUM_THRESHOLD}mo`;
+    rangeLabel = "NEAR-TERM EXPIRY";
   } else {
-    // hasMid, or (edge case) neither — exprAdjustedRisk implies expiringQty > 0
-    // somewhere, so with near-term and long-range both ruled out, mid-range
-    // is the only place it can be.
-    label = "⚠ MID-RANGE EXPIRY";
-    title = `${fmtQty(r.expiringQty_3_6mo)} units expire in ${STOCKOUT_HIGH_THRESHOLD}-${STOCKOUT_MEDIUM_THRESHOLD}mo nationally, none inside ${STOCKOUT_HIGH_THRESHOLD}mo or beyond ${STOCKOUT_MEDIUM_THRESHOLD}mo`;
+    const hasMid  = (r.expiringQty_3_6mo || 0) > 0;
+    const hasLong = (r.expiringQty_6_12mo || 0) > 0;
+    rangeLabel = (hasMid && hasLong) ? "MID/LONG-RANGE EXPIRY"
+      : hasLong ? "LONG-RANGE EXPIRY"
+      : "MID-RANGE EXPIRY";
   }
-  return `<span class="stko-badge" style="background:rgba(245,158,11,.15);color:var(--amber)" title="${title}">${label}</span>`;
+  const title = `${fmtQty(r.expiringQty_0_3mo)} units <${STOCKOUT_HIGH_THRESHOLD}mo, `
+    + `${fmtQty(r.expiringQty_3_6mo)} units ${STOCKOUT_HIGH_THRESHOLD}-${STOCKOUT_MEDIUM_THRESHOLD}mo, `
+    + `${fmtQty(r.expiringQty_6_12mo)} units ${STOCKOUT_MEDIUM_THRESHOLD}-${STOCKOUT_OPTIMAL_THRESHOLD}mo nationally`
+    + (r.exprAdjustedRisk ? " — drops the status band once excluded" : " — status band unchanged once excluded");
+
+  if (r.exprAdjustedRisk) {
+    return `<span class="stko-badge stko-badge-expadj" style="background:rgba(245,158,11,.15);color:var(--amber)" title="${title}">⚠ ${rangeLabel}</span>`;
+  }
+  // Has expiring stock, but adjusting for it doesn't change the band —
+  // deliberately muted/no-warning-icon so it doesn't read as urgent.
+  return `<span class="stko-badge" style="background:rgba(148,163,184,.15);color:var(--muted)" title="${title}">⋯ ${rangeLabel} (no band change)</span>`;
 }
 
 // Formats a Date (or date-like value) as "12 Aug 2026"; "—" for null/invalid.
@@ -678,6 +702,8 @@ function renderStockoutRisk() {
       fmt: (v, r) => `<span style="${stkoMosCellStyle(r.status)}">${fmtMosVal(v)}</span>`, raw: true },
     { key: "adjustedMos", label: "Expiry-Adjusted MOS",
       fmt: (v, r) => stkoExprAdjCell(r), raw: true },
+    { key: "exprAdjustedStatus", label: "Expiry-Adjusted Status",
+      fmt: (v, r) => stkoExprAdjStatusCell(r), raw: true },
     { key: "exprAdjustedRisk", label: "Expiry Driver",
       fmt: (v, r) => stkoExpiryDriverCell(r), raw: true },
     { key: "nearestExpiry", label: "Nearest Expiry",
@@ -715,6 +741,7 @@ function renderStockoutRisk() {
     { key: "adjustedMos", label: "Expiry-Adjusted MOS", fmt: v => v === null ? "" : Number(v).toFixed(2) },
     { key: "exprAdjustedStatus", label: "Expiry-Adjusted Status", fmt: v => v === null ? "" : stkoStatusLabel(v) },
     { key: "expiryDriverLabel", label: "Expiry Driver" },
+    { key: "exprAdjustedRisk", label: "Expiry Driver Changes Status?", fmt: v => v ? "Yes" : "No" },
     { key: "nearestExpiry", label: "Nearest Expiry Date", fmt: v => v ? stkoFmtDate(v) : "" },
     { key: "expiringQty_0_3mo", label: `Expiring Qty (0-${STOCKOUT_HIGH_THRESHOLD}mo)`, fmt: v => Number(v || 0).toFixed(2) },
     { key: "expiringQty_3_6mo", label: `Expiring Qty (${STOCKOUT_HIGH_THRESHOLD}-${STOCKOUT_MEDIUM_THRESHOLD}mo)`, fmt: v => Number(v || 0).toFixed(2) },
