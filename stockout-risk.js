@@ -40,9 +40,9 @@
 //   - KPI row shows a per-type at-risk breakdown (ZME / ZMS / ZLC counts,
 //     Stockout + High Risk only) instead of an average-MOS figure.
 //
-// Requires: script.js (fmtQty, escHtml, buildTable, wireTableExport,
-//           downloadCSV, downloadExcel, PAGE_RENDERERS, renderPage,
-//           currentPage, personFilter, rawDf)
+// Requires: script.js (fmtQty, escHtml, wireTableExport, downloadCSV,
+//           downloadExcel, PAGE_RENDERERS, renderPage, currentPage,
+//           personFilter, rawDf)
 //           mos.js (HUB_PLANT, mosMerged, mosPlants, buildMosSohMap,
 //           computeNationalMOS, getMosFilteredRows, fmtMosVal)
 // Must be loaded AFTER both script.js and mos.js.
@@ -234,6 +234,17 @@ function buildStockoutSnapshot(typeFilter, searchQ) {
     const exprAdjustedRisk = exprAdjustedStatus !== null
       && STKO_BAND_RANK[exprAdjustedStatus] < STKO_BAND_RANK[status];
 
+    const nearTermDriver = detail ? detail.nearTermDriver : false;
+    // Plain-string version of the driver badge, precomputed here (rather than
+    // in the export column's fmt) because the export helper's fmt callback
+    // only ever receives the raw cell value, not the row — see the export
+    // columns below.
+    const expiryDriverLabel = !exprAdjustedRisk
+      ? ""
+      : (nearTermDriver
+          ? `Near-Term (<${STOCKOUT_HIGH_THRESHOLD}mo)`
+          : `Mid/Long-Range (${STOCKOUT_HIGH_THRESHOLD}-${STOCKOUT_OPTIMAL_THRESHOLD}mo)`);
+
     out.push({
       code: r.code, desc: r.desc, type: r.type,
       isMerged: r.isMerged, origCodes: r.origCodes,
@@ -247,7 +258,7 @@ function buildStockoutSnapshot(typeFilter, searchQ) {
       expiringQty_3_6mo: detail ? detail.expiringQty_3_6mo : 0,
       expiringQty_6_12mo: detail ? detail.expiringQty_6_12mo : 0,
       nearestExpiry: detail ? detail.nearestExpiry : null,
-      nearTermDriver: detail ? detail.nearTermDriver : false,
+      nearTermDriver, expiryDriverLabel,
     });
   }
   return out;
@@ -309,26 +320,30 @@ function stkoStatusLabel(status) {
 // Expiry-adjusted MOS cell: shows "—" when there's no expiry basis to judge.
 // Otherwise the adjusted value is colored/weighted per its OWN classified
 // band (exprAdjustedStatus) — same 5-tier styling as the main MOS column —
-// with the matching status badge. An extra flare is appended only for the
-// "looked safe today, expiry pushes it into risk" case (exprAdjustedRisk),
-// and it's split into two variants so the urgency signal survives:
+// with the matching status badge. The near-term/mid-long-range driver flare
+// now lives in its own column (stkoExpiryDriverCell) instead of stacking
+// onto this cell.
+function stkoExprAdjCell(r) {
+  if (r.adjustedMos === null) return '<span style="color:var(--muted)">—</span>';
+  const style = stkoMosCellStyle(r.exprAdjustedStatus);
+  const statusBadge = stkoStatusBadge(r.exprAdjustedStatus);
+  return `<span style="${style}">${fmtMosVal(r.adjustedMos)}</span> ${statusBadge}`;
+}
+
+// Dedicated severity-driver column, shown right after Expiry-Adjusted MOS.
+// Blank ("—") when there's no adjusted-risk downgrade at all. Otherwise
+// splits into the two variants so the urgency signal survives:
 //   ⚠ NEAR-TERM EXPIRY       → nearTermDriver true, at least one contributing
 //                              batch is inside the <3mo High-Risk window
 //                              (includes already-expired stock).
 //   ⚠ MID/LONG-RANGE EXPIRY  → the downgrade is driven entirely by batches
 //                              in the 3–12mo range — worth watching, but not
 //                              the same urgency as the near-term case.
-function stkoExprAdjCell(r) {
-  if (r.adjustedMos === null) return '<span style="color:var(--muted)">—</span>';
-  const style = stkoMosCellStyle(r.exprAdjustedStatus);
-  const statusBadge = stkoStatusBadge(r.exprAdjustedStatus);
-  let flare = "";
-  if (r.exprAdjustedRisk) {
-    flare = r.nearTermDriver
-      ? ` <span class="stko-badge stko-badge-expadj" title="${fmtQty(r.expiringQty_0_3mo)} units expire within ${STOCKOUT_HIGH_THRESHOLD}mo nationally">⚠ NEAR-TERM EXPIRY</span>`
-      : ` <span class="stko-badge" style="background:rgba(245,158,11,.15);color:var(--amber)" title="${fmtQty(r.expiringQty)} units expire within ${STOCKOUT_OPTIMAL_THRESHOLD}mo nationally, none inside ${STOCKOUT_HIGH_THRESHOLD}mo">⚠ MID/LONG-RANGE EXPIRY</span>`;
-  }
-  return `<span style="${style}">${fmtMosVal(r.adjustedMos)}</span> ${statusBadge}${flare}`;
+function stkoExpiryDriverCell(r) {
+  if (!r.exprAdjustedRisk) return '<span style="color:var(--muted)">—</span>';
+  return r.nearTermDriver
+    ? `<span class="stko-badge stko-badge-expadj" title="${fmtQty(r.expiringQty_0_3mo)} units expire within ${STOCKOUT_HIGH_THRESHOLD}mo nationally">⚠ NEAR-TERM EXPIRY</span>`
+    : `<span class="stko-badge" style="background:rgba(245,158,11,.15);color:var(--amber)" title="${fmtQty(r.expiringQty)} units expire within ${STOCKOUT_OPTIMAL_THRESHOLD}mo nationally, none inside ${STOCKOUT_HIGH_THRESHOLD}mo">⚠ MID/LONG-RANGE EXPIRY</span>`;
 }
 
 // Formats a Date (or date-like value) as "12 Aug 2026"; "—" for null/invalid.
@@ -361,6 +376,119 @@ function stkoExpiringTierCell(r) {
   return `${seg(t0, "red")} / ${seg(t1, "amber")} / ${seg(t2, "blue")}`;
 }
 
+
+// ── FEAT-STKO-FREEZE: freeze-panes for the Stockout Risk table ─────────────
+// Self-contained (not routed through script.js's shared buildTable()) —
+// same pattern Branch Comparison's own "Material Across Branches" tab uses:
+// freezes the first 3 columns (Material Code, Description, Type) and the
+// header row, independently toggleable via ⇔ / ⇕ icons in the top-left
+// header cell.
+let stkoColFreezeOn = false;
+let stkoRowFreezeOn = false;
+const STKO_FREEZE_COL_MAX_IDX = 2; // first three columns: idx 0, 1, 2
+
+// Builds the table HTML directly (rather than calling buildTable()) so the
+// frozen columns/header can carry the data-freeze-col markup and the
+// top-left toggle icons.
+function stkoBuildFreezeTable(rows, cols, rowClass) {
+  if (!rows.length) return '<div class="alert-info">No data to display.</div>';
+  const thead = `<thead><tr>${cols.map((c, i) => {
+    const freezeAttr = i <= STKO_FREEZE_COL_MAX_IDX ? ` data-freeze-col="${i}"` : "";
+    const pins = i === 0
+      ? `<span class="freeze-toggle-btn freeze-cols-btn" id="stko-freeze-col-toggle" role="button" tabindex="0" title="Freeze first 3 columns (horizontal scroll)">⇔</span>` +
+        `<span class="freeze-toggle-btn freeze-header-btn" id="stko-freeze-row-toggle" role="button" tabindex="0" title="Freeze header row (vertical scroll)">⇕</span>`
+      : "";
+    return `<th${freezeAttr}>${escHtml(c.label)}${pins}</th>`;
+  }).join("")}</tr></thead>`;
+  const tbody = `<tbody>${rows.map(row => {
+    const cls = rowClass ? rowClass(row) : "";
+    return `<tr class="${cls}">${cols.map((c, i) => {
+      // Pass both the cell value AND the full row so fmt functions can cross-check sibling fields
+      const raw     = c.fmt ? c.fmt(row[c.key], row) : (row[c.key] ?? "");
+      const val     = c.raw ? raw : escHtml(String(raw));
+      const cellCls = c.cellClass || "";
+      const freezeAttr = i <= STKO_FREEZE_COL_MAX_IDX ? ` data-freeze-col="${i}"` : "";
+      return `<td class="${cellCls}"${freezeAttr}>${val}</td>`;
+    }).join("")}</tr>`;
+  }).join("")}</tbody>`;
+  return `<div style="color:var(--muted);font-size:12px;margin-bottom:6px">⇔ freeze first 3 columns · ⇕ freeze header row — click either icon in the top-left header cell</div>
+    <div class="tbl-wrap tbl-wrap-freeze"><table>${thead}${tbody}</table></div>`;
+}
+
+// Measures the rendered widths of the frozen columns and stamps cumulative
+// pixel offsets onto their `left` style so position:sticky lines them up —
+// widths vary with content/theme/font, so a fixed CSS value can't be used.
+// Only relevant to column freeze; row freeze needs no offset math since the
+// header just sticks to top:0.
+function stkoComputeFreezeOffsets(table) {
+  const headCells = [...table.querySelectorAll("thead th[data-freeze-col]")]
+    .sort((a, b) => Number(a.dataset.freezeCol) - Number(b.dataset.freezeCol));
+  let offset = 0;
+  const leftByIdx = {};
+  headCells.forEach(th => {
+    th.style.left = offset + "px";
+    leftByIdx[th.dataset.freezeCol] = offset;
+    offset += th.getBoundingClientRect().width;
+  });
+  table.querySelectorAll("tbody td[data-freeze-col]").forEach(td => {
+    td.style.left = leftByIdx[td.dataset.freezeCol] + "px";
+  });
+}
+
+// Column freeze (⇔) — independent of row freeze.
+function setStkoColFreeze(on) {
+  stkoColFreezeOn = on;
+  const table = document.querySelector("#stko-table table");
+  const btn   = document.getElementById("stko-freeze-col-toggle");
+  if (!table) return;
+  if (on) {
+    table.classList.add("freeze-cols");
+    if (btn) { btn.classList.add("active"); btn.setAttribute("aria-pressed", "true"); }
+    stkoComputeFreezeOffsets(table);
+  } else {
+    table.classList.remove("freeze-cols");
+    if (btn) { btn.classList.remove("active"); btn.setAttribute("aria-pressed", "false"); }
+    table.querySelectorAll("[data-freeze-col]").forEach(el => { el.style.left = ""; });
+  }
+}
+
+// Row freeze (⇕) — independent of column freeze.
+function setStkoRowFreeze(on) {
+  stkoRowFreezeOn = on;
+  const table = document.querySelector("#stko-table table");
+  const btn   = document.getElementById("stko-freeze-row-toggle");
+  if (!table) return;
+  if (on) {
+    table.classList.add("freeze-header");
+    if (btn) { btn.classList.add("active"); btn.setAttribute("aria-pressed", "true"); }
+  } else {
+    table.classList.remove("freeze-header");
+    if (btn) { btn.classList.remove("active"); btn.setAttribute("aria-pressed", "false"); }
+  }
+}
+
+// Wires both toggles and re-applies whatever freeze state was active before
+// this re-render (filter/search/card-click changes rebuild #stko-table's
+// innerHTML, which would otherwise silently drop it).
+function wireStkoFreezeToggle() {
+  const colBtn = document.getElementById("stko-freeze-col-toggle");
+  const rowBtn = document.getElementById("stko-freeze-row-toggle");
+
+  if (colBtn) {
+    colBtn.addEventListener("click", (e) => { e.stopPropagation(); setStkoColFreeze(!stkoColFreezeOn); });
+    colBtn.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); setStkoColFreeze(!stkoColFreezeOn); }
+    });
+  }
+  if (rowBtn) {
+    rowBtn.addEventListener("click", (e) => { e.stopPropagation(); setStkoRowFreeze(!stkoRowFreezeOn); });
+    rowBtn.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); setStkoRowFreeze(!stkoRowFreezeOn); }
+    });
+  }
+  if (stkoColFreezeOn) setStkoColFreeze(true);
+  if (stkoRowFreezeOn) setStkoRowFreeze(true);
+}
 
 // ── MAIN RENDER ────────────────────────────────────────────────────────────────
 function renderStockoutRisk() {
@@ -509,6 +637,8 @@ function renderStockoutRisk() {
       fmt: (v, r) => `<span style="${stkoMosCellStyle(r.status)}">${fmtMosVal(v)}</span>`, raw: true },
     { key: "adjustedMos", label: "Expiry-Adjusted MOS",
       fmt: (v, r) => stkoExprAdjCell(r), raw: true },
+    { key: "exprAdjustedRisk", label: "Expiry Driver",
+      fmt: (v, r) => stkoExpiryDriverCell(r), raw: true },
     { key: "nearestExpiry", label: "Nearest Expiry",
       fmt: (v, r) => stkoNearestExpiryCell(r), raw: true },
     { key: "expiringQty", label: "Expiring Qty (0–3 / 3–6 / 6–12mo)",
@@ -524,8 +654,9 @@ function renderStockoutRisk() {
     return "";
   };
   document.getElementById("stko-table").innerHTML = tableRows.length
-    ? buildTable(tableRows, cols, stkoRowClass)
+    ? stkoBuildFreezeTable(tableRows, cols, stkoRowClass)
     : '<div class="alert-info" style="margin:0.5rem 0">✓ No materials match the current filters at national stockout risk.</div>';
+  if (tableRows.length) wireStkoFreezeToggle();
 
   // ── EXPORT ────────────────────────────────────────────────────────────────
   // Export columns mirror the on-screen `cols` above. The on-screen cell
@@ -542,11 +673,11 @@ function renderStockoutRisk() {
     { key: "mos", label: "National MOS", fmt: v => Number(v).toFixed(2) },
     { key: "adjustedMos", label: "Expiry-Adjusted MOS", fmt: v => v === null ? "" : Number(v).toFixed(2) },
     { key: "exprAdjustedStatus", label: "Expiry-Adjusted Status", fmt: v => v === null ? "" : stkoStatusLabel(v) },
+    { key: "expiryDriverLabel", label: "Expiry Driver" },
     { key: "nearestExpiry", label: "Nearest Expiry Date", fmt: v => v ? stkoFmtDate(v) : "" },
     { key: "expiringQty_0_3mo", label: `Expiring Qty (0-${STOCKOUT_HIGH_THRESHOLD}mo)`, fmt: v => Number(v || 0).toFixed(2) },
     { key: "expiringQty_3_6mo", label: `Expiring Qty (${STOCKOUT_HIGH_THRESHOLD}-${STOCKOUT_MEDIUM_THRESHOLD}mo)`, fmt: v => Number(v || 0).toFixed(2) },
     { key: "expiringQty_6_12mo", label: `Expiring Qty (${STOCKOUT_MEDIUM_THRESHOLD}-${STOCKOUT_OPTIMAL_THRESHOLD}mo)`, fmt: v => Number(v || 0).toFixed(2) },
-    { key: "nearTermDriver", label: "Near-Term Driver (<3mo)", fmt: v => v ? "Yes" : "No" },
     { key: "status", label: "Status", fmt: v => stkoStatusLabel(v) },
   ];
 
