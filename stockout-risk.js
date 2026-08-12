@@ -144,17 +144,24 @@ function buildNationalExpiryDetailMap(thresholdMonths) {
       const left = monthsUntil(entry.expiry, today); // from expiry-risk.js
       if (left === null || left >= thresholdMonths) continue;
 
-      expiringQty += entry.qtySum;
+      // BUGFIX-EXPIRY-QTY: entry.qtySum is the plant's TOTAL stock of this
+      // material across every batch, not just the one that's actually near
+      // expiry — using it here was inflating expiring-qty by every far-dated
+      // batch riding along at the same plant. entry.earliestQty is scoped to
+      // only the batch(es) tied for the earliest expiry date, which is what
+      // "expiring" is supposed to mean.
+      const nearQty = entry.earliestQty || 0;
+      expiringQty += nearQty;
 
       // Already-expired batches (left < 0) fold into the 0–3mo tier — same
       // "it's already gone" logic as the top-level expiringQty comment above.
       if (left < STOCKOUT_HIGH_THRESHOLD) {
-        qty0to3 += entry.qtySum;
+        qty0to3 += nearQty;
         nearTermDriver = true; // at least one contributing batch is <3mo out
       } else if (left < STOCKOUT_MEDIUM_THRESHOLD) {
-        qty3to6 += entry.qtySum;
+        qty3to6 += nearQty;
       } else {
-        qty6to12 += entry.qtySum;
+        qty6to12 += nearQty;
       }
     }
 
@@ -234,16 +241,30 @@ function buildStockoutSnapshot(typeFilter, searchQ) {
     const exprAdjustedRisk = exprAdjustedStatus !== null
       && STKO_BAND_RANK[exprAdjustedStatus] < STKO_BAND_RANK[status];
 
-    const nearTermDriver = detail ? detail.nearTermDriver : false;
+    const nearTermDriver   = detail ? detail.nearTermDriver : false;
+    const expiringQty_3_6mo  = detail ? detail.expiringQty_3_6mo : 0;
+    const expiringQty_6_12mo = detail ? detail.expiringQty_6_12mo : 0;
+
     // Plain-string version of the driver badge, precomputed here (rather than
     // in the export column's fmt) because the export helper's fmt callback
     // only ever receives the raw cell value, not the row — see the export
-    // columns below.
-    const expiryDriverLabel = !exprAdjustedRisk
-      ? ""
-      : (nearTermDriver
-          ? `Near-Term (<${STOCKOUT_HIGH_THRESHOLD}mo)`
-          : `Mid/Long-Range (${STOCKOUT_HIGH_THRESHOLD}-${STOCKOUT_OPTIMAL_THRESHOLD}mo)`);
+    // columns below. Mirrors stkoExpiryDriverCell()'s tier-based logic
+    // exactly, so the export never shows "Long-Range" when the 6–12mo tier
+    // is actually empty.
+    let expiryDriverLabel = "";
+    if (exprAdjustedRisk) {
+      if (nearTermDriver) {
+        expiryDriverLabel = `Near-Term (<${STOCKOUT_HIGH_THRESHOLD}mo)`;
+      } else {
+        const hasMid  = expiringQty_3_6mo > 0;
+        const hasLong = expiringQty_6_12mo > 0;
+        expiryDriverLabel = (hasMid && hasLong)
+          ? `Mid/Long-Range (${STOCKOUT_HIGH_THRESHOLD}-${STOCKOUT_OPTIMAL_THRESHOLD}mo)`
+          : hasLong
+            ? `Long-Range (${STOCKOUT_MEDIUM_THRESHOLD}-${STOCKOUT_OPTIMAL_THRESHOLD}mo)`
+            : `Mid-Range (${STOCKOUT_HIGH_THRESHOLD}-${STOCKOUT_MEDIUM_THRESHOLD}mo)`;
+      }
+    }
 
     out.push({
       code: r.code, desc: r.desc, type: r.type,
@@ -255,8 +276,7 @@ function buildStockoutSnapshot(typeFilter, searchQ) {
       // not capped by the totalSoh guard above (that guard only protects
       // the adjustedMos math; the tiers/date are reporting-only signals).
       expiringQty_0_3mo: detail ? detail.expiringQty_0_3mo : 0,
-      expiringQty_3_6mo: detail ? detail.expiringQty_3_6mo : 0,
-      expiringQty_6_12mo: detail ? detail.expiringQty_6_12mo : 0,
+      expiringQty_3_6mo, expiringQty_6_12mo,
       nearestExpiry: detail ? detail.nearestExpiry : null,
       nearTermDriver, expiryDriverLabel,
     });
@@ -332,18 +352,39 @@ function stkoExprAdjCell(r) {
 
 // Dedicated severity-driver column, shown right after Expiry-Adjusted MOS.
 // Blank ("—") when there's no adjusted-risk downgrade at all. Otherwise
-// splits into the two variants so the urgency signal survives:
-//   ⚠ NEAR-TERM EXPIRY       → nearTermDriver true, at least one contributing
-//                              batch is inside the <3mo High-Risk window
-//                              (includes already-expired stock).
-//   ⚠ MID/LONG-RANGE EXPIRY  → the downgrade is driven entirely by batches
-//                              in the 3–12mo range — worth watching, but not
-//                              the same urgency as the near-term case.
+// picks the label from whichever tier(s) actually hold the expiring qty —
+// NOT just a near-term/not-near-term binary — so "long-range" is never
+// shown unless the 6–12mo tier genuinely has stock in it:
+//   ⚠ NEAR-TERM EXPIRY      → nearTermDriver true (some qty is <3mo out,
+//                             including already-expired stock).
+//   ⚠ MID-RANGE EXPIRY      → all non-near-term qty sits in the 3–6mo tier;
+//                             6–12mo tier is empty.
+//   ⚠ LONG-RANGE EXPIRY     → all non-near-term qty sits in the 6–12mo tier;
+//                             3–6mo tier is empty.
+//   ⚠ MID/LONG-RANGE EXPIRY → non-near-term qty is split across BOTH the
+//                             3–6mo and 6–12mo tiers.
 function stkoExpiryDriverCell(r) {
   if (!r.exprAdjustedRisk) return '<span style="color:var(--muted)">—</span>';
-  return r.nearTermDriver
-    ? `<span class="stko-badge stko-badge-expadj" title="${fmtQty(r.expiringQty_0_3mo)} units expire within ${STOCKOUT_HIGH_THRESHOLD}mo nationally">⚠ NEAR-TERM EXPIRY</span>`
-    : `<span class="stko-badge" style="background:rgba(245,158,11,.15);color:var(--amber)" title="${fmtQty(r.expiringQty)} units expire within ${STOCKOUT_OPTIMAL_THRESHOLD}mo nationally, none inside ${STOCKOUT_HIGH_THRESHOLD}mo">⚠ MID/LONG-RANGE EXPIRY</span>`;
+  if (r.nearTermDriver) {
+    return `<span class="stko-badge stko-badge-expadj" title="${fmtQty(r.expiringQty_0_3mo)} units expire within ${STOCKOUT_HIGH_THRESHOLD}mo nationally">⚠ NEAR-TERM EXPIRY</span>`;
+  }
+  const hasMid  = (r.expiringQty_3_6mo || 0) > 0;
+  const hasLong = (r.expiringQty_6_12mo || 0) > 0;
+  let label, title;
+  if (hasMid && hasLong) {
+    label = "⚠ MID/LONG-RANGE EXPIRY";
+    title = `${fmtQty(r.expiringQty_3_6mo)} units expire in ${STOCKOUT_HIGH_THRESHOLD}-${STOCKOUT_MEDIUM_THRESHOLD}mo, ${fmtQty(r.expiringQty_6_12mo)} in ${STOCKOUT_MEDIUM_THRESHOLD}-${STOCKOUT_OPTIMAL_THRESHOLD}mo nationally`;
+  } else if (hasLong) {
+    label = "⚠ LONG-RANGE EXPIRY";
+    title = `${fmtQty(r.expiringQty_6_12mo)} units expire in ${STOCKOUT_MEDIUM_THRESHOLD}-${STOCKOUT_OPTIMAL_THRESHOLD}mo nationally, none inside ${STOCKOUT_MEDIUM_THRESHOLD}mo`;
+  } else {
+    // hasMid, or (edge case) neither — exprAdjustedRisk implies expiringQty > 0
+    // somewhere, so with near-term and long-range both ruled out, mid-range
+    // is the only place it can be.
+    label = "⚠ MID-RANGE EXPIRY";
+    title = `${fmtQty(r.expiringQty_3_6mo)} units expire in ${STOCKOUT_HIGH_THRESHOLD}-${STOCKOUT_MEDIUM_THRESHOLD}mo nationally, none inside ${STOCKOUT_HIGH_THRESHOLD}mo or beyond ${STOCKOUT_MEDIUM_THRESHOLD}mo`;
+  }
+  return `<span class="stko-badge" style="background:rgba(245,158,11,.15);color:var(--amber)" title="${title}">${label}</span>`;
 }
 
 // Formats a Date (or date-like value) as "12 Aug 2026"; "—" for null/invalid.
