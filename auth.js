@@ -16,6 +16,32 @@ window.supabaseClient = supabaseClient; // used by storage-sync.js
 window.APP_USER = null;   // { id, email, role }
 window.isAdmin  = false;
 
+// Tracks whether the user arrived via a password-recovery email link.
+// Set as early as possible (see listener below) so we never auto-unlock
+// the app using a recovery session before a new password is chosen.
+let authRecoveryMode = false;
+
+// ── Register the auth listener IMMEDIATELY, before anything else touches
+// the session. Supabase parses the recovery link's URL fragment/params and
+// fires PASSWORD_RECOVERY very early — sometimes before DOMContentLoaded —
+// so if this listener is attached later (e.g. inside initAuth after a
+// getSession() call), the event can be missed entirely and the user just
+// lands on the normal page instead of the "set new password" form.
+supabaseClient.auth.onAuthStateChange((event, session) => {
+  if (event === "SIGNED_OUT") {
+    window.APP_USER = null;
+    window.isAdmin  = false;
+    location.reload(); // simplest way to fully reset in-memory app state
+  }
+  if (event === "PASSWORD_RECOVERY") {
+    authRecoveryMode = true;
+    // Overlay may not be injected yet if this fires before DOMContentLoaded;
+    // showResetPasswordForm() is safe to call once initAuth() has run, and
+    // initAuth() itself checks authRecoveryMode as a fallback (see below).
+    if (document.getElementById("auth-overlay")) showResetPasswordForm();
+  }
+});
+
 // ── 2) BUILD THE LANDING + LOGIN OVERLAY (injected, no HTML edits needed) ──
 const AUTH_FEATURES = [
   { icon: "📊", title: "Dashboard Overview",        desc: "Aggregated inventory metrics across every plant and material group, updated the moment new data lands." },
@@ -383,6 +409,7 @@ function injectAuthOverlay() {
     }
 
     // Password updated — the recovery session is now a real session, log them in.
+    authRecoveryMode = false;
     const { data: { session } } = await supabaseClient.auth.getSession();
     document.getElementById("auth-reset-card").style.display = "none";
     document.getElementById("auth-login-card").style.display = "";
@@ -479,22 +506,18 @@ async function initAuth() {
     await loadProfileAndUnlock(data.session);
   });
 
+  if (authRecoveryMode) {
+    // PASSWORD_RECOVERY already fired before the overlay existed — show the
+    // reset form now instead of silently logging the user in below.
+    loadingEl.classList.remove("show");
+    showResetPasswordForm();
+    return;
+  }
+
   // Restore existing session (page refresh)
   const { data: { session } } = await supabaseClient.auth.getSession();
   loadingEl.classList.remove("show");
-  if (session) await loadProfileAndUnlock(session);
-
-  supabaseClient.auth.onAuthStateChange((event, session) => {
-    if (event === "SIGNED_OUT") {
-      window.APP_USER = null;
-      window.isAdmin  = false;
-      location.reload(); // simplest way to fully reset in-memory app state
-    }
-    if (event === "PASSWORD_RECOVERY") {
-      // User arrived via the "reset your password" email link.
-      showResetPasswordForm();
-    }
-  });
+  if (session && !authRecoveryMode) await loadProfileAndUnlock(session);
 }
 
 document.addEventListener("DOMContentLoaded", initAuth);
