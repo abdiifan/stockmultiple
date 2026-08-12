@@ -17,20 +17,21 @@ const state = {
 };
 
 // ─── Constants ──────────────────────────────────────────────
-// New 12-column format: Code | Description | Material Type | SOH | AMC | MOS | Forecast | Delivered | Fill Rate Qty% | Forecast Value | Delivered Value | Fill Rate Value%
+// Actual 13-column source format: Product ID | Code | Description | Material Type | SOH | AMC | MOS | Forecast | Delivered | Fill Rate Qty% | Forecast Value | Delivered Value | Fill Rate Value%
 const COLS = {
-  MATERIAL_CODE: 0,    // col 1 — Material Code
-  DESCRIPTION: 1,      // col 2 — Description
-  MATERIAL_TYPE: 2,    // col 3 — Material Type Code
-  STOCK_ON_HAND: 3,    // col 4 — Stock on Hand
-  AMC: 4,              // col 5 — AMC
-  MOS: 5,              // col 6 — MOS
-  FORECAST_QTY: 6,     // col 7 — Forecast Qty
-  DELIVERED_QTY: 7,    // col 8 — Delivered Qty
-  FILL_RATE_QTY: 8,    // col 9 — Fill Rate Qty % (auto-calc)
-  FORECAST_VALUE: 9,   // col 10 — Forecast Value
-  DELIVERED_VALUE: 10, // col 11 — Delivered Value
-  FILL_RATE_VALUE: 11  // col 12 — Fill Rate Value % (auto-calc)
+  PRODUCT_ID: 0,        // col 1 — Product ID
+  MATERIAL_CODE: 1,     // col 2 — Material Code
+  DESCRIPTION: 2,       // col 3 — Description
+  MATERIAL_TYPE: 3,     // col 4 — Material Type Code
+  STOCK_ON_HAND: 4,     // col 5 — Stock on Hand
+  AMC: 5,               // col 6 — AMC
+  MOS: 6,               // col 7 — MOS
+  FORECAST_QTY: 7,      // col 8 — Forecast Qty
+  DELIVERED_QTY: 8,     // col 9 — Delivered Qty
+  FILL_RATE_QTY: 9,     // col 10 — Fill Rate Qty % (auto-calc)
+  FORECAST_VALUE: 10,   // col 11 — Forecast Value
+  DELIVERED_VALUE: 11,  // col 12 — Delivered Value
+  FILL_RATE_VALUE: 12   // col 13 — Fill Rate Value % (auto-calc)
 };
 
 // ─── Init ────────────────────────────────────────────────────
@@ -42,11 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupExportDropdown();
   setupMenuToggle();
   setupDashTypeFilter();
-  try {
-    initCharts();
-  } catch (e) {
-    console.error('Chart initialization failed (charts will be unavailable, rest of app still works):', e);
-  }
+  initCharts();
   loadSavedState();
 });
 
@@ -456,11 +453,7 @@ function runAllCalculations() {
   state.filteredData = [...results];
   saveState();
   renderAllocationTable(results);
-  try {
-    updateDashboard(results);
-  } catch (e) {
-    console.error('Dashboard update failed (table + KPIs are still fine):', e);
-  }
+  updateDashboard(results);
   showToast(`✓ Calculated ${results.length} items`, 'success');
   switchTab('allocation');
 }
@@ -501,17 +494,14 @@ function updateDashboard(data) {
   document.getElementById('kpi-avgpct').textContent = (avgPct * 100).toFixed(1) + '%';
   document.getElementById('kpi-centralsoh').textContent = totalCentralSOH.toLocaleString();
 
-  try { updateStatusChart(filtered); } catch (e) { console.error('Status chart update failed:', e); }
-  try { updateUrgentChart(filtered); } catch (e) { console.error('Urgent chart update failed:', e); }
+  updateStatusChart(filtered);
+  updateUrgentChart(filtered);
   renderUrgentTable(filtered);
   renderOverstockTable(filtered);
 }
 
 // ─── Charts ──────────────────────────────────────────────────
 function initCharts() {
-  if (typeof Chart === 'undefined') {
-    throw new Error('Chart.js did not load (CDN blocked or unreachable) — dashboard charts will be skipped.');
-  }
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   const textColor = isDark ? '#94a3b8' : '#718096';
 
@@ -559,7 +549,6 @@ function updateStatusChart(data) {
   };
   data.forEach(r => { if (r.allocationStatus in counts) counts[r.allocationStatus]++; });
   const c = state.charts.status;
-  if (!c) return; // Chart.js unavailable — skip silently, rest of dashboard still works
   c.data.datasets[0].data = Object.values(counts);
   c.update();
 }
@@ -570,7 +559,6 @@ function updateUrgentChart(data) {
     .sort((a, b) => b.branchRemainingNeed - a.branchRemainingNeed)
     .slice(0, 10);
   const c = state.charts.urgent;
-  if (!c) return; // Chart.js unavailable — skip silently, rest of dashboard still works
   c.data.labels = urgent.map(r => r.materialCode);
   c.data.datasets[0].data = urgent.map(r => r.branchRemainingNeed);
   c.update();
