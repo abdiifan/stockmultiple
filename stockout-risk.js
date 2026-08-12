@@ -702,8 +702,6 @@ function renderStockoutRisk() {
       fmt: (v, r) => `<span style="${stkoMosCellStyle(r.status)}">${fmtMosVal(v)}</span>`, raw: true },
     { key: "adjustedMos", label: "Expiry-Adjusted MOS",
       fmt: (v, r) => stkoExprAdjCell(r), raw: true },
-    { key: "exprAdjustedStatus", label: "Expiry-Adjusted Status",
-      fmt: (v, r) => stkoExprAdjStatusCell(r), raw: true },
     { key: "exprAdjustedRisk", label: "Expiry Driver",
       fmt: (v, r) => stkoExpiryDriverCell(r), raw: true },
     { key: "nearestExpiry", label: "Nearest Expiry",
@@ -711,6 +709,8 @@ function renderStockoutRisk() {
     { key: "expiringQty", label: "Expiring Qty (0–3 / 3–6 / 6–12mo)",
       fmt: (v, r) => stkoExpiringTierCell(r), raw: true },
     { key: "status", label: "Status", fmt: (v) => stkoStatusBadge(v), raw: true },
+    { key: "exprAdjustedStatus", label: "Expiry-Adjusted Status",
+      fmt: (v, r) => stkoExprAdjStatusCell(r), raw: true },
   ];
 
   const stkoRowClass = (row) => {
@@ -739,7 +739,6 @@ function renderStockoutRisk() {
     { key: "totalAmc", label: "National AMC", fmt: v => Number(v || 0).toFixed(2) },
     { key: "mos", label: "National MOS", fmt: v => Number(v).toFixed(2) },
     { key: "adjustedMos", label: "Expiry-Adjusted MOS", fmt: v => v === null ? "" : Number(v).toFixed(2) },
-    { key: "exprAdjustedStatus", label: "Expiry-Adjusted Status", fmt: v => v === null ? "" : stkoStatusLabel(v) },
     { key: "expiryDriverLabel", label: "Expiry Driver" },
     { key: "exprAdjustedRisk", label: "Expiry Driver Changes Status?", fmt: v => v ? "Yes" : "No" },
     { key: "nearestExpiry", label: "Nearest Expiry Date", fmt: v => v ? stkoFmtDate(v) : "" },
@@ -747,6 +746,7 @@ function renderStockoutRisk() {
     { key: "expiringQty_3_6mo", label: `Expiring Qty (${STOCKOUT_HIGH_THRESHOLD}-${STOCKOUT_MEDIUM_THRESHOLD}mo)`, fmt: v => Number(v || 0).toFixed(2) },
     { key: "expiringQty_6_12mo", label: `Expiring Qty (${STOCKOUT_MEDIUM_THRESHOLD}-${STOCKOUT_OPTIMAL_THRESHOLD}mo)`, fmt: v => Number(v || 0).toFixed(2) },
     { key: "status", label: "Status", fmt: v => stkoStatusLabel(v) },
+    { key: "exprAdjustedStatus", label: "Expiry-Adjusted Status", fmt: v => v === null ? "" : stkoStatusLabel(v) },
   ];
 
   const dlRow = document.getElementById("stko-dl-row");
