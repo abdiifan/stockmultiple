@@ -429,7 +429,20 @@ document.addEventListener("epss-auth-ready", async () => {
   attachAdminUploadSync();
   attachRealtimeSync();
 
-  for (const slot of Object.keys(FILE_SLOTS)) {
+  // Pending Dispatch is a fully independent dataset/page — it doesn't feed
+  // the material-standardization pipeline that inventory/mapping/amc/incoming
+  // share, so it has no ordering dependency on them (that's what the
+  // sequential loop below protects against for those four). Kick it off
+  // immediately, in parallel with that chain, instead of always loading
+  // dead last behind four other awaits — that's why its data used to visibly
+  // "appear after" every other page's.
+  const INDEPENDENT_SLOTS = ["pendingDispatch"];
+  const sequentialSlots = Object.keys(FILE_SLOTS).filter(s => !INDEPENDENT_SLOTS.includes(s));
+
+  const independentLoads = Promise.all(INDEPENDENT_SLOTS.map(slot => pullFileFromSupabase(slot)));
+
+  for (const slot of sequentialSlots) {
     await pullFileFromSupabase(slot);
   }
+  await independentLoads; // make sure startup doesn't resolve before this settles too
 });
