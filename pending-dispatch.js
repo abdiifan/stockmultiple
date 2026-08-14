@@ -746,7 +746,7 @@
       <div class="tbl-wrap tbl-wrap-freeze">
         <table class="freeze-header">
           <thead><tr>
-            <th>Delivery</th><th>GI Date</th><th>Days Late</th><th>Material</th>
+            <th>Delivery</th><th>GI Planned Date</th><th>Days Late</th><th>Material</th>
             <th>Description</th><th>Purchasing Document</th><th>Branch</th><th>Storage Loc.</th>
             <th>Qty</th><th>Stock Type</th><th>Created By</th>
           </tr></thead>
@@ -806,7 +806,7 @@
     return rows.map((r) => ({
       "Delivery": r.delivery,
       "Item": r.item,
-      "Goods Issue Date": r.giDate ? fmtDate(r.giDate) : "",
+      "GI Planned Date": r.giDate ? fmtDate(r.giDate) : "",
       "Days Late": (() => { const d = daysLate(r.giDate); return d === null ? "" : (d <= 0 ? "Good" : d); })(),
       "Material": r.material,
       "Item Description": r.itemDescription,
@@ -1150,11 +1150,11 @@
     const slocCount = new Set(filtered.map((r) => r.storageLocation).filter(Boolean)).size;
     const branchCount = new Set(filtered.map((r) => plantCode(r.shipToParty)).filter(Boolean)).size;
 
-    document.getElementById("pd-tab-count-top10").textContent  = Math.min(multiCount, 10).toLocaleString();
-    document.getElementById("pd-tab-count-sloc").textContent   = slocCount.toLocaleString();
-    document.getElementById("pd-tab-count-branch").textContent = branchCount.toLocaleString();
-    document.getElementById("pd-tab-count-detail").textContent = filtered.length.toLocaleString();
-    document.getElementById("pd-tab-count-matrix").textContent = branchCount.toLocaleString();
+    document.getElementById("pd-tab-count-top10").style.display  = "none";
+    document.getElementById("pd-tab-count-sloc").style.display   = "none";
+    document.getElementById("pd-tab-count-branch").style.display = "none";
+    document.getElementById("pd-tab-count-detail").style.display = "none";
+    document.getElementById("pd-tab-count-matrix").style.display = "none";
   }
 
   function showTab(tab) {
