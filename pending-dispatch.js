@@ -24,6 +24,8 @@
     rows: [],           // raw parsed rows
     branchMaster: {},   // plantCode(4 chars) -> branch name
     filters: { search: "", sloc: "", branch: "", stockType: "" },
+    localUploadedAt: null,   // when THIS browser last parsed a file (fallback)
+    sourceUploadedAt: null,  // authoritative "uploaded to Supabase" time, if known
   };
 
   // ── Helpers ──────────────────────────────────────────────────
@@ -758,20 +760,41 @@
     return name.replace(/[\\/?*[\]:]/g, "-").slice(0, 31);
   }
 
+  // The timestamp this data was actually uploaded (source-of-truth if known,
+  // else the local parse time) — shown on the page banner and now baked
+  // into every export too, since a report can easily be opened well after
+  // the underlying SAP data has moved on.
+  function dataAsOfString() {
+    const ts = STATE.sourceUploadedAt || STATE.localUploadedAt;
+    return ts ? ts.toLocaleString() : "Unknown";
+  }
+
   function exportRows(rows, kind) {
+    const asOf = dataAsOfString();
+    const exportedAt = new Date().toLocaleString();
+
     if (kind === "csv") {
       // CSV has no concept of multiple sheets — keep it as the flat
-      // "All Pending Items" detail export.
+      // "All Pending Items" detail export, with the timestamps as a
+      // couple of leading rows before the real header/data rows.
       const ws = XLSX.utils.json_to_sheet(buildDetailExportData(rows));
-      const csv = XLSX.utils.sheet_to_csv(ws);
+      const meta = `Data as of,${asOf}\nExported at,${exportedAt}\n\n`;
+      const csv = meta + XLSX.utils.sheet_to_csv(ws);
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
       downloadBlob(blob, "pending_dispatch.csv");
       return;
     }
 
     // XLSX export: one sheet per table, in the same order as the tabs —
-    // All Pending Items, By Storage Location, By Branch / Plant, Top 10s.
+    // All Pending Items, By Storage Location, By Branch / Plant, Top 10s —
+    // plus a leading "Info" sheet noting when the data is as of.
     const wb = XLSX.utils.book_new();
+    const infoData = [
+      { "Field": "Report", "Value": "Pending Dispatch" },
+      { "Field": "Data as of", "Value": asOf },
+      { "Field": "Exported at", "Value": exportedAt },
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(infoData), safeSheetName("Info"));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildDetailExportData(rows)), safeSheetName("All Pending Items"));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildSlocExportData(rows)), safeSheetName("By Storage Location"));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildBranchExportData(rows)), safeSheetName("By Branch or Plant"));
@@ -899,8 +922,13 @@
 
           STATE.rows = rows;
           STATE.branchMaster = buildBranchMaster(rows);
+          // Fallback "as of" timestamp — used unless/until the more
+          // authoritative Supabase upload time arrives via pd-source-meta
+          // (see wireSourceMetaListener below).
+          STATE.localUploadedAt = new Date();
           populateFilterOptions();
           showHasData();
+          renderAsOfBanner();
 
           // Let the browser paint the "Parsing…" status before doing the
           // heavy synchronous render work (esp. the uncapped detail table).
@@ -927,10 +955,39 @@
     });
   }
 
+  // ── "Data as of" banner ──────────────────────────────────────
+  // Prefers the authoritative Supabase upload time (STATE.sourceUploadedAt,
+  // set via the pd-source-meta event from storage-sync.js) over the local
+  // "when this browser parsed it" fallback — the source time is what
+  // actually matters, since SAP data may have moved on since then.
+  function renderAsOfBanner() {
+    const el = document.getElementById("pd-data-asof");
+    if (!el) return;
+    const ts = STATE.sourceUploadedAt || STATE.localUploadedAt;
+    if (!ts) { el.textContent = ""; return; }
+    el.textContent = `🕒 Data as of ${ts.toLocaleString()} — items may have since shipped or changed in SAP.`;
+    el.title = ts.toISOString();
+  }
+
+  // storage-sync.js dispatches this whenever it learns/updates the
+  // Pending Dispatch slot's Supabase upload metadata (on pull, push, or
+  // manual refresh). It's optional — pages without storage-sync.js loaded
+  // simply never receive it, and fall back to the local parse time above.
+  function wireSourceMetaListener() {
+    document.addEventListener("pd-source-meta", (e) => {
+      const meta = e.detail;
+      if (meta && meta.uploadedAt) {
+        STATE.sourceUploadedAt = meta.uploadedAt instanceof Date ? meta.uploadedAt : new Date(meta.uploadedAt);
+        renderAsOfBanner();
+      }
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
     wireFilters();
     wireTabs();
     wireFileInput();
+    wireSourceMetaListener();
     showNoData();
   });
 })();
