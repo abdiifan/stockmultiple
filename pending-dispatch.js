@@ -294,11 +294,6 @@
             ">
               <span>${s.icon}</span>
               <span>${s.label}</span>
-              <span style="
-                background:rgba(120,140,160,0.18); border-radius:10px;
-                padding:1px 8px; font-size:12px; font-weight:600;
-                color:inherit; opacity:0.85;
-              ">${counts[s.key].toLocaleString()}</span>
             </button>
           `;
         }).join("")}
@@ -328,14 +323,14 @@
         panel = `<div class="pd-empty">No deliveries with multiple line items in the current filter.</div>`;
       } else {
         panel = `<div class="pd-rank-list">` + multiList.map((g, i) => {
-          const slocLabel = g.slocs.size > 1 ? `${[...g.slocs].join(", ")}` : ([...g.slocs][0] || "—");
+          const slocLabel = g.slocs.size > 1 ? `${[...g.slocs].join("  ")}` : ([...g.slocs][0] || "—");
           const typeLabel = g.stockTypes.size > 1 ? "MIX" : [...g.stockTypes][0];
           return `
             <div class="pd-rank-item">
               <div class="pd-rank-num">${i + 1}</div>
               <div class="pd-rank-body">
                 <div class="pd-rank-deliv">${escapeHtml(g.delivery)} ${stockBadge(typeLabel)}</div>
-                <div class="pd-rank-meta">${escapeHtml(branchName(g.branchCode))} (${escapeHtml(g.branchCode)}) &nbsp;·&nbsp; SLoc: ${escapeHtml(slocLabel)}</div>
+                <div class="pd-rank-meta" style="white-space:nowrap; overflow-x:auto; overflow-y:hidden;">${escapeHtml(branchName(g.branchCode))} (${escapeHtml(g.branchCode)}) &nbsp;·&nbsp; SLoc: ${escapeHtml(slocLabel)}</div>
               </div>
               <div class="pd-rank-count">
                 ${g.items}
@@ -347,7 +342,7 @@
       }
     }
 
-    wrap.innerHTML = subTabBar + tableExportButtonsHtml("top10:" + activeTop10Sub) + `<div class="pd-subtab-panel">${panel}</div>`;
+    wrap.innerHTML = subTabBar + tableExportButtonsHtml("top10:" + activeTop10Sub) + `<div class="pd-subtab-panel" style="background:rgba(61,148,224,0.06); border:1px solid rgba(61,148,224,0.25); border-radius:10px; padding:16px;">${panel}</div>`;
 
     wrap.querySelectorAll(".pd-subtab-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -1163,7 +1158,21 @@
   function showTab(tab) {
     activeTab = tab;
     TABS.forEach((t) => {
-      document.getElementById(`pd-tab-${t}`).style.display = t === tab ? "block" : "none";
+      const panel = document.getElementById(`pd-tab-${t}`);
+      panel.style.display = t === tab ? "block" : "none";
+      // Visible highlight on the active panel itself (background + border),
+      // not just the button underline — makes the tab switch obvious.
+      if (t === tab) {
+        panel.style.background = "rgba(61,148,224,0.06)";
+        panel.style.border = "1px solid rgba(61,148,224,0.25)";
+        panel.style.borderRadius = "10px";
+        panel.style.padding = "16px";
+      } else {
+        panel.style.background = "";
+        panel.style.border = "";
+        panel.style.borderRadius = "";
+        panel.style.padding = "";
+      }
     });
     document.querySelectorAll(".pd-tab-btn").forEach((btn) => {
       btn.classList.toggle("active", btn.dataset.tab === tab);
