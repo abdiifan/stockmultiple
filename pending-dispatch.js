@@ -485,6 +485,7 @@
     if (!wrap) return;
 
     const matrix = {};        // matrix[branch][sloc] = Set(delivery)
+    const matrixRows = {};    // matrixRows[branch][sloc] = [] row records, for click-to-drilldown
     const branchTotals = {};  // branch -> Set(delivery)
     const slocTotals = {};    // sloc -> Set(delivery)
     const grandDeliveries = new Set();
@@ -496,6 +497,9 @@
       if (!matrix[branch]) matrix[branch] = {};
       if (!matrix[branch][sloc]) matrix[branch][sloc] = new Set();
       matrix[branch][sloc].add(r.delivery);
+      if (!matrixRows[branch]) matrixRows[branch] = {};
+      if (!matrixRows[branch][sloc]) matrixRows[branch][sloc] = [];
+      matrixRows[branch][sloc].push(r);
       if (!branchTotals[branch]) branchTotals[branch] = new Set();
       branchTotals[branch].add(r.delivery);
       if (!slocTotals[sloc]) slocTotals[sloc] = new Set();
@@ -537,7 +541,8 @@
     const bodyRows = branches.map((b, i) => {
       const cells = cols.map((c) => {
         const v = cellCount(b, c);
-        return `<td style="${heatBg(v, maxCell)}">${v ? v.toLocaleString() : ""}</td>`;
+        if (!v) return `<td style="${heatBg(v, maxCell)}"></td>`;
+        return `<td style="${heatBg(v, maxCell)};cursor:pointer" class="pd-matrix-cell" data-branch="${escapeHtml(b)}" data-sloc="${escapeHtml(c)}" title="Click to see the delivery line items">${v.toLocaleString()}</td>`;
       }).join("");
       const rt = rowTotal(b);
       const rowPct = grandTotal ? Math.round((rt / grandTotal) * 100) : 0;
@@ -583,6 +588,76 @@
         </table>
       </div>
     `;
+
+    wrap.querySelectorAll(".pd-matrix-cell").forEach((td) => {
+      td.addEventListener("click", () => {
+        const b = td.dataset.branch;
+        const c = td.dataset.sloc;
+        const cellRows = (matrixRows[b] && matrixRows[b][c]) || [];
+        showMatrixDrilldown(b, c, cellRows);
+      });
+    });
+  }
+
+  // ── Matrix cell click -> drilldown modal ───────────────────────
+  // Shows the individual line items behind a Branch × SLoc cell, with
+  // exactly the columns requested: Delivery, GI Planned Date, Days Late,
+  // Material, Description, Purchasing Document, Qty, Stock Type, Created By.
+  function closeMatrixDrilldown() {
+    const el = document.getElementById("pd-matrix-drilldown-overlay");
+    if (el) el.remove();
+  }
+
+  function showMatrixDrilldown(branch, sloc, cellRows) {
+    closeMatrixDrilldown();
+
+    const rowsHtml = cellRows.map((r) => `
+      <tr>
+        <td>${escapeHtml(r.delivery)}</td>
+        <td>${fmtDate(r.giDate)}</td>
+        <td>${daysLateBadge(r.giDate)}</td>
+        <td>${escapeHtml(r.material)}</td>
+        <td>${escapeHtml(r.itemDescription)}</td>
+        <td>${escapeHtml(r.purchasingDoc)}</td>
+        <td>${(r.qty || 0).toLocaleString()}</td>
+        <td>${stockBadge(stockTypeOf(r))}</td>
+        <td>${escapeHtml(r.createdBy)}</td>
+      </tr>
+    `).join("");
+
+    const overlay = document.createElement("div");
+    overlay.id = "pd-matrix-drilldown-overlay";
+    overlay.style.cssText = "position:fixed; inset:0; background:rgba(10,14,20,0.6); z-index:9999; display:flex; align-items:center; justify-content:center; padding:24px;";
+    overlay.innerHTML = `
+      <div style="background:#12181f; border:1px solid rgba(120,140,160,0.3); border-radius:12px; max-width:1100px; width:100%; max-height:85vh; display:flex; flex-direction:column; overflow:hidden;">
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid rgba(120,140,160,0.25);">
+          <div style="font-size:15px; font-weight:700;">${escapeHtml(branch)} &nbsp;·&nbsp; SLoc: ${escapeHtml(sloc)}
+            <span style="font-weight:500; opacity:0.7; font-size:13px;">(${cellRows.length.toLocaleString()} line item${cellRows.length === 1 ? "" : "s"})</span>
+          </div>
+          <button type="button" id="pd-matrix-drilldown-close" style="background:transparent; border:none; color:inherit; font-size:20px; cursor:pointer; line-height:1; padding:4px 8px;">×</button>
+        </div>
+        <div style="overflow:auto; padding:0 20px 20px;">
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Delivery</th><th>GI Planned Date</th><th>Days Late</th><th>Material</th>
+                  <th>Description</th><th>Purchasing Document</th><th>Qty</th><th>Stock Type</th><th>Created By</th>
+                </tr>
+              </thead>
+              <tbody>${rowsHtml}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) closeMatrixDrilldown(); });
+    document.getElementById("pd-matrix-drilldown-close").addEventListener("click", closeMatrixDrilldown);
+    document.addEventListener("keydown", function escHandler(e) {
+      if (e.key === "Escape") { closeMatrixDrilldown(); document.removeEventListener("keydown", escHandler); }
+    });
   }
 
 
