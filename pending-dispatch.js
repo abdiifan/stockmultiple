@@ -24,6 +24,7 @@
     rows: [],           // raw parsed rows
     branchMaster: {},   // plantCode(4 chars) -> branch name
     filters: { search: "", sloc: "", branch: "", stockType: "" },
+    detailFilters: { material: "", delivery: "", createdBy: "" }, // scoped only to the "All Pending Items" table
     localUploadedAt: null,   // when THIS browser last parsed a file (fallback)
     sourceUploadedAt: null,  // authoritative "uploaded to Supabase" time, if known
   };
@@ -607,6 +608,55 @@
     return `<span class="badge pd-badge-late" style="background:rgba(224,77,61,0.15);color:#e04d3d;border:1px solid rgba(224,77,61,0.35);">${d} day${d === 1 ? "" : "s"} late</span>`;
   }
 
+  // ── Detail-table-only filters (Material / Delivery / Created By) —
+  //    real <select> filters, not a search box, scoped specifically to
+  //    the "All Pending Items" table (on top of the page-level filters). ──
+  function applyDetailFilters(rows) {
+    const { material, delivery, createdBy } = STATE.detailFilters;
+    return rows.filter((r) => {
+      if (material && r.material !== material) return false;
+      if (delivery && r.delivery !== delivery) return false;
+      if (createdBy && r.createdBy !== createdBy) return false;
+      return true;
+    });
+  }
+
+  function detailFilterBarHtml(optionRows) {
+    const materials = [...new Set(optionRows.map((r) => r.material).filter(Boolean))].sort();
+    const deliveries = [...new Set(optionRows.map((r) => r.delivery).filter(Boolean))].sort();
+    const createdBys = [...new Set(optionRows.map((r) => r.createdBy).filter(Boolean))].sort();
+    const { material, delivery, createdBy } = STATE.detailFilters;
+
+    const selStyle = "font-size:12px; padding:6px 8px; border-radius:6px; border:1px solid rgba(120,140,160,0.35); background:transparent; min-width:150px;";
+    const opt = (val, current) => `<option value="${escapeHtml(val)}" ${val === current ? "selected" : ""}>${escapeHtml(val)}</option>`;
+
+    return `
+      <div class="pd-detail-filter-bar" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+        <select id="pd-detail-filter-material" style="${selStyle}">
+          <option value="">All Materials</option>
+          ${materials.map((m) => opt(m, material)).join("")}
+        </select>
+        <select id="pd-detail-filter-delivery" style="${selStyle}">
+          <option value="">All Deliveries</option>
+          ${deliveries.map((d) => opt(d, delivery)).join("")}
+        </select>
+        <select id="pd-detail-filter-createdby" style="${selStyle}">
+          <option value="">All Created By</option>
+          ${createdBys.map((c) => opt(c, createdBy)).join("")}
+        </select>
+      </div>
+    `;
+  }
+
+  function wireDetailFilterBar(wrap) {
+    const matSel = wrap.querySelector("#pd-detail-filter-material");
+    const delSel = wrap.querySelector("#pd-detail-filter-delivery");
+    const cbSel = wrap.querySelector("#pd-detail-filter-createdby");
+    if (matSel) matSel.addEventListener("change", () => { STATE.detailFilters.material = matSel.value; renderDetailTable(currentFilteredRows()); });
+    if (delSel) delSel.addEventListener("change", () => { STATE.detailFilters.delivery = delSel.value; renderDetailTable(currentFilteredRows()); });
+    if (cbSel) cbSel.addEventListener("change", () => { STATE.detailFilters.createdBy = cbSel.value; renderDetailTable(currentFilteredRows()); });
+  }
+
   function renderDetailTable(rows) {
     const wrap = document.getElementById("pd-detail-wrap");
 
@@ -615,15 +665,25 @@
       return;
     }
 
-    const sorted = [...rows].sort((a, b) => (a.giDate && b.giDate ? a.giDate - b.giDate : 0));
+    const filterBar = detailFilterBarHtml(rows);
+    const exportBtns = tableExportButtonsHtml("detail");
+    const filtered = applyDetailFilters(rows);
+
+    if (!filtered.length) {
+      wrap.innerHTML = filterBar + exportBtns + `<div class="pd-empty">No pending line items match the Material / Delivery / Created By filter.</div>`;
+      wireDetailFilterBar(wrap);
+      return;
+    }
+
+    const sorted = [...filtered].sort((a, b) => (a.giDate && b.giDate ? a.giDate - b.giDate : 0));
     const shown = sorted; // no render cap — full filtered set is shown
 
-    wrap.innerHTML = tableExportButtonsHtml("detail") + `
+    wrap.innerHTML = filterBar + exportBtns + `
       <div class="tbl-wrap tbl-wrap-freeze">
         <table class="freeze-header">
           <thead><tr>
             <th>Delivery</th><th>GI Date</th><th>Days Late</th><th>Material</th>
-            <th>Description</th><th>Branch</th><th>Storage Loc.</th>
+            <th>Description</th><th>Purchasing Document</th><th>Branch</th><th>Storage Loc.</th>
             <th>Qty</th><th>Stock Type</th><th>Created By</th>
           </tr></thead>
           <tbody>
@@ -637,6 +697,7 @@
                   <td>${daysLateBadge(r.giDate)}</td>
                   <td class="col-mat-code">${escapeHtml(r.material)}</td>
                   <td class="col-mat-desc" style="white-space:normal;max-width:260px">${escapeHtml(r.itemDescription)}</td>
+                  <td style="font-family:'IBM Plex Mono',monospace">${escapeHtml(r.purchasingDoc)}</td>
                   <td>${escapeHtml(branchName(code))}</td>
                   <td>${escapeHtml(r.storageLocation)}</td>
                   <td class="col-qty">${(r.qty || 0).toLocaleString()}</td>
@@ -649,6 +710,7 @@
         </table>
       </div>
     `;
+    wireDetailFilterBar(wrap);
   }
 
   // ── Filter dropdown population ──────────────────────────────
@@ -684,6 +746,7 @@
       "Days Late": (() => { const d = daysLate(r.giDate); return d === null ? "" : (d <= 0 ? "Good" : d); })(),
       "Material": r.material,
       "Item Description": r.itemDescription,
+      "Purchasing Document": r.purchasingDoc,
       "Branch": branchName(plantCode(r.shipToParty)),
       "Plant Code": plantCode(r.shipToParty),
       "Storage Location": r.storageLocation,
@@ -908,7 +971,7 @@
     let data, filename, sheetName;
 
     if (tableKey === "detail") {
-      data = buildDetailExportData(rows); filename = "pending_dispatch_all_items"; sheetName = "All Pending Items";
+      data = buildDetailExportData(applyDetailFilters(rows)); filename = "pending_dispatch_all_items"; sheetName = "All Pending Items";
     } else if (tableKey === "sloc") {
       data = buildSlocExportData(rows); filename = "pending_dispatch_by_storage_location"; sheetName = "By Storage Location";
     } else if (tableKey === "branch") {
@@ -997,7 +1060,7 @@
       { "Field": "Exported at", "Value": exportedAt },
     ];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(infoData), safeSheetName("Info"));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildDetailExportData(rows)), safeSheetName("All Pending Items"));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildDetailExportData(applyDetailFilters(rows))), safeSheetName("All Pending Items"));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildSlocExportData(rows)), safeSheetName("By Storage Location"));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildBranchExportData(rows)), safeSheetName("By Branch or Plant"));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildTop10sExportData(rows)), safeSheetName("Top 10s"));
@@ -1095,12 +1158,18 @@
     stockType.addEventListener("change", () => { STATE.filters.stockType = stockType.value; renderAll(); });
     clearBtn.addEventListener("click", () => {
       STATE.filters = { search: "", sloc: "", branch: "", stockType: "" };
+      STATE.detailFilters = { material: "", delivery: "", createdBy: "" };
       search.value = ""; sloc.value = ""; branch.value = ""; stockType.value = "";
       renderAll();
     });
 
-    document.getElementById("pd-dl-csv").addEventListener("click", () => exportRows(currentFilteredRows(), "csv"));
-    document.getElementById("pd-dl-xlsx").addEventListener("click", () => exportRows(currentFilteredRows(), "xlsx"));
+    // The page-level "download everything" CSV/Excel buttons are now
+    // redundant with the per-table export buttons that sit directly
+    // above each table, so they're hidden rather than wired up.
+    const globalCsvBtn = document.getElementById("pd-dl-csv");
+    const globalXlsxBtn = document.getElementById("pd-dl-xlsx");
+    if (globalCsvBtn) globalCsvBtn.style.display = "none";
+    if (globalXlsxBtn) globalXlsxBtn.style.display = "none";
   }
 
   // ── File input handler ──────────────────────────────────────
