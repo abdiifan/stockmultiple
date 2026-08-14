@@ -346,7 +346,7 @@
       }
     }
 
-    wrap.innerHTML = subTabBar + `<div class="pd-subtab-panel">${panel}</div>`;
+    wrap.innerHTML = subTabBar + tableExportButtonsHtml("top10:" + activeTop10Sub) + `<div class="pd-subtab-panel">${panel}</div>`;
 
     wrap.querySelectorAll(".pd-subtab-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -394,7 +394,7 @@
       return;
     }
 
-    wrap.innerHTML = `
+    wrap.innerHTML = tableExportButtonsHtml("sloc") + `
       <div class="tbl-wrap">
         <table>
           <thead><tr>
@@ -434,7 +434,7 @@
       wrap.innerHTML = `<div class="pd-empty">No branch data in the current filter.</div>`;
       return;
     }
-    wrap.innerHTML = `
+    wrap.innerHTML = tableExportButtonsHtml("branch") + `
       <div class="tbl-wrap">
         <table>
           <thead><tr>
@@ -478,28 +478,34 @@
     return `background:rgb(${r},${g},${b})`;
   }
 
-  // ── "Branch × Storage Location" cross-tab (line-item counts) ────
+  // ── "Branch × Storage Location" cross-tab (unique DELIVERY counts,
+  //    not line-item counts — a delivery is counted once per branch×sloc
+  //    cell it appears in, regardless of how many line items it has) ────
   function renderMatrixTable(rows) {
     const wrap = document.getElementById("pd-matrix-wrap");
     if (!wrap) return;
 
-    const matrix = {};       // matrix[branch][sloc] = count
-    const branchTotals = {};
-    const slocTotals = {};
-    const slocSeen = [];     // first-seen order, used to build column order below
-    let grandTotal = 0;
+    const matrix = {};        // matrix[branch][sloc] = Set(delivery)
+    const branchTotals = {};  // branch -> Set(delivery)
+    const slocTotals = {};    // sloc -> Set(delivery)
+    const grandDeliveries = new Set();
+    const slocSeen = [];      // first-seen order, used to build column order below
 
     rows.forEach((r) => {
       const branch = branchName(plantCode(r.shipToParty)) || "—";
       const sloc = r.storageLocation || "—";
       if (!matrix[branch]) matrix[branch] = {};
-      matrix[branch][sloc] = (matrix[branch][sloc] || 0) + 1;
-      branchTotals[branch] = (branchTotals[branch] || 0) + 1;
-      slocTotals[sloc] = (slocTotals[sloc] || 0) + 1;
+      if (!matrix[branch][sloc]) matrix[branch][sloc] = new Set();
+      matrix[branch][sloc].add(r.delivery);
+      if (!branchTotals[branch]) branchTotals[branch] = new Set();
+      branchTotals[branch].add(r.delivery);
+      if (!slocTotals[sloc]) slocTotals[sloc] = new Set();
+      slocTotals[sloc].add(r.delivery);
       if (!slocSeen.includes(sloc)) slocSeen.push(sloc);
-      grandTotal += 1;
+      grandDeliveries.add(r.delivery);
     });
 
+    const grandTotal = grandDeliveries.size;
     if (!grandTotal) {
       wrap.innerHTML = `<div class="pd-empty">No data in the current filter.</div>`;
       return;
@@ -519,38 +525,45 @@
 
     const branches = Object.keys(branchTotals).sort((a, b) => a.localeCompare(b));
 
-    const maxCell = Math.max(1, ...branches.flatMap((b) => cols.map((c) => matrix[b]?.[c] || 0)));
-    const maxRowTotal = Math.max(1, ...branches.map((b) => branchTotals[b] || 0));
-    const maxColTotal = Math.max(1, ...cols.map((c) => slocTotals[c] || 0));
+    const cellCount = (b, c) => matrix[b]?.[c]?.size || 0;
+    const rowTotal = (b) => branchTotals[b]?.size || 0;
+    const colTotal = (c) => slocTotals[c]?.size || 0;
+
+    const maxCell = Math.max(1, ...branches.flatMap((b) => cols.map((c) => cellCount(b, c))));
+    const maxRowTotal = Math.max(1, ...branches.map((b) => rowTotal(b)));
+    const maxColTotal = Math.max(1, ...cols.map((c) => colTotal(c)));
 
     const headerCells = cols.map((c) => `<th>${escapeHtml(c)}</th>`).join("");
 
     const bodyRows = branches.map((b, i) => {
       const cells = cols.map((c) => {
-        const v = matrix[b]?.[c] || 0;
+        const v = cellCount(b, c);
         return `<td style="${heatBg(v, maxCell)}">${v ? v.toLocaleString() : ""}</td>`;
       }).join("");
+      const rt = rowTotal(b);
+      const rowPct = grandTotal ? Math.round((rt / grandTotal) * 100) : 0;
       return `
         <tr>
           <td>${i + 1}</td>
           <td style="text-align:left">${escapeHtml(b)}</td>
           ${cells}
-          <td style="${heatBg(branchTotals[b], maxRowTotal)};font-weight:700">${branchTotals[b].toLocaleString()}</td>
+          <td style="${heatBg(rt, maxRowTotal)};font-weight:700">${rt.toLocaleString()}</td>
+          <td style="background:#dbe9fb;font-weight:600">${rowPct}%</td>
         </tr>`;
     }).join("");
 
-    const totalCells = cols.map((c) => `<td style="${heatBg(slocTotals[c] || 0, maxColTotal)};font-weight:700">${(slocTotals[c] || 0).toLocaleString()}</td>`).join("");
+    const totalCells = cols.map((c) => `<td style="${heatBg(colTotal(c), maxColTotal)};font-weight:700">${colTotal(c).toLocaleString()}</td>`).join("");
     const pctCells = cols.map((c) => {
-      const pct = grandTotal ? Math.round(((slocTotals[c] || 0) / grandTotal) * 100) : 0;
+      const pct = grandTotal ? Math.round((colTotal(c) / grandTotal) * 100) : 0;
       return `<td style="background:#dbe9fb;font-weight:600">${pct}%</td>`;
     }).join("");
 
-    wrap.innerHTML = `
+    wrap.innerHTML = tableExportButtonsHtml("matrix") + `
       <div class="tbl-wrap">
         <table class="pd-matrix-table">
           <thead>
             <tr>
-              <th>SN</th><th style="text-align:left">Branch</th>${headerCells}<th>Total</th>
+              <th>SN</th><th style="text-align:left">Branch</th>${headerCells}<th>Total</th><th>Total %</th>
             </tr>
           </thead>
           <tbody>
@@ -559,10 +572,12 @@
               <td colspan="2">Total</td>
               ${totalCells}
               <td style="font-weight:700">${grandTotal.toLocaleString()}</td>
+              <td style="font-weight:700">100%</td>
             </tr>
             <tr class="pd-matrix-pct-row">
               <td colspan="2"></td>
               ${pctCells}
+              <td></td>
               <td></td>
             </tr>
           </tbody>
@@ -603,7 +618,7 @@
     const sorted = [...rows].sort((a, b) => (a.giDate && b.giDate ? a.giDate - b.giDate : 0));
     const shown = sorted; // no render cap — full filtered set is shown
 
-    wrap.innerHTML = `
+    wrap.innerHTML = tableExportButtonsHtml("detail") + `
       <div class="tbl-wrap tbl-wrap-freeze">
         <table class="freeze-header">
           <thead><tr>
@@ -767,6 +782,193 @@
   function dataAsOfString() {
     const ts = STATE.sourceUploadedAt || STATE.localUploadedAt;
     return ts ? ts.toLocaleString() : "Unknown";
+  }
+
+  // ── Per-table export buttons ────────────────────────────────
+  // Every table gets its own small CSV/Excel export pair that exports
+  // ONLY the data in that specific table — never the other tables' data.
+  function tableExportButtonsHtml(tableKey) {
+    return `
+      <div class="pd-table-export" style="display:flex; justify-content:flex-end; gap:6px; margin-bottom:8px;">
+        <button type="button" class="pd-export-btn" data-export-table="${tableKey}" data-export-kind="csv"
+          style="font-size:12px; font-weight:600; padding:5px 10px; border-radius:6px; border:1px solid rgba(120,140,160,0.35); background:transparent; cursor:pointer;">⬇ CSV</button>
+        <button type="button" class="pd-export-btn" data-export-table="${tableKey}" data-export-kind="xlsx"
+          style="font-size:12px; font-weight:600; padding:5px 10px; border-radius:6px; border:1px solid rgba(120,140,160,0.35); background:transparent; cursor:pointer;">⬇ Excel</button>
+      </div>
+    `;
+  }
+
+  // ── "Branch × Storage Location" matrix export (mirrors renderMatrixTable)
+  //    — counts UNIQUE DELIVERIES per cell, not line items ──
+  function buildMatrixExportData(rows) {
+    const matrix = {};        // matrix[branch][sloc] = Set(delivery)
+    const branchTotals = {};  // branch -> Set(delivery)
+    const slocTotals = {};    // sloc -> Set(delivery)
+    const grandDeliveries = new Set();
+    const slocSeen = [];
+
+    rows.forEach((r) => {
+      const branch = branchName(plantCode(r.shipToParty)) || "—";
+      const sloc = r.storageLocation || "—";
+      if (!matrix[branch]) matrix[branch] = {};
+      if (!matrix[branch][sloc]) matrix[branch][sloc] = new Set();
+      matrix[branch][sloc].add(r.delivery);
+      if (!branchTotals[branch]) branchTotals[branch] = new Set();
+      branchTotals[branch].add(r.delivery);
+      if (!slocTotals[sloc]) slocTotals[sloc] = new Set();
+      slocTotals[sloc].add(r.delivery);
+      if (!slocSeen.includes(sloc)) slocSeen.push(sloc);
+      grandDeliveries.add(r.delivery);
+    });
+
+    const grandTotal = grandDeliveries.size;
+    if (!grandTotal) return [];
+
+    const mainCols = slocSeen
+      .filter((s) => /^Main-/i.test(s))
+      .sort((a, b) => {
+        const na = parseFloat(a.replace(/^Main-/i, "").replace("/", "."));
+        const nb = parseFloat(b.replace(/^Main-/i, "").replace("/", "."));
+        return na - nb;
+      });
+    const namedCols = slocSeen.filter((s) => !/^Main-/i.test(s));
+    const cols = [...namedCols, ...mainCols];
+    const branches = Object.keys(branchTotals).sort((a, b) => a.localeCompare(b));
+
+    const rowsOut = branches.map((b) => {
+      const row = { "Branch": b };
+      cols.forEach((c) => { row[c] = matrix[b]?.[c]?.size || 0; });
+      const rt = branchTotals[b].size;
+      row["Total"] = rt;
+      row["Total %"] = grandTotal ? Math.round((rt / grandTotal) * 100) + "%" : "0%";
+      return row;
+    });
+
+    const totalRow = { "Branch": "Total" };
+    cols.forEach((c) => { totalRow[c] = slocTotals[c]?.size || 0; });
+    totalRow["Total"] = grandTotal;
+    totalRow["Total %"] = "100%";
+    rowsOut.push(totalRow);
+
+    return rowsOut;
+  }
+
+  // ── "Top 10s" sub-tab export data — mirrors each panel in
+  //    renderTop10 exactly, keyed by the sub-tab it's exported from ──
+  function buildTop10SubExportData(rows, subKey) {
+    const bySloc = {};
+    rows.forEach((r) => {
+      const k = r.storageLocation || "—";
+      if (!bySloc[k]) bySloc[k] = { key: k, deliveries: new Set(), items: 0 };
+      bySloc[k].deliveries.add(r.delivery);
+      bySloc[k].items += 1;
+    });
+    const byPlant = {};
+    rows.forEach((r) => {
+      const code = plantCode(r.shipToParty);
+      if (!code) return;
+      if (!byPlant[code]) byPlant[code] = { code, deliveries: new Set(), items: 0 };
+      byPlant[code].deliveries.add(r.delivery);
+      byPlant[code].items += 1;
+    });
+
+    if (subKey === "sloc-deliv") {
+      return Object.values(bySloc)
+        .sort((a, b) => b.deliveries.size - a.deliveries.size)
+        .slice(0, 10)
+        .map((s, i) => ({ "#": i + 1, "Storage Location": s.key, "Pending Deliveries": s.deliveries.size }));
+    }
+    if (subKey === "sloc-items") {
+      return Object.values(bySloc)
+        .sort((a, b) => b.items - a.items)
+        .slice(0, 10)
+        .map((s, i) => ({ "#": i + 1, "Storage Location": s.key, "Pending Line Items": s.items }));
+    }
+    if (subKey === "plant-deliv") {
+      return Object.values(byPlant)
+        .sort((a, b) => b.deliveries.size - a.deliveries.size)
+        .slice(0, 10)
+        .map((p, i) => ({ "#": i + 1, "Branch": branchName(p.code), "Plant Code": p.code, "Pending Deliveries": p.deliveries.size }));
+    }
+    if (subKey === "plant-items") {
+      return Object.values(byPlant)
+        .sort((a, b) => b.items - a.items)
+        .slice(0, 10)
+        .map((p, i) => ({ "#": i + 1, "Branch": branchName(p.code), "Plant Code": p.code, "Pending Line Items": p.items }));
+    }
+    // "multi" — top 10 deliveries with multiple line items
+    return buildTop10sExportData(rows);
+  }
+
+  // ── Single-table export dispatcher — resolves a tableKey (as set on
+  //    the button that was clicked) to its data + a filename, then
+  //    writes ONLY that table, never the other tables on the page. ──
+  function exportSingleTable(tableKey, kind) {
+    const rows = currentFilteredRows();
+    let data, filename, sheetName;
+
+    if (tableKey === "detail") {
+      data = buildDetailExportData(rows); filename = "pending_dispatch_all_items"; sheetName = "All Pending Items";
+    } else if (tableKey === "sloc") {
+      data = buildSlocExportData(rows); filename = "pending_dispatch_by_storage_location"; sheetName = "By Storage Location";
+    } else if (tableKey === "branch") {
+      data = buildBranchExportData(rows); filename = "pending_dispatch_by_branch"; sheetName = "By Branch or Plant";
+    } else if (tableKey === "matrix") {
+      data = buildMatrixExportData(rows); filename = "pending_dispatch_branch_sloc_matrix"; sheetName = "Branch x SLoc Matrix";
+    } else if (tableKey.startsWith("top10:")) {
+      const subKey = tableKey.slice("top10:".length);
+      data = buildTop10SubExportData(rows, subKey);
+      filename = "pending_dispatch_top10_" + subKey.replace(/-/g, "_");
+      sheetName = safeSheetName("Top 10 - " + subKey);
+    } else {
+      return;
+    }
+
+    if (!data || !data.length) {
+      data = [{ "Note": "No data in the current filter." }];
+    }
+
+    exportSingleSheet(data, kind, filename, sheetName);
+  }
+
+  // Writes exactly one table's data as CSV or as a single-sheet XLSX
+  // (with the same "data as of / exported at" metadata as the full
+  // report export), never bundling in any other table.
+  function exportSingleSheet(data, kind, filenameBase, sheetName) {
+    const asOf = dataAsOfString();
+    const exportedAt = new Date().toLocaleString();
+
+    if (kind === "csv") {
+      const ws = XLSX.utils.json_to_sheet(data);
+      const meta = `Data as of,${asOf}\nExported at,${exportedAt}\n\n`;
+      const csv = meta + XLSX.utils.sheet_to_csv(ws);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      downloadBlob(blob, `${filenameBase}.csv`);
+      return;
+    }
+
+    const wb = XLSX.utils.book_new();
+    const infoData = [
+      { "Field": "Report", "Value": "Pending Dispatch — " + sheetName },
+      { "Field": "Data as of", "Value": asOf },
+      { "Field": "Exported at", "Value": exportedAt },
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(infoData), safeSheetName("Info"));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), safeSheetName(sheetName));
+    XLSX.writeFile(wb, `${filenameBase}.xlsx`);
+  }
+
+  // Delegated click handler — works for buttons injected into any
+  // table wrap, including ones re-rendered after filtering/tab switches.
+  function wireTableExportButtons() {
+    document.addEventListener("click", (e) => {
+      const btn = e.target.closest(".pd-export-btn");
+      if (!btn) return;
+      const tableKey = btn.dataset.exportTable;
+      const kind = btn.dataset.exportKind;
+      if (!tableKey || !kind) return;
+      exportSingleTable(tableKey, kind);
+    });
   }
 
   function exportRows(rows, kind) {
@@ -988,6 +1190,7 @@
     wireTabs();
     wireFileInput();
     wireSourceMetaListener();
+    wireTableExportButtons();
     showNoData();
   });
 })();
