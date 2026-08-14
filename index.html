@@ -177,6 +177,47 @@
     .pd-upload-btn:hover { background: rgba(148,113,214,0.08) !important; border-color: var(--purple) !important; }
     .pd-search-wrap { flex: 1 1 220px; min-width: 200px; }
     .pd-search-input { width: 100%; padding: 6px 10px; font-size: 0.8rem; }
+    .pd-tab-bar {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1.5rem;
+      margin-bottom: 0;
+      border-bottom: 2px solid var(--border2);
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .pd-tab-btn {
+      padding: 0.5rem 1.1rem;
+      border: none;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      font-weight: 500;
+      font-size: 0.82rem;
+      cursor: pointer;
+      margin-bottom: -2px;
+      font-family: inherit;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: color 0.15s, border-color 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .pd-tab-btn.active {
+      color: var(--blue);
+      font-weight: 700;
+      border-bottom-color: var(--blue);
+    }
+    .pd-tab-count {
+      font-size: 0.68rem;
+      font-weight: 700;
+      background: var(--surface2);
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 0.05rem 0.45rem;
+    }
+    .pd-tab-btn.active .pd-tab-count { color: var(--blue); }
     .pd-rank-list { display: flex; flex-direction: column; gap: 0.45rem; }
     .pd-rank-item {
       display: flex; align-items: center; gap: 0.7rem;
@@ -204,9 +245,6 @@
     .pd-badge-rdf { background: rgba(61,148,224,0.16); color: var(--blue); }
     .pd-badge-mix { background: rgba(212,135,42,0.16); color: var(--amber); }
     .pd-empty { padding: 1.5rem; text-align: center; color: var(--muted); font-size: 0.82rem; }
-    @media (max-width: 900px) {
-      #page-pending-dispatch .chart-row { grid-template-columns: 1fr !important; }
-    }
 
     /* ── 🔎 Who's Responsible? sidebar search ── */
     .who-resp-wrap {
@@ -1085,30 +1123,32 @@
 
       <div class="kpi-row" id="pd-kpis"></div>
 
-      <div class="chart-row" style="grid-template-columns: 1fr 1fr; align-items: stretch;">
-        <div class="chart-box">
-          <div class="section-header">🏆 Top 10 Deliveries — Multiple Line Items</div>
-          <div id="pd-top10-wrap"></div>
-        </div>
-        <div class="chart-box">
-          <div class="section-header">📊 Pending Items by Storage Location</div>
-          <div id="chart-pd-sloc" style="min-height:300px"></div>
-        </div>
+      <div class="pd-tab-bar">
+        <button class="pd-tab-btn active" data-tab="top10">🏆 Top 10 Multi-Item Deliveries <span class="pd-tab-count" id="pd-tab-count-top10">0</span></button>
+        <button class="pd-tab-btn" data-tab="sloc">📊 By Storage Location <span class="pd-tab-count" id="pd-tab-count-sloc">0</span></button>
+        <button class="pd-tab-btn" data-tab="branch">🏢 By Branch / Plant <span class="pd-tab-count" id="pd-tab-count-branch">0</span></button>
+        <button class="pd-tab-btn" data-tab="detail">📋 All Pending Items <span class="pd-tab-count" id="pd-tab-count-detail">0</span></button>
       </div>
 
-      <div class="chart-box full">
-        <div class="section-header">🏢 Breakdown by Branch / Plant</div>
+      <div id="pd-dl-row" style="display:flex;gap:0.6rem;justify-content:flex-end;margin:0.7rem 0 0">
+        <button class="dl-btn" id="pd-dl-csv">⬇ CSV</button>
+        <button class="dl-btn" id="pd-dl-xlsx">⬇ Excel</button>
+      </div>
+
+      <div id="pd-tab-top10" class="pd-tab-panel" style="display:block;padding-top:1rem">
+        <div id="pd-top10-wrap"></div>
+      </div>
+      <div id="pd-tab-sloc" class="pd-tab-panel" style="display:none;padding-top:1rem">
+        <div class="chart-box full" style="margin-bottom:0">
+          <div id="chart-pd-sloc" style="min-height:320px"></div>
+        </div>
+      </div>
+      <div id="pd-tab-branch" class="pd-tab-panel" style="display:none;padding-top:1rem">
         <div id="pd-branch-wrap"></div>
       </div>
-
-      <div class="section-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-top:0.5rem">
-        <span id="pd-detail-header">📋 Pending Line Items</span>
-        <div style="display:flex;gap:0.6rem">
-          <button class="dl-btn" id="pd-dl-csv">⬇ CSV</button>
-          <button class="dl-btn" id="pd-dl-xlsx">⬇ Excel</button>
-        </div>
+      <div id="pd-tab-detail" class="pd-tab-panel" style="display:none;padding-top:1rem">
+        <div id="pd-detail-wrap"></div>
       </div>
-      <div id="pd-detail-wrap"></div>
     </div>
   </section>
 
