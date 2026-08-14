@@ -476,7 +476,10 @@
     const r = Math.round(r1 + (r2 - r1) * localT);
     const g = Math.round(g1 + (g2 - g1) * localT);
     const b = Math.round(b1 + (b2 - b1) * localT);
-    return `background:rgb(${r},${g},${b})`;
+    // Cells always get a fixed pastel background regardless of the active
+    // theme, so text color must be pinned dark here too — otherwise it
+    // inherits the theme's --text (light in dark themes) and disappears.
+    return `background:rgb(${r},${g},${b});color:#1a1a1a`;
   }
 
   // ── "Branch × Storage Location" cross-tab (unique DELIVERY counts,
@@ -549,14 +552,14 @@
           <td style="text-align:left">${escapeHtml(b)}</td>
           ${cells}
           <td style="${heatBg(rt, maxRowTotal)};font-weight:700">${rt.toLocaleString()}</td>
-          <td style="background:#dbe9fb;font-weight:600">${rowPct}%</td>
+          <td style="background:#dbe9fb;color:#1a1a1a;font-weight:600">${rowPct}%</td>
         </tr>`;
     }).join("");
 
     const totalCells = cols.map((c) => `<td style="${heatBg(colTotal(c), maxColTotal)};font-weight:700">${colTotal(c).toLocaleString()}</td>`).join("");
     const pctCells = cols.map((c) => {
       const pct = grandTotal ? Math.round((colTotal(c) / grandTotal) * 100) : 0;
-      return `<td style="background:#dbe9fb;font-weight:600">${pct}%</td>`;
+      return `<td style="background:#dbe9fb;color:#1a1a1a;font-weight:600">${pct}%</td>`;
     }).join("");
 
     wrap.innerHTML = tableExportButtonsHtml("matrix") + `
