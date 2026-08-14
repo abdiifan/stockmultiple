@@ -280,8 +280,8 @@
 
     // ── build the sub-tab bar (mirrors the site's main tab bar look) ──
     const subTabBar = `
-      <div class="pd-subtab-bar" style="display:flex; flex-wrap:wrap; gap:4px; border-bottom:1px solid rgba(120,140,160,0.25); margin-bottom:18px;">
-        ${TOP10_SUBS.map((s) => {
+      <div class="pd-subtab-bar" style="display:flex; flex-wrap:wrap; gap:0; border-bottom:2px solid rgba(120,140,160,0.5); margin-bottom:18px;">
+        ${TOP10_SUBS.map((s, idx) => {
           const active = s.key === activeTop10Sub;
           return `
             <button type="button" class="pd-subtab-btn" data-subtab="${s.key}" style="
@@ -290,7 +290,8 @@
               padding:10px 14px; font-size:13px; font-weight:600;
               color:${active ? "#3d94e0" : "inherit"}; opacity:${active ? "1" : "0.65"};
               border-bottom:2px solid ${active ? "#3d94e0" : "transparent"};
-              margin-bottom:-1px;
+              ${idx > 0 ? "border-left:1px solid rgba(120,140,160,0.35);" : ""}
+              margin-bottom:-2px;
             ">
               <span>${s.icon}</span>
               <span>${s.label}</span>
@@ -629,12 +630,12 @@
     overlay.id = "pd-matrix-drilldown-overlay";
     overlay.style.cssText = "position:fixed; inset:0; background:rgba(10,14,20,0.6); z-index:9999; display:flex; align-items:center; justify-content:center; padding:24px;";
     overlay.innerHTML = `
-      <div style="background:#12181f; border:1px solid rgba(120,140,160,0.3); border-radius:12px; max-width:1100px; width:100%; max-height:85vh; display:flex; flex-direction:column; overflow:hidden;">
-        <div style="display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid rgba(120,140,160,0.25);">
-          <div style="font-size:15px; font-weight:700;">${escapeHtml(branch)} &nbsp;·&nbsp; SLoc: ${escapeHtml(sloc)}
-            <span style="font-weight:500; opacity:0.7; font-size:13px;">(${cellRows.length.toLocaleString()} line item${cellRows.length === 1 ? "" : "s"})</span>
+      <div style="background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:12px; max-width:1100px; width:100%; max-height:85vh; display:flex; flex-direction:column; overflow:hidden;">
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border);">
+          <div style="font-size:15px; font-weight:700; color:var(--text);">${escapeHtml(branch)} &nbsp;·&nbsp; SLoc: ${escapeHtml(sloc)}
+            <span style="font-weight:500; opacity:0.7; font-size:13px; color:var(--muted);">(${cellRows.length.toLocaleString()} line item${cellRows.length === 1 ? "" : "s"})</span>
           </div>
-          <button type="button" id="pd-matrix-drilldown-close" style="background:transparent; border:none; color:inherit; font-size:20px; cursor:pointer; line-height:1; padding:4px 8px;">×</button>
+          <button type="button" id="pd-matrix-drilldown-close" style="background:transparent; border:none; color:var(--text); font-size:20px; cursor:pointer; line-height:1; padding:4px 8px;">×</button>
         </div>
         <div style="overflow:auto; padding:0 20px 20px;">
           <div class="tbl-wrap">
@@ -1238,15 +1239,19 @@
       // Visible highlight on the active panel itself (background + border),
       // not just the button underline — makes the tab switch obvious.
       if (t === tab) {
-        panel.style.background = "rgba(61,148,224,0.06)";
-        panel.style.border = "1px solid rgba(61,148,224,0.25)";
-        panel.style.borderRadius = "10px";
-        panel.style.padding = "16px";
+        panel.style.background = "rgba(61,148,224,0.05)";
+        panel.style.border = "1px solid rgba(61,148,224,0.45)";
+        panel.style.borderTop = "3px solid #3d94e0";
+        panel.style.borderRadius = "0 0 10px 10px";
+        panel.style.padding = "18px 16px 16px";
+        panel.style.marginTop = "-1px";
       } else {
         panel.style.background = "";
         panel.style.border = "";
+        panel.style.borderTop = "";
         panel.style.borderRadius = "";
         panel.style.padding = "";
+        panel.style.marginTop = "";
       }
     });
     document.querySelectorAll(".pd-tab-btn").forEach((btn) => {
