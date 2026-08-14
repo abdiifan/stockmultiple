@@ -218,6 +218,32 @@
       padding: 0.05rem 0.45rem;
     }
     .pd-tab-btn.active .pd-tab-count { color: var(--blue); }
+    .pd-asof-banner {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin: 0.5rem 0 0;
+    }
+    .pd-asof-banner:empty { display: none; }
+    .pd-matrix-table th {
+      background: #fbe0cd;
+      white-space: nowrap;
+      text-align: center;
+    }
+    .pd-matrix-table td {
+      text-align: center;
+      white-space: nowrap;
+    }
+    .pd-matrix-table tbody tr:not(.pd-matrix-total-row):not(.pd-matrix-pct-row):hover td {
+      filter: brightness(0.97);
+    }
+    .pd-matrix-total-row td {
+      background: #e6e6e6;
+      font-weight: 700;
+      border-top: 2px solid var(--border2);
+    }
+    .pd-matrix-pct-row td {
+      border-top: none;
+    }
     .pd-rank-list { display: flex; flex-direction: column; gap: 0.45rem; }
     .pd-rank-item {
       display: flex; align-items: center; gap: 0.7rem;
@@ -1155,11 +1181,14 @@
 
       <div class="kpi-row" id="pd-kpis"></div>
 
+      <div id="pd-data-asof" class="pd-asof-banner"></div>
+
       <div class="pd-tab-bar">
         <button class="pd-tab-btn active" data-tab="top10">🏆 Top 10s <span class="pd-tab-count" id="pd-tab-count-top10">0</span></button>
         <button class="pd-tab-btn" data-tab="sloc">📊 By Storage Location <span class="pd-tab-count" id="pd-tab-count-sloc">0</span></button>
         <button class="pd-tab-btn" data-tab="branch">🏢 By Branch / Plant <span class="pd-tab-count" id="pd-tab-count-branch">0</span></button>
         <button class="pd-tab-btn" data-tab="detail">📋 All Pending Items <span class="pd-tab-count" id="pd-tab-count-detail">0</span></button>
+        <button class="pd-tab-btn" data-tab="matrix">🧮 Branch × Storage Location <span class="pd-tab-count" id="pd-tab-count-matrix">0</span></button>
       </div>
 
       <div id="pd-dl-row" style="display:flex;gap:0.6rem;justify-content:flex-end;margin:0.7rem 0 0">
@@ -1180,6 +1209,9 @@
       </div>
       <div id="pd-tab-detail" class="pd-tab-panel" style="display:none;padding-top:1rem">
         <div id="pd-detail-wrap"></div>
+      </div>
+      <div id="pd-tab-matrix" class="pd-tab-panel" style="display:none;padding-top:1rem">
+        <div id="pd-matrix-wrap"></div>
       </div>
     </div>
   </section>
