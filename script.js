@@ -3871,7 +3871,13 @@ const PAGE_RENDERERS = {
 function renderPage(id) {
   // Home page removed — redirect to dashboard
   if (id === "home") id = "dashboard";
-  if (!rawDf.length) return;
+  // Pending Dispatch has its own independent dataset (STATE.rows in
+  // pending-dispatch.js) and its own empty-state placeholder (#pd-no-data),
+  // so — unlike every other page here — it doesn't need the main inventory
+  // file (rawDf) loaded first. Without this exemption, clicking the nav
+  // button did nothing at all until inventory was uploaded, which made
+  // Pending Dispatch feel like it always lagged behind every other page.
+  if (!rawDf.length && id !== "pending-dispatch") return;
   currentPage = id;
   // BUG-MOS-STALE-FIX: drop the Branch-Comparison-material-tab refresh hook
   // whenever we navigate to a different page, so populatePersonFilter() never
