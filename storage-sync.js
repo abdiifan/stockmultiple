@@ -159,6 +159,13 @@ function renderSyncInfo(slot) {
     textEl.title = meta.uploadedAt.toLocaleString();
   }
   if (btnEl) btnEl.disabled = false;
+
+  // Let pending-dispatch.js (or anything else) know this slot's upload
+  // metadata just changed, so it can show its own "data as of" indicator
+  // without storage-sync.js needing to know that page's internals.
+  if (slot === "pendingDispatch") {
+    document.dispatchEvent(new CustomEvent("pd-source-meta", { detail: meta || null }));
+  }
 }
 
 // Keep the "Xh ago" text fresh without re-fetching, since the underlying
