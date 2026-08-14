@@ -251,36 +251,44 @@
       </div>
     `;
 
-    const headingStyle = "margin:24px 0 10px; font-size:14px; letter-spacing:.02em; opacity:.85;";
+    const headingStyle = "margin:0 0 10px; font-size:14px; letter-spacing:.02em; opacity:.85;";
     const heading = (text) => `<h4 class="pd-top10-heading" style="${headingStyle}">${text}</h4>`;
     const calloutStyle = "margin:0 0 12px; padding:10px 14px; border-radius:8px; background:rgba(61,148,224,0.12); border:1px solid rgba(61,148,224,0.3); font-size:13px; line-height:1.5;";
     const callout = (html) => `<div class="pd-callout" style="${calloutStyle}">${html}</div>`;
+    const pairRowStyle = "display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:28px;";
+    const colStyle = "min-width:0;"; // allow tables to shrink inside the grid column
 
     let html = "";
 
-    // Storage location leaderboards
-    html += heading("🗄️ Top 10 Storage Locations — by Deliveries");
-    html += rankTable(slocByDeliv, "Storage Location", "deliveries", "Pending Deliveries");
+    // ── Row 1: Storage Locations — by Deliveries | by Line Items ──
+    html += `<div class="pd-top10-row" style="${pairRowStyle}">
+      <div style="${colStyle}">
+        ${heading("🗄️ Top 10 Storage Locations — by Deliveries")}
+        ${rankTable(slocByDeliv, "Storage Location", "deliveries", "Pending Deliveries")}
+      </div>
+      <div style="${colStyle}">
+        ${heading("🗄️ Top 10 Storage Locations — by Line Items")}
+        ${topSlocOutbound ? callout(`📦 Most outbound activity is at <strong>${escapeHtml(topSlocOutbound.key)}</strong>
+          with ${topSlocOutbound.items.toLocaleString()} pending line items across ${topSlocOutbound.deliveries.size.toLocaleString()} deliveries.`) : ""}
+        ${rankTable(slocByItems, "Storage Location", "items", "Pending Line Items")}
+      </div>
+    </div>`;
 
-    html += heading("🗄️ Top 10 Storage Locations — by Line Items");
-    if (topSlocOutbound) {
-      html += callout(`📦 Most outbound activity is at <strong>${escapeHtml(topSlocOutbound.key)}</strong>
-        with ${topSlocOutbound.items.toLocaleString()} pending line items across ${topSlocOutbound.deliveries.size.toLocaleString()} deliveries.`);
-    }
-    html += rankTable(slocByItems, "Storage Location", "items", "Pending Line Items");
+    // ── Row 2: Plants — by Deliveries | by Line Items ──
+    html += `<div class="pd-top10-row" style="${pairRowStyle}">
+      <div style="${colStyle}">
+        ${heading("🏭 Top 10 Plants — by Deliveries")}
+        ${rankTable(plantByDeliv, "Plant", "deliveries", "Pending Deliveries", (g) => `${branchName(g.code)} (${g.code})`)}
+      </div>
+      <div style="${colStyle}">
+        ${heading("🏭 Top 10 Plants — by Line Items")}
+        ${topPlantsAtRisk.length ? callout(`⚠️ If dispatch is delayed, <strong>${escapeHtml(topPlantsAtRisk.map((p) => `${branchName(p.code)} (${p.code})`).join(", "))}</strong>
+          will be the most affected, with the highest volume of pending line items waiting on stock.`) : ""}
+        ${rankTable(plantByItems, "Plant", "items", "Pending Line Items", (g) => `${branchName(g.code)} (${g.code})`)}
+      </div>
+    </div>`;
 
-    // Plant leaderboards
-    html += heading("🏭 Top 10 Plants — by Deliveries");
-    html += rankTable(plantByDeliv, "Plant", "deliveries", "Pending Deliveries", (g) => `${branchName(g.code)} (${g.code})`);
-
-    html += heading("🏭 Top 10 Plants — by Line Items");
-    if (topPlantsAtRisk.length) {
-      html += callout(`⚠️ If dispatch is delayed, <strong>${escapeHtml(topPlantsAtRisk.map((p) => `${branchName(p.code)} (${p.code})`).join(", "))}</strong>
-        will be the most affected, with the highest volume of pending line items waiting on stock.`);
-    }
-    html += rankTable(plantByItems, "Plant", "items", "Pending Line Items", (g) => `${branchName(g.code)} (${g.code})`);
-
-    // Original top 10 multi-item deliveries
+    // ── Row 3: Multi-Item Deliveries — full width ──
     html += heading("🏆 Top 10 Multi-Item Deliveries");
     if (!multiList.length) {
       html += `<div class="pd-empty">No deliveries with multiple line items in the current filter.</div>`;
@@ -304,53 +312,35 @@
       }).join("") + `</div>`;
     }
 
-    wrap.innerHTML = html;
+    wrap.innerHTML = `
+      <style>
+        @media (max-width: 720px) {
+          #pd-top10-wrap .pd-top10-row { grid-template-columns: 1fr !important; }
+        }
+      </style>
+      ${html}
+    `;
   }
 
-  // ── Storage location chart ──────────────────────────────────
+  // ── Storage location: table only (chart removed) ─────────────
   function renderSlocChart(rows) {
     const el = document.getElementById("chart-pd-sloc");
-    const counts = {};
-    rows.forEach((r) => {
-      const k = r.storageLocation || "—";
-      counts[k] = (counts[k] || 0) + 1;
-    });
-    const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-    if (!entries.length || typeof Plotly === "undefined") {
-      el.innerHTML = `<div class="pd-empty">No data to chart.</div>`;
-      renderSlocTable(rows);
-      return;
-    }
-    const x = entries.map((e) => e[0]);
-    const y = entries.map((e) => e[1]);
-    const isLight = document.documentElement.getAttribute("data-theme") === "light";
-    Plotly.newPlot(el, [{
-      x, y, type: "bar",
-      marker: { color: "#3d94e0" },
-      hovertemplate: "%{x}<br>%{y} pending items<extra></extra>",
-    }], {
-      margin: { t: 10, l: 40, r: 10, b: 60 },
-      paper_bgcolor: "rgba(0,0,0,0)",
-      plot_bgcolor: "rgba(0,0,0,0)",
-      font: { color: isLight ? "#18253a" : "#dce8f5", size: 11 },
-      xaxis: { tickangle: -30 },
-      yaxis: { title: "Pending items" },
-    }, { displayModeBar: false, responsive: true });
-
+    if (el) el.style.display = "none"; // chart no longer shown, keep element hidden
     renderSlocTable(rows);
   }
 
   // ── Storage location table (deliveries / items / RDF / Q) ────
   function renderSlocTable(rows) {
-    // Ensure a wrap element exists right after the chart, even if the
-    // hosting HTML page hasn't been updated with a dedicated container.
+    // Ensure a wrap element exists, even if the hosting HTML page hasn't
+    // been updated with a dedicated container. Placed where the chart
+    // used to be (chart element is now hidden).
     let wrap = document.getElementById("pd-sloc-table-wrap");
     if (!wrap) {
       const chartEl = document.getElementById("chart-pd-sloc");
       if (!chartEl || !chartEl.parentNode) return;
       wrap = document.createElement("div");
       wrap.id = "pd-sloc-table-wrap";
-      wrap.style.marginTop = "16px";
+      wrap.style.marginTop = "0";
       chartEl.parentNode.insertBefore(wrap, chartEl.nextSibling);
     }
 
@@ -434,6 +424,26 @@
   }
 
   // ── Detail table ─────────────────────────────────────────────
+  // ── Days late vs. planned Goods Issue date ────────────────────
+  // today - giDate: negative => not yet due (on track / "Good"),
+  // positive => days overdue past the planned GI date.
+  function daysLate(giDate) {
+    if (!giDate) return null;
+    const today = new Date();
+    const t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const g0 = new Date(giDate.getFullYear(), giDate.getMonth(), giDate.getDate());
+    return Math.round((t0 - g0) / 86400000);
+  }
+
+  function daysLateBadge(giDate) {
+    const d = daysLate(giDate);
+    if (d === null) return `<span class="badge">—</span>`;
+    if (d <= 0) {
+      return `<span class="badge pd-badge-good" style="background:rgba(46,175,110,0.15);color:#2eaf6e;border:1px solid rgba(46,175,110,0.35);">Good</span>`;
+    }
+    return `<span class="badge pd-badge-late" style="background:rgba(224,77,61,0.15);color:#e04d3d;border:1px solid rgba(224,77,61,0.35);">${d} day${d === 1 ? "" : "s"} late</span>`;
+  }
+
   function renderDetailTable(rows) {
     const wrap = document.getElementById("pd-detail-wrap");
 
@@ -450,7 +460,7 @@
       <div class="tbl-wrap tbl-wrap-freeze">
         <table class="freeze-header">
           <thead><tr>
-            <th>Delivery</th><th>Item</th><th>GI Date</th><th>Material</th>
+            <th>Delivery</th><th>Item</th><th>GI Date</th><th>Days Late</th><th>Material</th>
             <th>Description</th><th>Branch</th><th>Storage Loc.</th>
             <th>Qty</th><th>Stock Type</th>
           </tr></thead>
@@ -463,6 +473,7 @@
                   <td style="font-family:'IBM Plex Mono',monospace">${escapeHtml(r.delivery)}</td>
                   <td>${escapeHtml(r.item)}</td>
                   <td>${fmtDate(r.giDate)}</td>
+                  <td>${daysLateBadge(r.giDate)}</td>
                   <td class="col-mat-code">${escapeHtml(r.material)}</td>
                   <td class="col-mat-desc" style="white-space:normal;max-width:260px">${escapeHtml(r.itemDescription)}</td>
                   <td>${escapeHtml(branchName(code))}</td>
@@ -508,6 +519,7 @@
       "Delivery": r.delivery,
       "Item": r.item,
       "Goods Issue Date": r.giDate ? fmtDate(r.giDate) : "",
+      "Days Late": (() => { const d = daysLate(r.giDate); return d === null ? "" : (d <= 0 ? "Good" : d); })(),
       "Material": r.material,
       "Item Description": r.itemDescription,
       "Branch": branchName(plantCode(r.shipToParty)),
