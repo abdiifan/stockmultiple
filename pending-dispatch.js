@@ -609,8 +609,11 @@
   }
 
   // ── Detail-table-only filters (Material / Delivery / Created By) —
-  //    real <select> filters, not a search box, scoped specifically to
-  //    the "All Pending Items" table (on top of the page-level filters). ──
+  //    real filters, not a search box, scoped specifically to the
+  //    "All Pending Items" table (on top of the page-level filters).
+  //    Suggestions are a custom dropdown (not the native <datalist>
+  //    popup) so it always opens BELOW the field, never upward over
+  //    the page content. ──
   function applyDetailFilters(rows) {
     const { material, delivery, createdBy } = STATE.detailFilters;
     return rows.filter((r) => {
@@ -622,48 +625,96 @@
   }
 
   function detailFilterBarHtml(optionRows) {
-    const materials = [...new Set(optionRows.map((r) => r.material).filter(Boolean))].sort();
-    const deliveries = [...new Set(optionRows.map((r) => r.delivery).filter(Boolean))].sort();
-    const createdBys = [...new Set(optionRows.map((r) => r.createdBy).filter(Boolean))].sort();
     const { material, delivery, createdBy } = STATE.detailFilters;
+    const inputStyle = "font-size:12px; padding:6px 8px; border-radius:6px; border:1px solid rgba(120,140,160,0.35); background:transparent; min-width:170px; width:100%; box-sizing:border-box;";
 
-    const inputStyle = "font-size:12px; padding:6px 8px; border-radius:6px; border:1px solid rgba(120,140,160,0.35); background:transparent; min-width:170px;";
-    const dlOpt = (val) => `<option value="${escapeHtml(val)}"></option>`;
+    const field = (id, label, value) => `
+      <div class="pd-detail-filter-field" style="position:relative; min-width:170px;">
+        <input type="text" id="pd-detail-filter-${id}" placeholder="Filter by ${label}…"
+          value="${escapeHtml(value)}" style="${inputStyle}" autocomplete="off">
+        <div id="pd-detail-suggest-${id}" class="pd-detail-suggest" style="
+          display:none; position:absolute; top:100%; left:0; right:0; margin-top:4px;
+          max-height:220px; overflow-y:auto; background:#fff; color:#1a1a1a;
+          border:1px solid rgba(120,140,160,0.35); border-radius:6px;
+          box-shadow:0 6px 16px rgba(0,0,0,0.15); z-index:40;
+        "></div>
+      </div>
+    `;
 
-    // Typeable filters with autocomplete suggestions (datalist) — the
-    // value only takes effect once it exactly matches an existing row
-    // value, so this stays a real filter rather than a free-text search.
     return `
-      <div class="pd-detail-filter-bar" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
-        <input type="text" id="pd-detail-filter-material" list="pd-detail-datalist-material"
-          placeholder="Filter by Material…" value="${escapeHtml(material)}" style="${inputStyle}" autocomplete="off">
-        <datalist id="pd-detail-datalist-material">${materials.map(dlOpt).join("")}</datalist>
-
-        <input type="text" id="pd-detail-filter-delivery" list="pd-detail-datalist-delivery"
-          placeholder="Filter by Delivery…" value="${escapeHtml(delivery)}" style="${inputStyle}" autocomplete="off">
-        <datalist id="pd-detail-datalist-delivery">${deliveries.map(dlOpt).join("")}</datalist>
-
-        <input type="text" id="pd-detail-filter-createdby" list="pd-detail-datalist-createdby"
-          placeholder="Filter by Created By…" value="${escapeHtml(createdBy)}" style="${inputStyle}" autocomplete="off">
-        <datalist id="pd-detail-datalist-createdby">${createdBys.map(dlOpt).join("")}</datalist>
-
-        ${(material || delivery || createdBy) ? `<button type="button" id="pd-detail-filter-clear" style="${inputStyle} cursor:pointer;">✕ Clear</button>` : ""}
+      <div class="pd-detail-filter-bar" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; align-items:flex-start;">
+        ${field("material", "Material", material)}
+        ${field("delivery", "Delivery", delivery)}
+        ${field("createdby", "Created By", createdBy)}
+        ${(material || delivery || createdBy) ? `<button type="button" id="pd-detail-filter-clear" style="${inputStyle} width:auto; cursor:pointer;">✕ Clear</button>` : ""}
       </div>
     `;
   }
 
-  function wireDetailFilterBar(wrap) {
-    const matInput = wrap.querySelector("#pd-detail-filter-material");
-    const delInput = wrap.querySelector("#pd-detail-filter-delivery");
-    const cbInput = wrap.querySelector("#pd-detail-filter-createdby");
-    const clearBtn = wrap.querySelector("#pd-detail-filter-clear");
+  function wireDetailFilterBar(wrap, optionRows) {
+    const fieldDefs = [
+      { id: "material",  prop: "material" },
+      { id: "delivery",  prop: "delivery" },
+      { id: "createdby", prop: "createdBy" },
+    ];
 
-    // "change" (not "input") — fires when a suggestion is picked or the
-    // field is left with a new value, so we don't re-render on every
-    // keystroke (which would steal focus while the user is still typing).
-    if (matInput) matInput.addEventListener("change", () => { STATE.detailFilters.material = matInput.value.trim(); renderDetailTable(currentFilteredRows()); });
-    if (delInput) delInput.addEventListener("change", () => { STATE.detailFilters.delivery = delInput.value.trim(); renderDetailTable(currentFilteredRows()); });
-    if (cbInput) cbInput.addEventListener("change", () => { STATE.detailFilters.createdBy = cbInput.value.trim(); renderDetailTable(currentFilteredRows()); });
+    fieldDefs.forEach(({ id, prop }) => {
+      const input = wrap.querySelector(`#pd-detail-filter-${id}`);
+      const suggestBox = wrap.querySelector(`#pd-detail-suggest-${id}`);
+      if (!input || !suggestBox) return;
+
+      const values = [...new Set(optionRows.map((r) => r[prop]).filter(Boolean))].sort();
+
+      const commit = (val) => {
+        STATE.detailFilters[prop] = val;
+        renderDetailTable(currentFilteredRows());
+      };
+
+      const showSuggestions = () => {
+        const q = input.value.trim().toLowerCase();
+        const matches = (q ? values.filter((v) => v.toLowerCase().includes(q)) : values).slice(0, 50);
+        if (!matches.length) {
+          suggestBox.innerHTML = `<div style="padding:8px 10px; font-size:12px; opacity:0.6;">No matches</div>`;
+        } else {
+          suggestBox.innerHTML = matches.map((v) => `<div class="pd-suggest-item" data-value="${escapeHtml(v)}" style="padding:7px 10px; font-size:12px; cursor:pointer;">${escapeHtml(v)}</div>`).join("");
+          suggestBox.querySelectorAll(".pd-suggest-item").forEach((item) => {
+            // mousedown (not click) + preventDefault so the input never
+            // blurs before we read the picked value — keeps the dropdown
+            // reliably below the field with no flicker.
+            item.addEventListener("mousedown", (e) => {
+              e.preventDefault();
+              input.value = item.dataset.value;
+              suggestBox.style.display = "none";
+              commit(item.dataset.value);
+            });
+            item.addEventListener("mouseenter", () => { item.style.background = "rgba(61,148,224,0.12)"; });
+            item.addEventListener("mouseleave", () => { item.style.background = "transparent"; });
+          });
+        }
+        suggestBox.style.display = "block";
+      };
+
+      input.addEventListener("focus", showSuggestions);
+      input.addEventListener("input", showSuggestions);
+      input.addEventListener("blur", () => {
+        suggestBox.style.display = "none";
+        // Typed-and-tabbed-away exact match still applies as a filter;
+        // anything else (partial text with no selection) is discarded.
+        const typed = input.value.trim();
+        if (typed !== STATE.detailFilters[prop] && values.includes(typed)) {
+          commit(typed);
+        } else if (typed !== STATE.detailFilters[prop] && !typed) {
+          commit("");
+        } else if (typed !== STATE.detailFilters[prop]) {
+          input.value = STATE.detailFilters[prop]; // reject non-matching free text
+        }
+      });
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") { suggestBox.style.display = "none"; input.blur(); }
+      });
+    });
+
+    const clearBtn = wrap.querySelector("#pd-detail-filter-clear");
     if (clearBtn) clearBtn.addEventListener("click", () => {
       STATE.detailFilters = { material: "", delivery: "", createdBy: "" };
       renderDetailTable(currentFilteredRows());
@@ -684,7 +735,7 @@
 
     if (!filtered.length) {
       wrap.innerHTML = filterBar + exportBtns + `<div class="pd-empty">No pending line items match the Material / Delivery / Created By filter.</div>`;
-      wireDetailFilterBar(wrap);
+      wireDetailFilterBar(wrap, rows);
       return;
     }
 
@@ -723,7 +774,7 @@
         </table>
       </div>
     `;
-    wireDetailFilterBar(wrap);
+    wireDetailFilterBar(wrap, rows);
   }
 
   // ── Filter dropdown population ──────────────────────────────
