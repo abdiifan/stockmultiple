@@ -175,7 +175,19 @@
   }
 
   // ── "Top 10s" tab: storage-location & plant leaderboards, plus
-  //    the original top 10 multi-item-deliveries list ────────────
+  //    the original top 10 multi-item-deliveries list, presented as
+  //    sub-tabs styled like the site's main tab bar (icon + title +
+  //    count, underline on active) ─────────────────────────────────
+  let activeTop10Sub = "sloc-deliv"; // persists across re-renders/filter changes
+
+  const TOP10_SUBS = [
+    { key: "sloc-deliv",  icon: "🗄️", label: "Storage Locations — by Deliveries" },
+    { key: "sloc-items",  icon: "🗄️", label: "Storage Locations — by Line Items" },
+    { key: "plant-deliv", icon: "🏭", label: "Plants — by Deliveries" },
+    { key: "plant-items", icon: "🏭", label: "Plants — by Line Items" },
+    { key: "multi",       icon: "🏆", label: "Multi-Item Deliveries" },
+  ];
+
   function renderTop10(rows) {
     const wrap = document.getElementById("pd-top10-wrap");
     if (!rows.length) {
@@ -233,6 +245,15 @@
       .sort((a, b) => b.items - a.items)
       .slice(0, 10);
 
+    // ── counts shown in the sub-tab badges ──
+    const counts = {
+      "sloc-deliv":  Math.min(slocList.length, 10),
+      "sloc-items":  Math.min(slocList.length, 10),
+      "plant-deliv": Math.min(plantList.length, 10),
+      "plant-items": Math.min(plantList.length, 10),
+      "multi":       multiList.length,
+    };
+
     // ── small helper to build a rank table ──
     const rankTable = (list, keyLabel, valueKey, valueLabel, nameFn) => `
       <div class="tbl-wrap">
@@ -251,75 +272,86 @@
       </div>
     `;
 
-    const headingStyle = "margin:0 0 10px; font-size:14px; letter-spacing:.02em; opacity:.85;";
-    const heading = (text) => `<h4 class="pd-top10-heading" style="${headingStyle}">${text}</h4>`;
     const calloutStyle = "margin:0 0 12px; padding:10px 14px; border-radius:8px; background:rgba(61,148,224,0.12); border:1px solid rgba(61,148,224,0.3); font-size:13px; line-height:1.5;";
     const callout = (html) => `<div class="pd-callout" style="${calloutStyle}">${html}</div>`;
-    const pairRowStyle = "display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:28px;";
-    const colStyle = "min-width:0;"; // allow tables to shrink inside the grid column
 
-    let html = "";
+    // ── build the sub-tab bar (mirrors the site's main tab bar look) ──
+    const subTabBar = `
+      <div class="pd-subtab-bar" style="display:flex; flex-wrap:wrap; gap:4px; border-bottom:1px solid rgba(120,140,160,0.25); margin-bottom:18px;">
+        ${TOP10_SUBS.map((s) => {
+          const active = s.key === activeTop10Sub;
+          return `
+            <button type="button" class="pd-subtab-btn" data-subtab="${s.key}" style="
+              display:flex; align-items:center; gap:8px;
+              background:transparent; border:none; cursor:pointer;
+              padding:10px 14px; font-size:13px; font-weight:600;
+              color:${active ? "#3d94e0" : "inherit"}; opacity:${active ? "1" : "0.65"};
+              border-bottom:2px solid ${active ? "#3d94e0" : "transparent"};
+              margin-bottom:-1px;
+            ">
+              <span>${s.icon}</span>
+              <span>${s.label}</span>
+              <span style="
+                background:rgba(120,140,160,0.18); border-radius:10px;
+                padding:1px 8px; font-size:12px; font-weight:600;
+                color:inherit; opacity:0.85;
+              ">${counts[s.key].toLocaleString()}</span>
+            </button>
+          `;
+        }).join("")}
+      </div>
+    `;
 
-    // ── Row 1: Storage Locations — by Deliveries | by Line Items ──
-    html += `<div class="pd-top10-row" style="${pairRowStyle}">
-      <div style="${colStyle}">
-        ${heading("🗄️ Top 10 Storage Locations — by Deliveries")}
-        ${rankTable(slocByDeliv, "Storage Location", "deliveries", "Pending Deliveries")}
-      </div>
-      <div style="${colStyle}">
-        ${heading("🗄️ Top 10 Storage Locations — by Line Items")}
-        ${topSlocOutbound ? callout(`📦 Most outbound activity is at <strong>${escapeHtml(topSlocOutbound.key)}</strong>
-          with ${topSlocOutbound.items.toLocaleString()} pending line items across ${topSlocOutbound.deliveries.size.toLocaleString()} deliveries.`) : ""}
-        ${rankTable(slocByItems, "Storage Location", "items", "Pending Line Items")}
-      </div>
-    </div>`;
-
-    // ── Row 2: Plants — by Deliveries | by Line Items ──
-    html += `<div class="pd-top10-row" style="${pairRowStyle}">
-      <div style="${colStyle}">
-        ${heading("🏭 Top 10 Plants — by Deliveries")}
-        ${rankTable(plantByDeliv, "Plant", "deliveries", "Pending Deliveries", (g) => `${branchName(g.code)} (${g.code})`)}
-      </div>
-      <div style="${colStyle}">
-        ${heading("🏭 Top 10 Plants — by Line Items")}
-        ${topPlantsAtRisk.length ? callout(`⚠️ If dispatch is delayed, <strong>${escapeHtml(topPlantsAtRisk.map((p) => `${branchName(p.code)} (${p.code})`).join(", "))}</strong>
-          will be the most affected, with the highest volume of pending line items waiting on stock.`) : ""}
-        ${rankTable(plantByItems, "Plant", "items", "Pending Line Items", (g) => `${branchName(g.code)} (${g.code})`)}
-      </div>
-    </div>`;
-
-    // ── Row 3: Multi-Item Deliveries — full width ──
-    html += heading("🏆 Top 10 Multi-Item Deliveries");
-    if (!multiList.length) {
-      html += `<div class="pd-empty">No deliveries with multiple line items in the current filter.</div>`;
-    } else {
-      html += `<div class="pd-rank-list">` + multiList.map((g, i) => {
-        const slocLabel = g.slocs.size > 1 ? `${[...g.slocs].join(", ")}` : ([...g.slocs][0] || "—");
-        const typeLabel = g.stockTypes.size > 1 ? "MIX" : [...g.stockTypes][0];
-        return `
-          <div class="pd-rank-item">
-            <div class="pd-rank-num">${i + 1}</div>
-            <div class="pd-rank-body">
-              <div class="pd-rank-deliv">${escapeHtml(g.delivery)} ${stockBadge(typeLabel)}</div>
-              <div class="pd-rank-meta">${escapeHtml(branchName(g.branchCode))} (${escapeHtml(g.branchCode)}) &nbsp;·&nbsp; SLoc: ${escapeHtml(slocLabel)}</div>
+    // ── build the active panel ──
+    let panel = "";
+    if (activeTop10Sub === "sloc-deliv") {
+      panel = rankTable(slocByDeliv, "Storage Location", "deliveries", "Pending Deliveries");
+    } else if (activeTop10Sub === "sloc-items") {
+      if (topSlocOutbound) {
+        panel += callout(`📦 Most outbound activity is at <strong>${escapeHtml(topSlocOutbound.key)}</strong>
+          with ${topSlocOutbound.items.toLocaleString()} pending line items across ${topSlocOutbound.deliveries.size.toLocaleString()} deliveries.`);
+      }
+      panel += rankTable(slocByItems, "Storage Location", "items", "Pending Line Items");
+    } else if (activeTop10Sub === "plant-deliv") {
+      panel = rankTable(plantByDeliv, "Plant", "deliveries", "Pending Deliveries", (g) => `${branchName(g.code)} (${g.code})`);
+    } else if (activeTop10Sub === "plant-items") {
+      if (topPlantsAtRisk.length) {
+        panel += callout(`⚠️ If dispatch is delayed, <strong>${escapeHtml(topPlantsAtRisk.map((p) => `${branchName(p.code)} (${p.code})`).join(", "))}</strong>
+          will be the most affected, with the highest volume of pending line items waiting on stock.`);
+      }
+      panel += rankTable(plantByItems, "Plant", "items", "Pending Line Items", (g) => `${branchName(g.code)} (${g.code})`);
+    } else if (activeTop10Sub === "multi") {
+      if (!multiList.length) {
+        panel = `<div class="pd-empty">No deliveries with multiple line items in the current filter.</div>`;
+      } else {
+        panel = `<div class="pd-rank-list">` + multiList.map((g, i) => {
+          const slocLabel = g.slocs.size > 1 ? `${[...g.slocs].join(", ")}` : ([...g.slocs][0] || "—");
+          const typeLabel = g.stockTypes.size > 1 ? "MIX" : [...g.stockTypes][0];
+          return `
+            <div class="pd-rank-item">
+              <div class="pd-rank-num">${i + 1}</div>
+              <div class="pd-rank-body">
+                <div class="pd-rank-deliv">${escapeHtml(g.delivery)} ${stockBadge(typeLabel)}</div>
+                <div class="pd-rank-meta">${escapeHtml(branchName(g.branchCode))} (${escapeHtml(g.branchCode)}) &nbsp;·&nbsp; SLoc: ${escapeHtml(slocLabel)}</div>
+              </div>
+              <div class="pd-rank-count">
+                ${g.items}
+                <div class="pd-rank-count-label">items</div>
+              </div>
             </div>
-            <div class="pd-rank-count">
-              ${g.items}
-              <div class="pd-rank-count-label">items</div>
-            </div>
-          </div>
-        `;
-      }).join("") + `</div>`;
+          `;
+        }).join("") + `</div>`;
+      }
     }
 
-    wrap.innerHTML = `
-      <style>
-        @media (max-width: 720px) {
-          #pd-top10-wrap .pd-top10-row { grid-template-columns: 1fr !important; }
-        }
-      </style>
-      ${html}
-    `;
+    wrap.innerHTML = subTabBar + `<div class="pd-subtab-panel">${panel}</div>`;
+
+    wrap.querySelectorAll(".pd-subtab-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        activeTop10Sub = btn.dataset.subtab;
+        renderTop10(currentFilteredRows());
+      });
+    });
   }
 
   // ── Storage location: table only (chart removed) ─────────────
@@ -453,16 +485,15 @@
     }
 
     const sorted = [...rows].sort((a, b) => (a.giDate && b.giDate ? a.giDate - b.giDate : 0));
-    const MAX_ROWS = 500; // render cap for performance; full set still exports via CSV/Excel
-    const shown = sorted.slice(0, MAX_ROWS);
+    const shown = sorted; // no render cap — full filtered set is shown
 
     wrap.innerHTML = `
       <div class="tbl-wrap tbl-wrap-freeze">
         <table class="freeze-header">
           <thead><tr>
-            <th>Delivery</th><th>Item</th><th>GI Date</th><th>Days Late</th><th>Material</th>
+            <th>Delivery</th><th>GI Date</th><th>Days Late</th><th>Material</th>
             <th>Description</th><th>Branch</th><th>Storage Loc.</th>
-            <th>Qty</th><th>Stock Type</th>
+            <th>Qty</th><th>Stock Type</th><th>Created By</th>
           </tr></thead>
           <tbody>
             ${shown.map((r) => {
@@ -471,7 +502,6 @@
               return `
                 <tr>
                   <td style="font-family:'IBM Plex Mono',monospace">${escapeHtml(r.delivery)}</td>
-                  <td>${escapeHtml(r.item)}</td>
                   <td>${fmtDate(r.giDate)}</td>
                   <td>${daysLateBadge(r.giDate)}</td>
                   <td class="col-mat-code">${escapeHtml(r.material)}</td>
@@ -480,13 +510,13 @@
                   <td>${escapeHtml(r.storageLocation)}</td>
                   <td class="col-qty">${(r.qty || 0).toLocaleString()}</td>
                   <td>${stockBadge(type)}</td>
+                  <td>${escapeHtml(r.createdBy)}</td>
                 </tr>
               `;
             }).join("")}
           </tbody>
         </table>
       </div>
-      ${rows.length > MAX_ROWS ? `<div class="pd-empty">Showing first ${MAX_ROWS.toLocaleString()} of ${rows.length.toLocaleString()} rows — use ⬇ CSV / ⬇ Excel to export the full filtered set.</div>` : ""}
     `;
   }
 
@@ -514,8 +544,9 @@
     return applyFilters(STATE.rows);
   }
 
-  function exportRows(rows, kind) {
-    const data = rows.map((r) => ({
+  // ── Row-level "All Pending Items" data (same shape as before) ──
+  function buildDetailExportData(rows) {
+    return rows.map((r) => ({
       "Delivery": r.delivery,
       "Item": r.item,
       "Goods Issue Date": r.giDate ? fmtDate(r.giDate) : "",
@@ -528,16 +559,110 @@
       "Delivery Quantity": r.qty,
       "Stock Type": stockTypeOf(r) === "Q" ? "Special Stock (Q)" : "RDF",
     }));
-    const ws = XLSX.utils.json_to_sheet(data);
+  }
+
+  // ── "By Storage Location" data (mirrors renderSlocTable) ───────
+  function buildSlocExportData(rows) {
+    const bySloc = {};
+    rows.forEach((r) => {
+      const k = r.storageLocation || "—";
+      if (!bySloc[k]) bySloc[k] = { sloc: k, deliveries: new Set(), items: 0, rdf: 0, q: 0 };
+      const g = bySloc[k];
+      g.deliveries.add(r.delivery);
+      g.items += 1;
+      if (stockTypeOf(r) === "Q") g.q += 1; else g.rdf += 1;
+    });
+    return Object.values(bySloc)
+      .sort((a, b) => b.items - a.items)
+      .map((s) => ({
+        "Storage Location": s.sloc,
+        "# Deliveries": s.deliveries.size,
+        "# Line Items": s.items,
+        "RDF": s.rdf,
+        "Q": s.q,
+      }));
+  }
+
+  // ── "By Branch / Plant" data (mirrors renderBranchTable) ───────
+  function buildBranchExportData(rows) {
+    const byBranch = {};
+    rows.forEach((r) => {
+      const code = plantCode(r.shipToParty);
+      if (!code) return;
+      if (!byBranch[code]) byBranch[code] = { code, deliveries: new Set(), items: 0 };
+      byBranch[code].deliveries.add(r.delivery);
+      byBranch[code].items += 1;
+    });
+    return Object.values(byBranch)
+      .sort((a, b) => b.items - a.items)
+      .map((b, i) => ({
+        "#": i + 1,
+        "Branch": branchName(b.code),
+        "Plant Code": b.code,
+        "Pending Deliveries": b.deliveries.size,
+        "Pending Items": b.items,
+      }));
+  }
+
+  // ── "Top 10s" data — top 10 deliveries with multiple line items
+  //    (mirrors the "multi" sub-tab in renderTop10) ────────────────
+  function buildTop10sExportData(rows) {
+    const byDeliv = {};
+    rows.forEach((r) => {
+      const key = r.delivery;
+      if (!byDeliv[key]) {
+        byDeliv[key] = {
+          delivery: r.delivery,
+          items: 0,
+          branchCode: plantCode(r.shipToParty),
+          slocs: new Set(),
+          stockTypes: new Set(),
+        };
+      }
+      const g = byDeliv[key];
+      g.items += 1;
+      if (r.storageLocation) g.slocs.add(r.storageLocation);
+      g.stockTypes.add(stockTypeOf(r));
+    });
+    return Object.values(byDeliv)
+      .filter((g) => g.items > 1)
+      .sort((a, b) => b.items - a.items)
+      .slice(0, 10)
+      .map((g, i) => ({
+        "#": i + 1,
+        "Delivery": g.delivery,
+        "Branch": branchName(g.branchCode),
+        "Plant Code": g.branchCode,
+        "Storage Location(s)": [...g.slocs].join(", "),
+        "Stock Type": g.stockTypes.size > 1 ? "MIX" : (g.stockTypes.values().next().value === "Q" ? "Special Stock (Q)" : "RDF"),
+        "# Line Items": g.items,
+      }));
+  }
+
+  // Excel sheet names can't contain / \ ? * [ ] : and are capped at 31 chars.
+  function safeSheetName(name) {
+    return name.replace(/[\\/?*[\]:]/g, "-").slice(0, 31);
+  }
+
+  function exportRows(rows, kind) {
     if (kind === "csv") {
+      // CSV has no concept of multiple sheets — keep it as the flat
+      // "All Pending Items" detail export.
+      const ws = XLSX.utils.json_to_sheet(buildDetailExportData(rows));
       const csv = XLSX.utils.sheet_to_csv(ws);
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
       downloadBlob(blob, "pending_dispatch.csv");
-    } else {
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Pending Dispatch");
-      XLSX.writeFile(wb, "pending_dispatch.xlsx");
+      return;
     }
+
+    // XLSX export: one sheet per table, in the same order as the tabs —
+    // All Pending Items, By Storage Location, By Branch / Plant, Top 10s.
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildDetailExportData(rows)), safeSheetName("All Pending Items"));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildSlocExportData(rows)), safeSheetName("By Storage Location"));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildBranchExportData(rows)), safeSheetName("By Branch or Plant"));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildTop10sExportData(rows)), safeSheetName("Top 10s"));
+    XLSX.writeFile(wb, "pending_dispatch.xlsx");
   }
 
   function downloadBlob(blob, filename) {
