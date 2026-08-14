@@ -646,6 +646,25 @@
   </div>
 
   <div class="sidebar-divider"></div>
+  <div id="global-search-bar">
+    <div id="global-search-wrap">
+      <input
+        type="text"
+        id="global-search-input"
+        placeholder="🔍 Search material code or name…"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <div id="global-search-tags">
+        <span class="gsb-tag gsb-tag-stock">📦 Stock</span>
+        <span class="gsb-tag gsb-tag-transit">🚚 Transit</span>
+        <button type="button" id="global-search-btn">Search</button>
+        <button type="button" id="global-search-clear" class="gsb-clear">Clear</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="sidebar-divider"></div>
   <div class="upload-label">👤 Person Assigned</div>
   <div class="sidebar-person-filter">
     <span class="person-filter-chip" id="pf-chip-global">
@@ -772,6 +791,15 @@
   </div>
 
 </aside>
+
+<!-- Global Material Search — results overlay (covers main content, left-anchored past the sidebar) -->
+<div id="global-search-results-panel">
+  <div class="gsr-panel-header">
+    <div class="gsr-panel-title">🔍 Search Results</div>
+    <button type="button" id="global-search-results-close" class="apply-btn secondary small">✕ Close</button>
+  </div>
+  <div id="global-search-results"></div>
+</div>
 
 <!-- Settings Menu -->
 <div id="settings-menu-wrap">
