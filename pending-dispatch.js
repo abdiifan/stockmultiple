@@ -455,7 +455,121 @@
     `;
   }
 
-  // ── Detail table ─────────────────────────────────────────────
+  // ── Heat-scale background for matrix cells (green → yellow → red,
+  //    same 3-color-scale idea as an Excel conditional format) ─────
+  function heatBg(value, max) {
+    if (!value) return "";
+    const stops = [
+      [99, 190, 123],   // green  (low)
+      [255, 235, 132],  // yellow (mid)
+      [248, 105, 107],  // red    (high)
+    ];
+    const t = Math.max(0, Math.min(1, value / max));
+    const scaled = t * (stops.length - 1);
+    const i = Math.min(stops.length - 2, Math.floor(scaled));
+    const localT = scaled - i;
+    const [r1, g1, b1] = stops[i];
+    const [r2, g2, b2] = stops[i + 1];
+    const r = Math.round(r1 + (r2 - r1) * localT);
+    const g = Math.round(g1 + (g2 - g1) * localT);
+    const b = Math.round(b1 + (b2 - b1) * localT);
+    return `background:rgb(${r},${g},${b})`;
+  }
+
+  // ── "Branch × Storage Location" cross-tab (line-item counts) ────
+  function renderMatrixTable(rows) {
+    const wrap = document.getElementById("pd-matrix-wrap");
+    if (!wrap) return;
+
+    const matrix = {};       // matrix[branch][sloc] = count
+    const branchTotals = {};
+    const slocTotals = {};
+    const slocSeen = [];     // first-seen order, used to build column order below
+    let grandTotal = 0;
+
+    rows.forEach((r) => {
+      const branch = branchName(plantCode(r.shipToParty)) || "—";
+      const sloc = r.storageLocation || "—";
+      if (!matrix[branch]) matrix[branch] = {};
+      matrix[branch][sloc] = (matrix[branch][sloc] || 0) + 1;
+      branchTotals[branch] = (branchTotals[branch] || 0) + 1;
+      slocTotals[sloc] = (slocTotals[sloc] || 0) + 1;
+      if (!slocSeen.includes(sloc)) slocSeen.push(sloc);
+      grandTotal += 1;
+    });
+
+    if (!grandTotal) {
+      wrap.innerHTML = `<div class="pd-empty">No data in the current filter.</div>`;
+      return;
+    }
+
+    // Column order: named locations first (as first seen), then any
+    // "Main-N" locations sorted numerically — mirrors the source layout.
+    const mainCols = slocSeen
+      .filter((s) => /^Main-/i.test(s))
+      .sort((a, b) => {
+        const na = parseFloat(a.replace(/^Main-/i, "").replace("/", "."));
+        const nb = parseFloat(b.replace(/^Main-/i, "").replace("/", "."));
+        return na - nb;
+      });
+    const namedCols = slocSeen.filter((s) => !/^Main-/i.test(s));
+    const cols = [...namedCols, ...mainCols];
+
+    const branches = Object.keys(branchTotals).sort((a, b) => a.localeCompare(b));
+
+    const maxCell = Math.max(1, ...branches.flatMap((b) => cols.map((c) => matrix[b]?.[c] || 0)));
+    const maxRowTotal = Math.max(1, ...branches.map((b) => branchTotals[b] || 0));
+    const maxColTotal = Math.max(1, ...cols.map((c) => slocTotals[c] || 0));
+
+    const headerCells = cols.map((c) => `<th>${escapeHtml(c)}</th>`).join("");
+
+    const bodyRows = branches.map((b, i) => {
+      const cells = cols.map((c) => {
+        const v = matrix[b]?.[c] || 0;
+        return `<td style="${heatBg(v, maxCell)}">${v ? v.toLocaleString() : ""}</td>`;
+      }).join("");
+      return `
+        <tr>
+          <td>${i + 1}</td>
+          <td style="text-align:left">${escapeHtml(b)}</td>
+          ${cells}
+          <td style="${heatBg(branchTotals[b], maxRowTotal)};font-weight:700">${branchTotals[b].toLocaleString()}</td>
+        </tr>`;
+    }).join("");
+
+    const totalCells = cols.map((c) => `<td style="${heatBg(slocTotals[c] || 0, maxColTotal)};font-weight:700">${(slocTotals[c] || 0).toLocaleString()}</td>`).join("");
+    const pctCells = cols.map((c) => {
+      const pct = grandTotal ? Math.round(((slocTotals[c] || 0) / grandTotal) * 100) : 0;
+      return `<td style="background:#dbe9fb;font-weight:600">${pct}%</td>`;
+    }).join("");
+
+    wrap.innerHTML = `
+      <div class="tbl-wrap">
+        <table class="pd-matrix-table">
+          <thead>
+            <tr>
+              <th>SN</th><th style="text-align:left">Branch</th>${headerCells}<th>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${bodyRows}
+            <tr class="pd-matrix-total-row">
+              <td colspan="2">Total</td>
+              ${totalCells}
+              <td style="font-weight:700">${grandTotal.toLocaleString()}</td>
+            </tr>
+            <tr class="pd-matrix-pct-row">
+              <td colspan="2"></td>
+              ${pctCells}
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+
   // ── Days late vs. planned Goods Issue date ────────────────────
   // today - giDate: negative => not yet due (on track / "Good"),
   // positive => days overdue past the planned GI date.
@@ -674,7 +788,7 @@
   }
 
   // ── Tab bar (mirrors the site's existing reqan-tab-bar pattern) ──
-  const TABS = ["detail", "sloc", "branch", "top10"];
+  const TABS = ["detail", "sloc", "branch", "top10", "matrix"];
   let activeTab = "detail";
 
   function setTabCounts(filtered) {
@@ -688,6 +802,7 @@
     document.getElementById("pd-tab-count-sloc").textContent   = slocCount.toLocaleString();
     document.getElementById("pd-tab-count-branch").textContent = branchCount.toLocaleString();
     document.getElementById("pd-tab-count-detail").textContent = filtered.length.toLocaleString();
+    document.getElementById("pd-tab-count-matrix").textContent = branchCount.toLocaleString();
   }
 
   function showTab(tab) {
@@ -704,6 +819,7 @@
     // The detail table can be large (no row cap) — only build/render it
     // when its tab is actually visible, instead of on every filter change.
     if (tab === "detail") renderDetailTable(currentFilteredRows());
+    if (tab === "matrix") renderMatrixTable(currentFilteredRows());
   }
 
   function wireTabs() {
@@ -721,6 +837,7 @@
     renderBranchTable(filtered);
     if (activeTab === "sloc") renderSlocChart(filtered);   // only draw while visible
     if (activeTab === "detail") renderDetailTable(filtered); // heavy — only build while visible
+    if (activeTab === "matrix") renderMatrixTable(filtered); // heavy — only build while visible
   }
 
   function showHasData() {
