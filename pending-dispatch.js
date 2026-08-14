@@ -701,6 +701,9 @@
     // Plotly needs a visible container to size correctly, so (re)draw the
     // chart the moment its tab becomes active.
     if (tab === "sloc") renderSlocChart(currentFilteredRows());
+    // The detail table can be large (no row cap) — only build/render it
+    // when its tab is actually visible, instead of on every filter change.
+    if (tab === "detail") renderDetailTable(currentFilteredRows());
   }
 
   function wireTabs() {
@@ -716,8 +719,8 @@
     setTabCounts(filtered);
     renderTop10(filtered);
     renderBranchTable(filtered);
-    renderDetailTable(filtered);
-    if (activeTab === "sloc") renderSlocChart(filtered); // only draw while visible
+    if (activeTab === "sloc") renderSlocChart(filtered);   // only draw while visible
+    if (activeTab === "detail") renderDetailTable(filtered); // heavy — only build while visible
   }
 
   function showHasData() {
@@ -781,9 +784,18 @@
           STATE.branchMaster = buildBranchMaster(rows);
           populateFilterOptions();
           showHasData();
-          renderAll();
 
-          if (statusEl) statusEl.innerHTML = `✓ ${rows.length.toLocaleString()} rows loaded · ${escapeHtml(file.name)}`;
+          // Let the browser paint the "Parsing…" status before doing the
+          // heavy synchronous render work (esp. the uncapped detail table).
+          requestAnimationFrame(() => {
+            try {
+              renderAll();
+              if (statusEl) statusEl.innerHTML = `✓ ${rows.length.toLocaleString()} rows loaded · ${escapeHtml(file.name)}`;
+            } catch (err) {
+              console.error("[pending-dispatch] Render failed:", err);
+              if (statusEl) statusEl.innerHTML = `✗ Failed to render: ${escapeHtml(err.message || "unknown error")}`;
+            }
+          });
         } catch (err) {
           console.error("[pending-dispatch] Parse failed:", err);
           if (statusEl) statusEl.innerHTML = `✗ Failed to parse: ${escapeHtml(err.message || "unknown error")}`;
