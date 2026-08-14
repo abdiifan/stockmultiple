@@ -13,10 +13,11 @@
 // ════════════════════════════════════════════════════════════════
 
 const FILE_SLOTS = {
-  inventory: { inputId: "fileInput",         path: "inventory/latest.xlsx", statusId: "fileStatus" },
-  mapping:   { inputId: "mappingFileInput",  path: "mapping/latest.xlsx",   statusId: "mappingFileStatus" },
-  amc:       { inputId: "mosAmcFileInput",   path: "amc/latest.xlsx",       statusId: "mosAmcFileStatus" },
-  incoming:  { inputId: "incomingFileInput", path: "incoming/latest.xlsx",  statusId: "incomingFileStatus" },
+  inventory:       { inputId: "fileInput",                path: "inventory/latest.xlsx",        statusId: "fileStatus" },
+  mapping:         { inputId: "mappingFileInput",         path: "mapping/latest.xlsx",           statusId: "mappingFileStatus" },
+  amc:             { inputId: "mosAmcFileInput",          path: "amc/latest.xlsx",               statusId: "mosAmcFileStatus" },
+  incoming:        { inputId: "incomingFileInput",        path: "incoming/latest.xlsx",          statusId: "incomingFileStatus" },
+  pendingDispatch: { inputId: "pendingDispatchFileInput", path: "pending-dispatch/latest.xlsx",  statusId: "pendingDispatchFileStatus" },
 };
 
 // ── Wait for the slot's own status element to leave its "⏳ loading" state ──
@@ -70,6 +71,12 @@ function waitForParseSettle(statusId, timeoutMs = 20000) {
 }
 
 const BUCKET = "inventory-files";
+
+// ── Friendlier toast/status labels for multi-word slot names ──
+const SLOT_LABELS = { pendingDispatch: "Pending Dispatch" };
+function slotLabel(slot) {
+  return SLOT_LABELS[slot] || (slot.charAt(0).toUpperCase() + slot.slice(1));
+}
 
 // ── Relative time formatting (e.g. "3h ago", "just now") ──
 function formatRelativeTime(isoOrDate) {
@@ -179,7 +186,7 @@ async function manualRefresh(slot) {
   if (btnEl) { btnEl.disabled = true; btnEl.textContent = "⏳ …"; }
   await pullFileFromSupabase(slot);
   if (btnEl) { btnEl.disabled = false; btnEl.textContent = "🔄 Refresh"; }
-  const label = slot.charAt(0).toUpperCase() + slot.slice(1);
+  const label = slotLabel(slot);
   showToast(`✓ ${label} refreshed`, "ok");
 }
 
@@ -233,7 +240,7 @@ function showToast(message, type = "info", timeoutMs = 4500) {
 async function pushFileToSupabase(slot, file) {
   const { path } = FILE_SLOTS[slot];
   const sc = window.supabaseClient;
-  const label = slot.charAt(0).toUpperCase() + slot.slice(1);
+  const label = slotLabel(slot);
 
   const pending = showToast(`⏳ Syncing ${label} to Supabase…`, "info", 0);
 
@@ -380,7 +387,7 @@ function attachAdminUploadSync() {
 //    else uploads new data, via Supabase Realtime on app_files ──
 function showNewDataBanner(slot) {
   if (document.getElementById("new-data-banner")) return; // already showing
-  const label = slot.charAt(0).toUpperCase() + slot.slice(1);
+  const label = slotLabel(slot);
   const el = document.createElement("div");
   el.id = "new-data-banner";
   el.style.cssText = `
