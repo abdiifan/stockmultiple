@@ -627,34 +627,47 @@
     const createdBys = [...new Set(optionRows.map((r) => r.createdBy).filter(Boolean))].sort();
     const { material, delivery, createdBy } = STATE.detailFilters;
 
-    const selStyle = "font-size:12px; padding:6px 8px; border-radius:6px; border:1px solid rgba(120,140,160,0.35); background:transparent; min-width:150px;";
-    const opt = (val, current) => `<option value="${escapeHtml(val)}" ${val === current ? "selected" : ""}>${escapeHtml(val)}</option>`;
+    const inputStyle = "font-size:12px; padding:6px 8px; border-radius:6px; border:1px solid rgba(120,140,160,0.35); background:transparent; min-width:170px;";
+    const dlOpt = (val) => `<option value="${escapeHtml(val)}"></option>`;
 
+    // Typeable filters with autocomplete suggestions (datalist) — the
+    // value only takes effect once it exactly matches an existing row
+    // value, so this stays a real filter rather than a free-text search.
     return `
       <div class="pd-detail-filter-bar" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
-        <select id="pd-detail-filter-material" style="${selStyle}">
-          <option value="">All Materials</option>
-          ${materials.map((m) => opt(m, material)).join("")}
-        </select>
-        <select id="pd-detail-filter-delivery" style="${selStyle}">
-          <option value="">All Deliveries</option>
-          ${deliveries.map((d) => opt(d, delivery)).join("")}
-        </select>
-        <select id="pd-detail-filter-createdby" style="${selStyle}">
-          <option value="">All Created By</option>
-          ${createdBys.map((c) => opt(c, createdBy)).join("")}
-        </select>
+        <input type="text" id="pd-detail-filter-material" list="pd-detail-datalist-material"
+          placeholder="Filter by Material…" value="${escapeHtml(material)}" style="${inputStyle}" autocomplete="off">
+        <datalist id="pd-detail-datalist-material">${materials.map(dlOpt).join("")}</datalist>
+
+        <input type="text" id="pd-detail-filter-delivery" list="pd-detail-datalist-delivery"
+          placeholder="Filter by Delivery…" value="${escapeHtml(delivery)}" style="${inputStyle}" autocomplete="off">
+        <datalist id="pd-detail-datalist-delivery">${deliveries.map(dlOpt).join("")}</datalist>
+
+        <input type="text" id="pd-detail-filter-createdby" list="pd-detail-datalist-createdby"
+          placeholder="Filter by Created By…" value="${escapeHtml(createdBy)}" style="${inputStyle}" autocomplete="off">
+        <datalist id="pd-detail-datalist-createdby">${createdBys.map(dlOpt).join("")}</datalist>
+
+        ${(material || delivery || createdBy) ? `<button type="button" id="pd-detail-filter-clear" style="${inputStyle} cursor:pointer;">✕ Clear</button>` : ""}
       </div>
     `;
   }
 
   function wireDetailFilterBar(wrap) {
-    const matSel = wrap.querySelector("#pd-detail-filter-material");
-    const delSel = wrap.querySelector("#pd-detail-filter-delivery");
-    const cbSel = wrap.querySelector("#pd-detail-filter-createdby");
-    if (matSel) matSel.addEventListener("change", () => { STATE.detailFilters.material = matSel.value; renderDetailTable(currentFilteredRows()); });
-    if (delSel) delSel.addEventListener("change", () => { STATE.detailFilters.delivery = delSel.value; renderDetailTable(currentFilteredRows()); });
-    if (cbSel) cbSel.addEventListener("change", () => { STATE.detailFilters.createdBy = cbSel.value; renderDetailTable(currentFilteredRows()); });
+    const matInput = wrap.querySelector("#pd-detail-filter-material");
+    const delInput = wrap.querySelector("#pd-detail-filter-delivery");
+    const cbInput = wrap.querySelector("#pd-detail-filter-createdby");
+    const clearBtn = wrap.querySelector("#pd-detail-filter-clear");
+
+    // "change" (not "input") — fires when a suggestion is picked or the
+    // field is left with a new value, so we don't re-render on every
+    // keystroke (which would steal focus while the user is still typing).
+    if (matInput) matInput.addEventListener("change", () => { STATE.detailFilters.material = matInput.value.trim(); renderDetailTable(currentFilteredRows()); });
+    if (delInput) delInput.addEventListener("change", () => { STATE.detailFilters.delivery = delInput.value.trim(); renderDetailTable(currentFilteredRows()); });
+    if (cbInput) cbInput.addEventListener("change", () => { STATE.detailFilters.createdBy = cbInput.value.trim(); renderDetailTable(currentFilteredRows()); });
+    if (clearBtn) clearBtn.addEventListener("click", () => {
+      STATE.detailFilters = { material: "", delivery: "", createdBy: "" };
+      renderDetailTable(currentFilteredRows());
+    });
   }
 
   function renderDetailTable(rows) {
