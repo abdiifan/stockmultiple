@@ -174,9 +174,43 @@
     `).join("");
   }
 
-  // ── Top 10 deliveries with multiple line items ──────────────
+  // ── "Top 10s" tab: storage-location & plant leaderboards, plus
+  //    the original top 10 multi-item-deliveries list ────────────
   function renderTop10(rows) {
     const wrap = document.getElementById("pd-top10-wrap");
+    if (!rows.length) {
+      wrap.innerHTML = `<div class="pd-empty">No data in the current filter.</div>`;
+      return;
+    }
+
+    // ── aggregate by storage location ──
+    const bySloc = {};
+    rows.forEach((r) => {
+      const k = r.storageLocation || "—";
+      if (!bySloc[k]) bySloc[k] = { key: k, deliveries: new Set(), items: 0 };
+      bySloc[k].deliveries.add(r.delivery);
+      bySloc[k].items += 1;
+    });
+    const slocList = Object.values(bySloc);
+    const slocByDeliv = [...slocList].sort((a, b) => b.deliveries.size - a.deliveries.size).slice(0, 10);
+    const slocByItems = [...slocList].sort((a, b) => b.items - a.items).slice(0, 10);
+    const topSlocOutbound = slocByItems[0];
+
+    // ── aggregate by plant/branch ──
+    const byPlant = {};
+    rows.forEach((r) => {
+      const code = plantCode(r.shipToParty);
+      if (!code) return;
+      if (!byPlant[code]) byPlant[code] = { code, deliveries: new Set(), items: 0 };
+      byPlant[code].deliveries.add(r.delivery);
+      byPlant[code].items += 1;
+    });
+    const plantList = Object.values(byPlant);
+    const plantByDeliv = [...plantList].sort((a, b) => b.deliveries.size - a.deliveries.size).slice(0, 10);
+    const plantByItems = [...plantList].sort((a, b) => b.items - a.items).slice(0, 10);
+    const topPlantsAtRisk = [...plantList].sort((a, b) => b.items - a.items).slice(0, 3);
+
+    // ── original: top 10 deliveries with multiple line items ──
     const byDeliv = {};
     rows.forEach((r) => {
       const key = r.delivery;
@@ -194,34 +228,83 @@
       if (r.storageLocation) g.slocs.add(r.storageLocation);
       g.stockTypes.add(stockTypeOf(r));
     });
-
-    const list = Object.values(byDeliv)
-      .filter((g) => g.items > 1) // "multiple line items"
+    const multiList = Object.values(byDeliv)
+      .filter((g) => g.items > 1)
       .sort((a, b) => b.items - a.items)
       .slice(0, 10);
 
-    if (!list.length) {
-      wrap.innerHTML = `<div class="pd-empty">No deliveries with multiple line items in the current filter.</div>`;
-      return;
+    // ── small helper to build a rank table ──
+    const rankTable = (list, keyLabel, valueKey, valueLabel, nameFn) => `
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>#</th><th>${keyLabel}</th><th>${valueLabel}</th></tr></thead>
+          <tbody>
+            ${list.map((g, i) => `
+              <tr>
+                <td>${i + 1}</td>
+                <td>${nameFn ? escapeHtml(nameFn(g)) : escapeHtml(g.key)}</td>
+                <td>${(valueKey === "deliveries" ? g.deliveries.size : g.items).toLocaleString()}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    const headingStyle = "margin:24px 0 10px; font-size:14px; letter-spacing:.02em; opacity:.85;";
+    const heading = (text) => `<h4 class="pd-top10-heading" style="${headingStyle}">${text}</h4>`;
+    const calloutStyle = "margin:0 0 12px; padding:10px 14px; border-radius:8px; background:rgba(61,148,224,0.12); border:1px solid rgba(61,148,224,0.3); font-size:13px; line-height:1.5;";
+    const callout = (html) => `<div class="pd-callout" style="${calloutStyle}">${html}</div>`;
+
+    let html = "";
+
+    // Storage location leaderboards
+    html += heading("🗄️ Top 10 Storage Locations — by Deliveries");
+    html += rankTable(slocByDeliv, "Storage Location", "deliveries", "Pending Deliveries");
+
+    html += heading("🗄️ Top 10 Storage Locations — by Line Items");
+    if (topSlocOutbound) {
+      html += callout(`📦 Most outbound activity is at <strong>${escapeHtml(topSlocOutbound.key)}</strong>
+        with ${topSlocOutbound.items.toLocaleString()} pending line items across ${topSlocOutbound.deliveries.size.toLocaleString()} deliveries.`);
+    }
+    html += rankTable(slocByItems, "Storage Location", "items", "Pending Line Items");
+
+    // Plant leaderboards
+    html += heading("🏭 Top 10 Plants — by Deliveries");
+    html += rankTable(plantByDeliv, "Plant", "deliveries", "Pending Deliveries", (g) => `${branchName(g.code)} (${g.code})`);
+
+    html += heading("🏭 Top 10 Plants — by Line Items");
+    if (topPlantsAtRisk.length) {
+      html += callout(`⚠️ If dispatch is delayed, <strong>${escapeHtml(topPlantsAtRisk.map((p) => `${branchName(p.code)} (${p.code})`).join(", "))}</strong>
+        will be the most affected, with the highest volume of pending line items waiting on stock.`);
+    }
+    html += rankTable(plantByItems, "Plant", "items", "Pending Line Items", (g) => `${branchName(g.code)} (${g.code})`);
+
+    // Original top 10 multi-item deliveries
+    html += heading("🏆 Top 10 Multi-Item Deliveries");
+    if (!multiList.length) {
+      html += `<div class="pd-empty">No deliveries with multiple line items in the current filter.</div>`;
+    } else {
+      html += `<div class="pd-rank-list">` + multiList.map((g, i) => {
+        const slocLabel = g.slocs.size > 1 ? `${[...g.slocs].join(", ")}` : ([...g.slocs][0] || "—");
+        const typeLabel = g.stockTypes.size > 1 ? "MIX" : [...g.stockTypes][0];
+        return `
+          <div class="pd-rank-item">
+            <div class="pd-rank-num">${i + 1}</div>
+            <div class="pd-rank-body">
+              <div class="pd-rank-deliv">${escapeHtml(g.delivery)} ${stockBadge(typeLabel)}</div>
+              <div class="pd-rank-meta">${escapeHtml(branchName(g.branchCode))} (${escapeHtml(g.branchCode)}) &nbsp;·&nbsp; SLoc: ${escapeHtml(slocLabel)}</div>
+            </div>
+            <div class="pd-rank-count">
+              ${g.items}
+              <div class="pd-rank-count-label">items</div>
+            </div>
+          </div>
+        `;
+      }).join("") + `</div>`;
     }
 
-    wrap.innerHTML = `<div class="pd-rank-list">` + list.map((g, i) => {
-      const slocLabel = g.slocs.size > 1 ? `${[...g.slocs].join(", ")}` : ([...g.slocs][0] || "—");
-      const typeLabel = g.stockTypes.size > 1 ? "MIX" : [...g.stockTypes][0];
-      return `
-        <div class="pd-rank-item">
-          <div class="pd-rank-num">${i + 1}</div>
-          <div class="pd-rank-body">
-            <div class="pd-rank-deliv">${escapeHtml(g.delivery)} ${stockBadge(typeLabel)}</div>
-            <div class="pd-rank-meta">${escapeHtml(branchName(g.branchCode))} (${escapeHtml(g.branchCode)}) &nbsp;·&nbsp; SLoc: ${escapeHtml(slocLabel)}</div>
-          </div>
-          <div class="pd-rank-count">
-            ${g.items}
-            <div class="pd-rank-count-label">items</div>
-          </div>
-        </div>
-      `;
-    }).join("") + `</div>`;
+    wrap.innerHTML = html;
   }
 
   // ── Storage location chart ──────────────────────────────────
@@ -235,6 +318,7 @@
     const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
     if (!entries.length || typeof Plotly === "undefined") {
       el.innerHTML = `<div class="pd-empty">No data to chart.</div>`;
+      renderSlocTable(rows);
       return;
     }
     const x = entries.map((e) => e[0]);
@@ -252,6 +336,62 @@
       xaxis: { tickangle: -30 },
       yaxis: { title: "Pending items" },
     }, { displayModeBar: false, responsive: true });
+
+    renderSlocTable(rows);
+  }
+
+  // ── Storage location table (deliveries / items / RDF / Q) ────
+  function renderSlocTable(rows) {
+    // Ensure a wrap element exists right after the chart, even if the
+    // hosting HTML page hasn't been updated with a dedicated container.
+    let wrap = document.getElementById("pd-sloc-table-wrap");
+    if (!wrap) {
+      const chartEl = document.getElementById("chart-pd-sloc");
+      if (!chartEl || !chartEl.parentNode) return;
+      wrap = document.createElement("div");
+      wrap.id = "pd-sloc-table-wrap";
+      wrap.style.marginTop = "16px";
+      chartEl.parentNode.insertBefore(wrap, chartEl.nextSibling);
+    }
+
+    const bySloc = {};
+    rows.forEach((r) => {
+      const k = r.storageLocation || "—";
+      if (!bySloc[k]) bySloc[k] = { sloc: k, deliveries: new Set(), items: 0, rdf: 0, q: 0 };
+      const g = bySloc[k];
+      g.deliveries.add(r.delivery);
+      g.items += 1;
+      if (stockTypeOf(r) === "Q") g.q += 1; else g.rdf += 1;
+    });
+
+    const list = Object.values(bySloc).sort((a, b) => b.items - a.items);
+    if (!list.length) {
+      wrap.innerHTML = `<div class="pd-empty">No storage location data in the current filter.</div>`;
+      return;
+    }
+
+    wrap.innerHTML = `
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>
+            <th>#</th><th>Storage Location</th>
+            <th># Deliveries</th><th># Line Items</th><th>RDF</th><th>Q</th>
+          </tr></thead>
+          <tbody>
+            ${list.map((s, i) => `
+              <tr>
+                <td>${i + 1}</td>
+                <td style="font-family:'IBM Plex Mono',monospace">${escapeHtml(s.sloc)}</td>
+                <td>${s.deliveries.size.toLocaleString()}</td>
+                <td>${s.items.toLocaleString()}</td>
+                <td>${s.rdf.toLocaleString()}</td>
+                <td>${s.q.toLocaleString()}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
   }
 
   // ── Branch breakdown table ──────────────────────────────────
@@ -261,10 +401,9 @@
     rows.forEach((r) => {
       const code = plantCode(r.shipToParty);
       if (!code) return;
-      if (!byBranch[code]) byBranch[code] = { code, deliveries: new Set(), items: 0, qty: 0 };
+      if (!byBranch[code]) byBranch[code] = { code, deliveries: new Set(), items: 0 };
       byBranch[code].deliveries.add(r.delivery);
       byBranch[code].items += 1;
-      byBranch[code].qty += r.qty || 0;
     });
     const list = Object.values(byBranch).sort((a, b) => b.items - a.items);
     if (!list.length) {
@@ -276,7 +415,7 @@
         <table>
           <thead><tr>
             <th>#</th><th>Branch</th><th>Plant Code</th>
-            <th>Pending Deliveries</th><th>Pending Items</th><th>Total Qty</th>
+            <th>Pending Deliveries</th><th>Pending Items</th>
           </tr></thead>
           <tbody>
             ${list.map((b, i) => `
@@ -286,7 +425,6 @@
                 <td style="font-family:'IBM Plex Mono',monospace">${escapeHtml(b.code)}</td>
                 <td>${b.deliveries.size.toLocaleString()}</td>
                 <td>${b.items.toLocaleString()}</td>
-                <td>${b.qty.toLocaleString()}</td>
               </tr>
             `).join("")}
           </tbody>
@@ -399,8 +537,8 @@
   }
 
   // ── Tab bar (mirrors the site's existing reqan-tab-bar pattern) ──
-  const TABS = ["top10", "sloc", "branch", "detail"];
-  let activeTab = "top10";
+  const TABS = ["detail", "sloc", "branch", "top10"];
+  let activeTab = "detail";
 
   function setTabCounts(filtered) {
     const deliveries = {};
