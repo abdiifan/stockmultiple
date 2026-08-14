@@ -172,6 +172,42 @@
       flex-shrink: 0;
     }
 
+    /* ── Pending Dispatch page ── */
+    .pd-upload-btn { border-color: var(--purple) !important; color: var(--purple) !important; }
+    .pd-upload-btn:hover { background: rgba(148,113,214,0.08) !important; border-color: var(--purple) !important; }
+    .pd-search-wrap { flex: 1 1 220px; min-width: 200px; }
+    .pd-search-input { width: 100%; padding: 6px 10px; font-size: 0.8rem; }
+    .pd-rank-list { display: flex; flex-direction: column; gap: 0.45rem; }
+    .pd-rank-item {
+      display: flex; align-items: center; gap: 0.7rem;
+      padding: 0.55rem 0.7rem;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius-md, 8px);
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .pd-rank-item:hover { border-color: var(--blue); }
+    .pd-rank-num {
+      flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+      background: var(--blue-glow, rgba(61,148,224,0.18)); color: var(--blue);
+      font-size: 0.68rem; font-weight: 800;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .pd-rank-body { flex: 1; min-width: 0; }
+    .pd-rank-deliv { font-family: 'IBM Plex Mono', monospace; font-size: 0.8rem; font-weight: 700; color: var(--text); }
+    .pd-rank-meta { font-size: 0.68rem; color: var(--muted); margin-top: 2px; white-space: normal; }
+    .pd-rank-count {
+      flex-shrink: 0; text-align: right; font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.95rem; font-weight: 700; color: var(--green);
+    }
+    .pd-rank-count-label { font-size: 0.6rem; font-weight: 400; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .pd-badge-q   { background: rgba(148,113,214,0.16); color: var(--purple); }
+    .pd-badge-rdf { background: rgba(61,148,224,0.16); color: var(--blue); }
+    .pd-badge-mix { background: rgba(212,135,42,0.16); color: var(--amber); }
+    .pd-empty { padding: 1.5rem; text-align: center; color: var(--muted); font-size: 0.82rem; }
+    @media (max-width: 900px) {
+      #page-pending-dispatch .chart-row { grid-template-columns: 1fr !important; }
+    }
+
     /* ── 🔎 Who's Responsible? sidebar search ── */
     .who-resp-wrap {
       position: relative;
@@ -592,6 +628,9 @@
 
     <div class="nav-group" data-group="inventory-ops">
       <div class="nav-group-title"><span class="nav-group-icon">📦</span> Inventory Ops</div>
+      <button class="nav-btn" data-page="pending-dispatch">
+        <span class="nav-icon">📦</span> Pending Dispatch
+      </button>
       <button class="nav-btn" data-page="transit">
         <span class="nav-icon">🚚</span> Stock in Transit
       </button>
@@ -683,6 +722,14 @@
         <input type="file" id="incomingFileInput" accept=".xlsx,.xls" />
       </label>
       <div id="incomingFileStatus"></div>
+
+      <div class="sidebar-divider"></div>
+      <div class="upload-label">📦 Pending Dispatch</div>
+      <label class="upload-btn pd-upload-btn upload-admin-only viewer-hidden" for="pendingDispatchFileInput">
+        <span id="pendingDispatchUploadBtnText">📦 Upload Pending Dispatch Excel</span>
+        <input type="file" id="pendingDispatchFileInput" accept=".xlsx,.xls" />
+      </label>
+      <div id="pendingDispatchFileStatus"></div>
     </div>
   </div>
 
@@ -789,6 +836,11 @@
       </div>
     </div>
     <div class="overview-card-grid">
+      <div class="overview-card" data-goto="pending-dispatch">
+        <div class="overview-card-icon">📦</div>
+        <div class="overview-card-title">Pending Dispatch</div>
+        <div class="overview-card-desc">Deliveries created but not yet issued — line items still waiting to leave the storage location.</div>
+      </div>
       <div class="overview-card" data-goto="transit">
         <div class="overview-card-icon">🚚</div>
         <div class="overview-card-title">Stock in Transit</div>
@@ -996,6 +1048,67 @@
         <span><span class="mg-risk-dot" style="background:var(--risk-high)"></span>High (3–6 mo)</span>
       </div>
       <div id="chart-mg-expiry-risk"></div>
+    </div>
+  </section>
+
+  <!-- ── PENDING DISPATCH ── -->
+  <section id="page-pending-dispatch" class="page" style="display:none">
+    <div class="page-header-row">
+      <div>
+        <div class="page-title">📦 Pending Dispatch</div>
+        <div class="page-subtitle">Delivery line items created but not yet issued from storage — awaiting goods issue to the branch</div>
+      </div>
+    </div>
+
+    <div id="pd-no-data" class="alert-info">
+      Upload the <b>Pending Dispatch Excel</b> (📦 Upload Pending Dispatch in the sidebar) to populate this page.
+    </div>
+
+    <div id="pd-content" style="display:none">
+      <div class="filter-bar" id="pd-filter-bar">
+        <div class="pd-search-wrap">
+          <input type="text" id="pd-search" class="who-resp-input pd-search-input" placeholder="🔎 Search delivery, material, or branch…" autocomplete="off" spellcheck="false" />
+        </div>
+        <select id="pd-filter-sloc" class="person-filter-select" title="Filter by storage location">
+          <option value="">🏬 All Storage Locations</option>
+        </select>
+        <select id="pd-filter-branch" class="person-filter-select" title="Filter by branch / plant">
+          <option value="">🏢 All Branches</option>
+        </select>
+        <select id="pd-filter-stocktype" class="person-filter-select" title="Filter by stock type">
+          <option value="">📋 All Stock Types</option>
+          <option value="Q">🟣 Special Stock (Q)</option>
+          <option value="RDF">🔵 RDF</option>
+        </select>
+        <button type="button" class="apply-btn secondary small" id="pd-filter-clear">Clear</button>
+      </div>
+
+      <div class="kpi-row" id="pd-kpis"></div>
+
+      <div class="chart-row" style="grid-template-columns: 1fr 1fr; align-items: stretch;">
+        <div class="chart-box">
+          <div class="section-header">🏆 Top 10 Deliveries — Multiple Line Items</div>
+          <div id="pd-top10-wrap"></div>
+        </div>
+        <div class="chart-box">
+          <div class="section-header">📊 Pending Items by Storage Location</div>
+          <div id="chart-pd-sloc" style="min-height:300px"></div>
+        </div>
+      </div>
+
+      <div class="chart-box full">
+        <div class="section-header">🏢 Breakdown by Branch / Plant</div>
+        <div id="pd-branch-wrap"></div>
+      </div>
+
+      <div class="section-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-top:0.5rem">
+        <span id="pd-detail-header">📋 Pending Line Items</span>
+        <div style="display:flex;gap:0.6rem">
+          <button class="dl-btn" id="pd-dl-csv">⬇ CSV</button>
+          <button class="dl-btn" id="pd-dl-xlsx">⬇ Excel</button>
+        </div>
+      </div>
+      <div id="pd-detail-wrap"></div>
     </div>
   </section>
 
@@ -1577,6 +1690,7 @@ document.querySelectorAll('.overview-card[data-goto]').forEach(card => {
 <script src="settings-menu.js" defer></script>
 <script src="idle-logout.js" defer></script>
 <script src="storage-sync.js" defer></script>
+<script src="pending-dispatch.js" defer></script>
 <script src="filters.js" defer></script>
 <script src="script.js" defer></script>
 <script src="mos.js" defer></script>
