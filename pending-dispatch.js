@@ -298,8 +298,6 @@
   // ── Detail table ─────────────────────────────────────────────
   function renderDetailTable(rows) {
     const wrap = document.getElementById("pd-detail-wrap");
-    const header = document.getElementById("pd-detail-header");
-    header.textContent = `📋 Pending Line Items (${rows.length.toLocaleString()})`;
 
     if (!rows.length) {
       wrap.innerHTML = `<div class="pd-empty">No pending line items match the current filters.</div>`;
@@ -400,14 +398,51 @@
     URL.revokeObjectURL(url);
   }
 
+  // ── Tab bar (mirrors the site's existing reqan-tab-bar pattern) ──
+  const TABS = ["top10", "sloc", "branch", "detail"];
+  let activeTab = "top10";
+
+  function setTabCounts(filtered) {
+    const deliveries = {};
+    filtered.forEach((r) => { deliveries[r.delivery] = (deliveries[r.delivery] || 0) + 1; });
+    const multiCount = Object.values(deliveries).filter((n) => n > 1).length;
+    const slocCount = new Set(filtered.map((r) => r.storageLocation).filter(Boolean)).size;
+    const branchCount = new Set(filtered.map((r) => plantCode(r.shipToParty)).filter(Boolean)).size;
+
+    document.getElementById("pd-tab-count-top10").textContent  = Math.min(multiCount, 10).toLocaleString();
+    document.getElementById("pd-tab-count-sloc").textContent   = slocCount.toLocaleString();
+    document.getElementById("pd-tab-count-branch").textContent = branchCount.toLocaleString();
+    document.getElementById("pd-tab-count-detail").textContent = filtered.length.toLocaleString();
+  }
+
+  function showTab(tab) {
+    activeTab = tab;
+    TABS.forEach((t) => {
+      document.getElementById(`pd-tab-${t}`).style.display = t === tab ? "block" : "none";
+    });
+    document.querySelectorAll(".pd-tab-btn").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.tab === tab);
+    });
+    // Plotly needs a visible container to size correctly, so (re)draw the
+    // chart the moment its tab becomes active.
+    if (tab === "sloc") renderSlocChart(currentFilteredRows());
+  }
+
+  function wireTabs() {
+    document.querySelectorAll(".pd-tab-btn").forEach((btn) => {
+      btn.addEventListener("click", () => showTab(btn.dataset.tab));
+    });
+  }
+
   // ── Master render ────────────────────────────────────────────
   function renderAll() {
     const filtered = currentFilteredRows();
     renderKpis(filtered);
+    setTabCounts(filtered);
     renderTop10(filtered);
-    renderSlocChart(filtered);
     renderBranchTable(filtered);
     renderDetailTable(filtered);
+    if (activeTab === "sloc") renderSlocChart(filtered); // only draw while visible
   }
 
   function showHasData() {
@@ -490,6 +525,7 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     wireFilters();
+    wireTabs();
     wireFileInput();
     showNoData();
   });
