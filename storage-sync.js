@@ -72,6 +72,40 @@ function waitForParseSettle(statusId, timeoutMs = 20000) {
 
 const BUCKET = "inventory-files";
 
+// ── Clock correction ────────────────────────────────────────
+// uploaded_at must never be trusted straight from this machine's clock —
+// if the uploader's laptop time is wrong, that wrong value gets written to
+// Supabase and every viewer sees it, permanently, regardless of their own
+// clock. To avoid depending on this machine's clock at all, we estimate how
+// far off it is from real time by reading the "Date" response header that
+// every HTTP response is required to send (RFC 7231), via a lightweight
+// same-origin request, and apply that offset whenever we timestamp
+// something. Best-effort: if the sync request fails (offline/blocked), the
+// offset stays 0 and we fall back to the raw (possibly wrong) local clock,
+// same as before this fix.
+let CLOCK_OFFSET_MS = 0;
+let clockSyncPromise = null;
+
+function syncClockOffset(forceRefresh) {
+  if (clockSyncPromise && !forceRefresh) return clockSyncPromise;
+  clockSyncPromise = fetch(location.href, { method: "HEAD", cache: "no-store" })
+    .then((res) => {
+      const hdr = res.headers.get("Date");
+      if (!hdr) return;
+      const serverMs = new Date(hdr).getTime();
+      if (!isNaN(serverMs)) CLOCK_OFFSET_MS = serverMs - Date.now();
+    })
+    .catch(() => {}); // offline/blocked — silently keep offset at 0
+  return clockSyncPromise;
+}
+// Kick off a sync as soon as this script runs, so the offset is usually
+// already known well before any upload happens.
+syncClockOffset();
+
+function correctedNow() {
+  return new Date(Date.now() + CLOCK_OFFSET_MS);
+}
+
 // ── Friendlier toast/status labels for multi-word slot names ──
 const SLOT_LABELS = { pendingDispatch: "Pending Dispatch" };
 function slotLabel(slot) {
@@ -83,7 +117,7 @@ function formatRelativeTime(isoOrDate) {
   if (!isoOrDate) return null;
   const then = isoOrDate instanceof Date ? isoOrDate : new Date(isoOrDate);
   if (isNaN(then.getTime())) return null;
-  const diffMs = Date.now() - then.getTime();
+  const diffMs = correctedNow().getTime() - then.getTime();
   if (diffMs < 0) return "just now";
   const mins = Math.floor(diffMs / 60000);
   if (mins < 1)   return "just now";
@@ -263,12 +297,21 @@ async function pushFileToSupabase(slot, file) {
     return;
   }
 
+  // FIX-CLOCK: don't trust this machine's system clock for uploaded_at —
+  // wait for (or trigger) a clock-offset sync against the server's HTTP
+  // Date header first, so the timestamp we write is correct even if the
+  // uploader's laptop clock is wrong. This delays the metadata write by at
+  // most one lightweight HEAD request (already usually in flight/cached
+  // from page load), never a full round trip per upload.
+  await syncClockOffset();
+  const uploadedAtCorrected = correctedNow();
+
   const { error: metaErr } = await sc.from("app_files").upsert({
     slot,
     storage_path: path,
     filename: file.name,
     uploaded_by: window.APP_USER ? window.APP_USER.id : null,
-    uploaded_at: new Date().toISOString(),
+    uploaded_at: uploadedAtCorrected.toISOString(),
   });
   if (metaErr) {
     console.error(`Metadata save failed (${slot}):`, metaErr);
@@ -278,7 +321,7 @@ async function pushFileToSupabase(slot, file) {
 
   showToast(`✓ ${label} synced — all users will see this on refresh`, "ok");
 
-  slotMeta[slot] = { uploadedAt: new Date(), filename: file.name };
+  slotMeta[slot] = { uploadedAt: uploadedAtCorrected, filename: file.name };
   renderSyncInfo(slot);
 }
 
