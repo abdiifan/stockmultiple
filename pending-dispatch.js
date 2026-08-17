@@ -478,7 +478,6 @@
       return;
     }
 
-    const maxCell = Math.max(1, ...groups.flatMap((g) => AGING_BUCKETS.map((b) => g.buckets[b.key])));
     const maxAvg = Math.max(1, ...groups.map((g) => g.avg));
     let grandTotal = 0, grandDaysSum = 0;
     const grandBuckets = { "1-3": 0, "4-7": 0, "8-14": 0, "15-20": 0, "21+": 0 };
@@ -491,9 +490,11 @@
 
     const bucketHeaderCells = AGING_BUCKETS.map((b) => `<th>${b.label}</th>`).join("");
     const bodyRows = groups.map((g, i) => {
+      // Bucket cells are left plain (no heatmap fill) — only the Avg Days
+      // Open column is colored, per the site's request.
       const cells = AGING_BUCKETS.map((b) => {
         const v = g.buckets[b.key];
-        return v ? `<td style="${heatBg(v, maxCell)}">${v.toLocaleString()}</td>` : `<td></td>`;
+        return `<td>${v ? v.toLocaleString() : ""}</td>`;
       }).join("");
       return `
         <tr>
@@ -593,7 +594,6 @@
       return;
     }
 
-    const maxCell = Math.max(1, ...groups.flatMap((g) => AGING_BUCKETS.map((b) => g.buckets[b.key])));
     const maxAvg = Math.max(1, ...groups.map((g) => g.avg));
     let grandTotal = 0, grandDaysSum = 0;
     const grandBuckets = { "1-3": 0, "4-7": 0, "8-14": 0, "15-20": 0, "21+": 0 };
@@ -606,9 +606,11 @@
 
     const bucketHeaderCells = AGING_BUCKETS.map((b) => `<th>${b.label}</th>`).join("");
     const bodyRows = groups.map((g, i) => {
+      // Bucket cells are left plain (no heatmap fill) — only the Avg Days
+      // Open column is colored, per the site's request.
       const cells = AGING_BUCKETS.map((b) => {
         const v = g.buckets[b.key];
-        return v ? `<td style="${heatBg(v, maxCell)}">${v.toLocaleString()}</td>` : `<td></td>`;
+        return `<td>${v ? v.toLocaleString() : ""}</td>`;
       }).join("");
       return `
         <tr>
