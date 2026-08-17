@@ -700,6 +700,33 @@ function loadFile(file) {
         rawDf  = df;
         filtDf = df;
 
+        // EPSS_PLANT_MASTER: expose a clean plantCode -> plantName lookup built
+        // from THIS file's own "Plant" / "Plant Name" columns (the authoritative
+        // SAP master data), so other pages — e.g. pending-dispatch.js, which
+        // only has the messier "Ship-to Party" / "Name of the ship-to party"
+        // text to work with — can show the same clean names instead of
+        // re-deriving their own from noisier data. Picks the most frequent
+        // Plant Name seen per code, in case of stray casing/whitespace variants.
+        (function buildPlantMaster() {
+          const counts = {}; // code -> { name -> count }
+          df.forEach((row) => {
+            const code = String(row["Plant"] || "").trim().toUpperCase();
+            const name = String(row["Plant Name"] || "").trim();
+            if (!code || !name) return;
+            counts[code] = counts[code] || {};
+            counts[code][name] = (counts[code][name] || 0) + 1;
+          });
+          const master = {};
+          Object.keys(counts).forEach((code) => {
+            let best = null, bestN = -1;
+            Object.entries(counts[code]).forEach(([name, n]) => {
+              if (n > bestN) { best = name; bestN = n; }
+            });
+            master[code] = best;
+          });
+          window.EPSS_PLANT_MASTER = master;
+        })();
+
         // FIX BUG-3: clear stale page filters from the previous file
         resetPageFilters();
         // FIX-STFILTER: also reset transit-section filter state on new main file load
