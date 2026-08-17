@@ -1165,17 +1165,10 @@
         <div class="pd-search-wrap">
           <input type="text" id="pd-search" class="who-resp-input pd-search-input" placeholder="🔎 Search delivery, material, or branch…" autocomplete="off" spellcheck="false" />
         </div>
-        <select id="pd-filter-sloc" class="person-filter-select" title="Filter by storage location">
-          <option value="">🏬 All Storage Locations</option>
-        </select>
-        <select id="pd-filter-branch" class="person-filter-select" title="Filter by branch / plant">
-          <option value="">🏢 All Branches</option>
-        </select>
-        <select id="pd-filter-stocktype" class="person-filter-select" title="Filter by stock type">
-          <option value="">📋 All Stock Types</option>
-          <option value="Q">🟣 Special Stock (Q)</option>
-          <option value="RDF">🔵 RDF</option>
-        </select>
+        <div class="ms-wrap" id="ms-pd-sloc"><button class="ms-btn" type="button">All Storage Locations <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-pd-sloc-dd"></div></div>
+        <div class="ms-wrap" id="ms-pd-branch"><button class="ms-btn" type="button">All Branches <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-pd-branch-dd"></div></div>
+        <div class="ms-wrap" id="ms-pd-stocktype"><button class="ms-btn" type="button">All Stock Types <span class="ms-arrow">▾</span></button><div class="ms-dropdown" id="ms-pd-stocktype-dd"></div></div>
+        <button type="button" class="apply-btn small" id="pd-filter-apply">Apply</button>
         <button type="button" class="apply-btn secondary small" id="pd-filter-clear">Clear</button>
       </div>
 
