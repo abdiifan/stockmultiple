@@ -1025,13 +1025,28 @@
     return name.replace(/[\\/?*[\]:]/g, "-").slice(0, 31);
   }
 
+  // Always render timestamps in East Africa Time (Addis Ababa, UTC+3),
+  // regardless of the viewer's own browser/OS timezone — the underlying
+  // Date object still stores the correct absolute instant, this just pins
+  // the *display* so everyone (wherever they are) reads the same wall-clock
+  // time that matches when the data actually moved in Addis Ababa.
+  function formatEAT(ts) {
+    if (!ts) return null;
+    return ts.toLocaleString("en-GB", {
+      timeZone: "Africa/Addis_Ababa",
+      year: "numeric", month: "short", day: "numeric",
+      hour: "2-digit", minute: "2-digit", second: "2-digit",
+      hour12: true,
+    }) + " EAT";
+  }
+
   // The timestamp this data was actually uploaded (source-of-truth if known,
   // else the local parse time) — shown on the page banner and now baked
   // into every export too, since a report can easily be opened well after
   // the underlying SAP data has moved on.
   function dataAsOfString() {
     const ts = STATE.sourceUploadedAt || STATE.localUploadedAt;
-    return ts ? ts.toLocaleString() : "Unknown";
+    return ts ? formatEAT(ts) : "Unknown";
   }
 
   // ── Per-table export buttons ────────────────────────────────
@@ -1178,7 +1193,7 @@
   // report export), never bundling in any other table.
   function exportSingleSheet(data, kind, filenameBase, sheetName) {
     const asOf = dataAsOfString();
-    const exportedAt = new Date().toLocaleString();
+    const exportedAt = formatEAT(new Date());
 
     if (kind === "csv") {
       const ws = XLSX.utils.json_to_sheet(data);
@@ -1215,7 +1230,7 @@
 
   function exportRows(rows, kind) {
     const asOf = dataAsOfString();
-    const exportedAt = new Date().toLocaleString();
+    const exportedAt = formatEAT(new Date());
 
     if (kind === "csv") {
       // CSV has no concept of multiple sheets — keep it as the flat
@@ -1447,7 +1462,7 @@
     if (!el) return;
     const ts = STATE.sourceUploadedAt || STATE.localUploadedAt;
     if (!ts) { el.textContent = ""; return; }
-    el.textContent = `🕒 Data as of ${ts.toLocaleString()} — items may have since shipped or changed in SAP.`;
+    el.textContent = `🕒 Data as of ${formatEAT(ts)} — items may have since shipped or changed in SAP.`;
     el.title = ts.toISOString();
   }
 
