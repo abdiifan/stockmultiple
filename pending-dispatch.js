@@ -17,16 +17,6 @@
 // Stock type: "Q" -> Special Stock (Q). Blank/unmarked -> "RDF".
 // Special Stock (Q) is ALWAYS included in totals by default — the Stock
 // Type filter only narrows the view, it never silently excludes Q.
-//
-// Optional: mos.js (mosMerged) — if loaded, each RDF row's Material is
-// mapped to its assigned owner the same way who-responsible.js does
-// (mosMerged[].code -> mosMerged[].person). This makes the page honor
-// the sidebar's existing global "Person Assigned" filter (script.js's
-// personFilter) — no new column or on-page filter is added. Special
-// Stock (Q) rows are NEVER attributed to that person, even when the
-// Material code matches one of their items, since Q sits outside their
-// normal RDF ownership. Degrades gracefully (global Person filter has
-// no effect on this page) if mos.js isn't loaded.
 // ════════════════════════════════════════════════════════════════
 
 (function () {
@@ -157,45 +147,6 @@
     return STATE.branchMaster[code] || code || "Unknown";
   }
 
-  // ── Person mapping (assigned owner) — mapped from the AMC-derived
-  // master list (mosMerged, built in mos.js from the same per-material
-  // "person" assignment used everywhere else in the app, e.g.
-  // who-responsible.js's card). Keyed by material code, so any Pending
-  // Dispatch row can look up who owns that material and the page can
-  // honor whatever person is selected in the sidebar's global "Person
-  // Assigned" filter. Cache is invalidated automatically if mosMerged is
-  // reloaded (new array reference), same convention as buildMosSohMap().
-  let _personMapCache = null;
-  let _personMapSource = null;
-
-  function personMap() {
-    if (typeof mosMerged === "undefined" || !mosMerged) return new Map();
-    if (_personMapCache && _personMapSource === mosMerged) return _personMapCache;
-    const map = new Map();
-    mosMerged.forEach((r) => {
-      const code = String(r.code || "").trim();
-      if (code && r.person) map.set(code, r.person);
-    });
-    _personMapCache = map;
-    _personMapSource = mosMerged;
-    return map;
-  }
-
-  function personForMaterial(material) {
-    return personMap().get(String(material || "").trim()) || "";
-  }
-
-  // Row-aware wrapper: Special Stock (Q) is never attributed to the
-  // material's assigned person, even though the Material code itself is
-  // present in mosMerged. Q stock sits outside a person's normal RDF
-  // ownership/dispatch responsibility, so every "who owns this row"
-  // usage below must go through this — not personForMaterial() directly —
-  // or Q rows would incorrectly count toward that person's pending work.
-  function personForRow(r) {
-    if (stockTypeOf(r) === "Q") return "";
-    return personForMaterial(r.material);
-  }
-
   // ── Excel parsing ────────────────────────────────────────────
   function parseSheet(workbook) {
     const sheetName = workbook.SheetNames[0];
@@ -232,20 +183,10 @@
   function applyFilters(rows) {
     const { search, slocs, branches, stockTypes } = STATE.filters;
     const s = search.trim().toLowerCase();
-    // Honor the sidebar's global Person filter (script.js's `personFilter`
-    // Set), same convention every other mosMerged-aware page follows:
-    // each row's Material is mapped to its assigned person, and rows for
-    // materials with no owner on file — or an owner outside the current
-    // selection — are excluded while the filter is active.
-    const globalPersonActive = typeof personFilter !== "undefined" && personFilter.size > 0;
     return rows.filter((r) => {
       if (slocs.length && !slocs.includes(r.storageLocation)) return false;
       if (branches.length && !branches.includes(plantCode(r.shipToParty))) return false;
       if (stockTypes.length && !stockTypes.includes(stockTypeOf(r))) return false;
-      if (globalPersonActive) {
-        const p = personForRow(r);
-        if (!p || !personFilter.has(p)) return false;
-      }
       if (s) {
         const hay = `${r.delivery} ${r.material} ${r.itemDescription} ${r.shipToParty} ${r.shipToPartyName} ${branchName(plantCode(r.shipToParty))}`.toLowerCase();
         if (!hay.includes(s)) return false;
@@ -833,7 +774,7 @@
 
       const commit = (val) => {
         STATE.detailFilters[prop] = val;
-        renderDetailTable(currentFilteredRows());
+        renderAll();
       };
 
       const showSuggestions = () => {
@@ -883,7 +824,7 @@
     const clearBtn = wrap.querySelector("#pd-detail-filter-clear");
     if (clearBtn) clearBtn.addEventListener("click", () => {
       STATE.detailFilters = { material: "", delivery: "", createdBy: "" };
-      renderDetailTable(currentFilteredRows());
+      renderAll();
     });
   }
 
@@ -973,8 +914,14 @@
   }
 
   // ── Export ───────────────────────────────────────────────────
+  // NOTE: this now includes the "All Pending Items" detail filters
+  // (Material / Delivery / Created By) on top of the page-level filters,
+  // so picking e.g. Created By immediately narrows the KPIs, storage
+  // location chart, and branch/plant table too — not just the detail
+  // table. applyDetailFilters() is a no-op when STATE.detailFilters is
+  // empty, so this is identical to before when no detail filter is set.
   function currentFilteredRows() {
-    return applyFilters(STATE.rows);
+    return applyDetailFilters(applyFilters(STATE.rows));
   }
 
   // ── Row-level "All Pending Items" data (same shape as before) ──
