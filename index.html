@@ -10,6 +10,10 @@
     (function () {
       try {
         var theme = localStorage.getItem('epss-theme');
+        if (!theme) {
+          // No saved preference yet (first login / never changed) — default to Horizon.
+          theme = 'horizon';
+        }
         if (theme === 'light' || theme === 'hc-black' || theme === 'hc-white' || theme === 'horizon' || theme === 'quartz-dark') {
           document.documentElement.setAttribute('data-theme', theme);
         }
@@ -854,11 +858,11 @@
       <div>
         <label class="settings-field-label" for="settings-theme-select">Theme</label>
         <select id="settings-theme-select" class="settings-select">
-          <option value="belize-deep">Belize Deep (default)</option>
+          <option value="belize-deep">Belize Deep</option>
           <option value="belize">Belize</option>
           <option value="hc-black">High Contrast Black</option>
           <option value="hc-white">High Contrast White</option>
-          <option value="horizon">Horizon</option>
+          <option value="horizon">Horizon (default)</option>
           <option value="quartz-dark">Quartz Dark</option>
         </select>
       </div>
