@@ -481,7 +481,7 @@
     const maxCell = Math.max(1, ...groups.flatMap((g) => AGING_BUCKETS.map((b) => g.buckets[b.key])));
     const maxAvg = Math.max(1, ...groups.map((g) => g.avg));
     let grandTotal = 0, grandDaysSum = 0;
-    const grandBuckets = { "1-3": 0, "4-7": 0, "8-14": 0, "15+": 0 };
+    const grandBuckets = { "1-3": 0, "4-7": 0, "8-14": 0, "15-20": 0, "21+": 0 };
     groups.forEach((g) => {
       grandTotal += g.total;
       grandDaysSum += g.daysSum;
@@ -596,7 +596,7 @@
     const maxCell = Math.max(1, ...groups.flatMap((g) => AGING_BUCKETS.map((b) => g.buckets[b.key])));
     const maxAvg = Math.max(1, ...groups.map((g) => g.avg));
     let grandTotal = 0, grandDaysSum = 0;
-    const grandBuckets = { "1-3": 0, "4-7": 0, "8-14": 0, "15+": 0 };
+    const grandBuckets = { "1-3": 0, "4-7": 0, "8-14": 0, "15-20": 0, "21+": 0 };
     groups.forEach((g) => {
       grandTotal += g.total;
       grandDaysSum += g.daysSum;
@@ -869,14 +869,15 @@
   }
 
   // ── Aging buckets — reused by the "Aging by Shipping Point" and
-  //    "Aging by Branch/Plant" tables. Same day-thresholds as the
-  //    reference report: 1–3, 4–7, 8–14, 15+. Deliveries not yet due
-  //    (daysLate < 1, i.e. null/"Good") never land in a bucket. ────
+  //    "Aging by Branch/Plant" tables. Day-thresholds: 1–3, 4–7, 8–14,
+  //    15–20, 21+. Deliveries not yet due (daysLate < 1, i.e.
+  //    null/"Good") never land in a bucket. ────
   const AGING_BUCKETS = [
     { key: "1-3", label: "1–3 days", min: 1, max: 3 },
     { key: "4-7", label: "4–7 days", min: 4, max: 7 },
     { key: "8-14", label: "8–14 days", min: 8, max: 14 },
-    { key: "15+", label: "15+ days", min: 15, max: Infinity },
+    { key: "15-20", label: "15–20 days", min: 15, max: 20 },
+    { key: "21+", label: "21+ days", min: 21, max: Infinity },
   ];
 
   function agingBucketKey(days) {
@@ -904,7 +905,7 @@
     });
 
     return Object.keys(perGroup).map((gk) => {
-      const buckets = { "1-3": 0, "4-7": 0, "8-14": 0, "15+": 0 };
+      const buckets = { "1-3": 0, "4-7": 0, "8-14": 0, "15-20": 0, "21+": 0 };
       let total = 0, daysSum = 0;
       perGroup[gk].forEach((giDate) => {
         const d = daysLate(giDate);
@@ -1200,7 +1201,8 @@
       "1–3 days": g.buckets["1-3"],
       "4–7 days": g.buckets["4-7"],
       "8–14 days": g.buckets["8-14"],
-      "15+ days": g.buckets["15+"],
+      "15–20 days": g.buckets["15-20"],
+      "21+ days": g.buckets["21+"],
       "Total": g.total,
       "Avg Days Open": Number(g.avg.toFixed(2)),
     }));
@@ -1210,14 +1212,15 @@
       acc.daysSum += g.daysSum;
       AGING_BUCKETS.forEach((b) => { acc.buckets[b.key] += g.buckets[b.key]; });
       return acc;
-    }, { total: 0, daysSum: 0, buckets: { "1-3": 0, "4-7": 0, "8-14": 0, "15+": 0 } });
+    }, { total: 0, daysSum: 0, buckets: { "1-3": 0, "4-7": 0, "8-14": 0, "15-20": 0, "21+": 0 } });
 
     out.push({
       "Storage Location": "Total",
       "1–3 days": grand.buckets["1-3"],
       "4–7 days": grand.buckets["4-7"],
       "8–14 days": grand.buckets["8-14"],
-      "15+ days": grand.buckets["15+"],
+      "15–20 days": grand.buckets["15-20"],
+      "21+ days": grand.buckets["21+"],
       "Total": grand.total,
       "Avg Days Open": grand.total ? Number((grand.daysSum / grand.total).toFixed(2)) : 0,
     });
@@ -1238,7 +1241,8 @@
       "1–3 days": g.buckets["1-3"],
       "4–7 days": g.buckets["4-7"],
       "8–14 days": g.buckets["8-14"],
-      "15+ days": g.buckets["15+"],
+      "15–20 days": g.buckets["15-20"],
+      "21+ days": g.buckets["21+"],
       "Total": g.total,
       "Avg Days Open": Number(g.avg.toFixed(2)),
     }));
@@ -1248,7 +1252,7 @@
       acc.daysSum += g.daysSum;
       AGING_BUCKETS.forEach((b) => { acc.buckets[b.key] += g.buckets[b.key]; });
       return acc;
-    }, { total: 0, daysSum: 0, buckets: { "1-3": 0, "4-7": 0, "8-14": 0, "15+": 0 } });
+    }, { total: 0, daysSum: 0, buckets: { "1-3": 0, "4-7": 0, "8-14": 0, "15-20": 0, "21+": 0 } });
 
     out.push({
       "Branch": "Total",
@@ -1256,7 +1260,8 @@
       "1–3 days": grand.buckets["1-3"],
       "4–7 days": grand.buckets["4-7"],
       "8–14 days": grand.buckets["8-14"],
-      "15+ days": grand.buckets["15+"],
+      "15–20 days": grand.buckets["15-20"],
+      "21+ days": grand.buckets["21+"],
       "Total": grand.total,
       "Avg Days Open": grand.total ? Number((grand.daysSum / grand.total).toFixed(2)) : 0,
     });
