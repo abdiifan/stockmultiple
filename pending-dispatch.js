@@ -71,11 +71,33 @@
     }[c]));
   }
 
-  // ── Branch master: prefer a site-wide mapping if one exists
-  // (window.EPSS_PLANT_MASTER / window.PLANT_MASTER, e.g. built from the
-  // main Inventory or Mapping upload elsewhere in the app), otherwise
-  // derive names from the most frequent "Name of the ship-to party" seen
-  // per 4-char plant code in this very file. ──
+  // ── Branch name cleanup (fallback path only) ───────────────────
+  // The "Name of the ship-to party" text in the Pending Dispatch file is
+  // messier than the main Inventory file's "Plant Name" master (it carries
+  // facility qualifiers like "WH-1", "ColdRoom1", "HP", "Branch", etc, e.g.
+  // "Addis Ababa1 WH1", "Adama Main WH-1", "Semera ColdRoom1"). This strips
+  // those qualifiers down to the clean city/branch name (e.g. "Addis Ababa 1",
+  // "Adama", "Semera"), splitting a fused trailing digit off the city name
+  // (e.g. "Ababa1" -> "Ababa 1") but dropping digits that belong to a
+  // stripped qualifier (e.g. "Main1", "WH1", "CR1", "W1").
+  const BRANCH_NAME_JUNK = /\s*[-–]?\s*(main\s*wh\s*-?\s*\d*|main\s*-?\s*\d*|cold\s*room\s*\d*|coldroom\s*\d*|wh\s*-?\s*\d*|w\d+|cr\d*|hprogram|hp|branch)\s*$/i;
+
+  function cleanBranchName(raw) {
+    if (!raw) return raw;
+    let s = raw.toString().trim();
+    let prev;
+    do { prev = s; s = s.replace(BRANCH_NAME_JUNK, "").trim(); } while (s !== prev && s.length);
+    s = s.replace(/([A-Za-z])(\d+)$/, "$1 $2");
+    s = s.replace(/\s+/g, " ").trim();
+    return s || raw.toString().trim();
+  }
+
+  // ── Branch master: prefer the site-wide mapping if one exists
+  // (window.EPSS_PLANT_MASTER / window.PLANT_MASTER — built from the main
+  // Inventory upload's authoritative "Plant" / "Plant Name" columns
+  // elsewhere in the app), otherwise derive names from the most frequent
+  // "Name of the ship-to party" seen per 4-char plant code in this file,
+  // cleaned up to just the city/branch name. ──
   function buildBranchMaster(rows) {
     const external = window.EPSS_PLANT_MASTER || window.PLANT_MASTER || null;
     const counts = {}; // code -> { name -> count }
@@ -93,10 +115,11 @@
       Object.entries(counts[code]).forEach(([name, n]) => {
         if (n > bestN) { best = name; bestN = n; }
       });
-      derived[code] = best || code;
+      derived[code] = cleanBranchName(best) || code;
     });
     if (external && typeof external === "object") {
-      // External master wins where it has an entry; fall back to derived.
+      // External (main Inventory) master wins where it has an entry; fall
+      // back to this file's own cleaned-up derived names otherwise.
       return Object.assign({}, derived, external);
     }
     return derived;
