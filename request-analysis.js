@@ -693,7 +693,12 @@
     const matGroupDataAvailable = matGroupMap.size > 0;
 
     return {
-      rows, ho01NotRequested, ho01NotRequestedAllCount: ho01NotRequestedAll.length, mosDataLoaded,
+      // ho01NotRequestedAll is returned in full (not just its .length) so the
+      // render step can re-scope its "idle at HO01 in total" KPI subtext to
+      // whichever person is active in the sidebar filter — see PERSON-SCOPED
+      // DASHBOARD KPIS below. ho01NotRequestedAllCount is kept alongside it
+      // for any other caller that only wants the unfiltered total.
+      rows, ho01NotRequested, ho01NotRequestedAll, ho01NotRequestedAllCount: ho01NotRequestedAll.length, mosDataLoaded,
       availableMatTypes, matTypeDataAvailable,
       availableMatGroups, matGroupDataAvailable,
     };
@@ -978,7 +983,7 @@
     const statusF  = statusEl ? statusEl.value : "";
 
     const {
-      rows, ho01NotRequested, ho01NotRequestedAllCount, mosDataLoaded,
+      rows, ho01NotRequested, ho01NotRequestedAll, mosDataLoaded,
       availableMatTypes, matTypeDataAvailable,
       availableMatGroups, matGroupDataAvailable,
     } = buildRequestAnalysis();
@@ -1019,19 +1024,30 @@
       && personMatches(r) && matTypeMatches(r) && matGroupMatches(r)
     );
 
-    // ── KPIs ─────────────────────────────────────────────────────────────────
-    const dupLineCount   = rows.filter(r => r.isDuplicate).length;
-    const dupGroupCount  = new Set(rows.filter(r => r.isDuplicate).map(r => r.canonical || `__raw__${r.material.toUpperCase()}`)).size;
-    const locMismatchCount = rows.filter(r => r.locationMismatch).length;
+    // ── KPIs (PERSON-SCOPED DASHBOARD KPIS) ────────────────────────────────
+    // These 6 cards used to be built off the raw, unfiltered `rows` /
+    // `ho01NotRequestedAll` — so the "👤 Filtered to items assigned to X"
+    // banner below claimed "every tab on this page reflects this" while the
+    // dashboard numbers silently stayed plant-wide. They're now built off
+    // person-scoped subsets so the cards match the tables underneath them.
+    // (Search text / status / Material Type / Material Group filters are
+    // deliberately NOT folded in here — this scoping is specifically for the
+    // "assigned to" person filter, same as the rest of this page's tabs.)
+    const personRows = rows.filter(personMatches);
+    const personNotRequestedAll = ho01NotRequestedAll.filter(personMatches);
+
+    const dupLineCount   = personRows.filter(r => r.isDuplicate).length;
+    const dupGroupCount  = new Set(personRows.filter(r => r.isDuplicate).map(r => r.canonical || `__raw__${r.material.toUpperCase()}`)).size;
+    const locMismatchCount = personRows.filter(r => r.locationMismatch).length;
     document.getElementById("reqan-kpis").innerHTML = [
-      reqKpi("Request Lines Uploaded", rows.length.toLocaleString(), reqFileName ? `${reqFileName} · Plant ${reqPlant}` : "", "blue"),
-      reqKpi("HO01 Stockout (Requested)", rows.filter(r => r.status === "stockout").length.toLocaleString(), "Zero HO01 stock right now", "red"),
-      reqKpi("Suggested Code Corrections", rows.filter(r => r.hasSuggestion).length.toLocaleString(), "Stock exists under a different code", "amber"),
+      reqKpi("Request Lines Uploaded", personRows.length.toLocaleString(), reqFileName ? `${reqFileName} · Plant ${reqPlant}` : "", "blue"),
+      reqKpi("HO01 Stockout (Requested)", personRows.filter(r => r.status === "stockout").length.toLocaleString(), "Zero HO01 stock right now", "red"),
+      reqKpi("Suggested Code Corrections", personRows.filter(r => r.hasSuggestion).length.toLocaleString(), "Stock exists under a different code", "amber"),
       reqKpi("Possible Double Requests", `${dupLineCount.toLocaleString()} lines / ${dupGroupCount.toLocaleString()} items`, "Same item requested more than once — same or different code", "amber"),
       reqKpi("Storage Location Mismatches", locMismatchCount.toLocaleString(), "Cold/non-cold zone at requesting plant doesn't match HO01's zone for this material", "red"),
-      reqKpi("Critical & Not Requested", ho01NotRequested.length.toLocaleString(),
+      reqKpi("Critical & Not Requested", notRequested.length.toLocaleString(),
         mosDataLoaded
-          ? `Branch MOS < 1mo, absent from this request (${ho01NotRequestedAllCount.toLocaleString()} idle at HO01 in total)`
+          ? `Branch MOS < 1mo, absent from this request (${personNotRequestedAll.length.toLocaleString()} idle at HO01 in total)`
           : "Load an AMC file (MOS by Plant page) to compute this",
         "purple"),
     ].join("");
