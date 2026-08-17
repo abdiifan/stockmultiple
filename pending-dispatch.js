@@ -1830,6 +1830,7 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     wireFilters();
+    injectAgingTabs();
     wireTabs();
     wireFileInput();
     wireSourceMetaListener();
