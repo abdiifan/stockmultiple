@@ -10,8 +10,8 @@
   --surface:   #0e1420;
   --surface2:  #141c2b;
   --surface3:  #1a2438;
-  --border:    #1f2e44;
-  --border2:   #263548;
+  --border:    #33486a;
+  --border2:   #43597f;
   --text:      #dce8f5;
   --muted:     #7a9ab8;
   --dim:       #4a6275;
@@ -71,8 +71,8 @@
   --surface:   #ffffff;
   --surface2:  #f4f7fb;
   --surface3:  #e8edf5;
-  --border:    #d0d9e8;
-  --border2:   #b8c4d8;
+  --border:    #a9b8cf;
+  --border2:   #8fa1bd;
   --text:      #18253a;
   --muted:     #526680;
   --dim:       #8898aa;
@@ -107,8 +107,8 @@
   --surface:   #0a0a0a;
   --surface2:  #141414;
   --surface3:  #1e1e1e;
-  --border:    #4a4a4a;
-  --border2:   #6b6b6b;
+  --border:    #6b6b6b;
+  --border2:   #8c8c8c;
   --text:      #ffffff;
   --muted:     #d6d6d6;
   --dim:       #9a9a9a;
@@ -175,8 +175,8 @@
   --surface:   #ffffff;
   --surface2:  #f7f8fa;
   --surface3:  #eceef2;
-  --border:    #dbe0e6;
-  --border2:   #c4cbd4;
+  --border:    #b6bfca;
+  --border2:   #9ba6b5;
   --text:      #1a1f28;
   --muted:     #5c6675;
   --dim:       #8a93a1;
@@ -210,8 +210,8 @@
   --surface:   #29313a;
   --surface2:  #323a44;
   --surface3:  #3d4650;
-  --border:    #48515b;
-  --border2:   #59626c;
+  --border:    #626c78;
+  --border2:   #77828e;
   --text:      #eaedf0;
   --muted:     #9da7af;
   --dim:       #6b747c;
@@ -244,7 +244,7 @@ html, body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--app-font-family);
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.55;
   transition: var(--theme-transition);
   -webkit-font-smoothing: antialiased;
