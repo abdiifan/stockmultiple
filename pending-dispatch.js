@@ -607,10 +607,10 @@
           <tbody>
             ${bodyRows}
             <tr class="pd-matrix-total-row">
-              <td colspan="2">Total</td>
+              <td colspan="2" style="background:rgb(214,220,226);color:#1a1a1a;font-weight:700">Total</td>
               ${totalCells}
-              <td style="font-weight:700">${grandTotal.toLocaleString()}</td>
-              <td style="font-weight:700">100%</td>
+              <td style="background:rgb(214,220,226);color:#1a1a1a;font-weight:700">${grandTotal.toLocaleString()}</td>
+              <td style="background:rgb(214,220,226);color:#1a1a1a;font-weight:700">100%</td>
             </tr>
             <tr class="pd-matrix-pct-row">
               <td colspan="2"></td>
