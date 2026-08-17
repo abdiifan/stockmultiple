@@ -203,7 +203,7 @@
     const slocs = new Set(rows.map((r) => r.storageLocation).filter(Boolean));
 
     const cards = [
-      { label: "DeliveriesOpen Outbound", value: deliveries.size, color: "blue", sub: "unique delivery numbers" },
+      { label: "Deliveries pending dispatch", value: deliveries.size, color: "blue", sub: "unique delivery numbers" },
       { label: "Pending Line Items", value: rows.length, color: "amber", sub: "individual delivery items" },
       { label: "Branches Awaiting Stock", value: branches.size, color: "green", sub: "ship-to plants" },
       { label: "Storage Locations Involved", value: slocs.size, color: "purple", sub: "source storage locations" },
