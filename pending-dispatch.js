@@ -1,7 +1,7 @@
 // ════════════════════════════════════════════════════════════════
 // pending-dispatch.js — "Pending Dispatch" page (Inventory Ops group)
 //
-// Reads the Pending Dispatch Excel (columns: Delivery, Item, Goods Issue
+// Reads theOpen Outbound Excel (columns: Delivery, Item, Goods Issue
 // Date, Material, Route, Ship-to Party, Name of the ship-to party,
 // Delivery Quantity, Item Description, Purchasing Document, Created By,
 // Storage Location, Special Stock) uploaded via #pendingDispatchFileInput
@@ -90,7 +90,7 @@
   }
 
   // ── Branch name cleanup (fallback path only) ───────────────────
-  // The "Name of the ship-to party" text in the Pending Dispatch file is
+  // The "Name of the ship-to party" text in theOpen Outbound file is
   // messier than the main Inventory file's "Plant Name" master (it carries
   // facility qualifiers like "WH-1", "ColdRoom1", "HP", "Branch", etc, e.g.
   // "Addis Ababa1 WH1", "Adama Main WH-1", "Semera ColdRoom1"). This strips
@@ -203,7 +203,7 @@
     const slocs = new Set(rows.map((r) => r.storageLocation).filter(Boolean));
 
     const cards = [
-      { label: "Deliveries Pending Dispatch", value: deliveries.size, color: "blue", sub: "unique delivery numbers" },
+      { label: "DeliveriesOpen Outbound", value: deliveries.size, color: "blue", sub: "unique delivery numbers" },
       { label: "Pending Line Items", value: rows.length, color: "amber", sub: "individual delivery items" },
       { label: "Branches Awaiting Stock", value: branches.size, color: "green", sub: "ship-to plants" },
       { label: "Storage Locations Involved", value: slocs.size, color: "purple", sub: "source storage locations" },
@@ -1452,7 +1452,7 @@
   }
 
   // storage-sync.js dispatches this whenever it learns/updates the
-  // Pending Dispatch slot's Supabase upload metadata (on pull, push, or
+  //Open Outbound slot's Supabase upload metadata (on pull, push, or
   // manual refresh). It's optional — pages without storage-sync.js loaded
   // simply never receive it, and fall back to the local parse time above.
   function wireSourceMetaListener() {
