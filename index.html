@@ -172,7 +172,7 @@
       flex-shrink: 0;
     }
 
-    /* ──Open Outbounds page ── */
+    /* ──Open Outbound page ── */
     .pd-upload-btn { border-color: var(--purple) !important; color: var(--purple) !important; }
     .pd-upload-btn:hover { background: rgba(148,113,214,0.08) !important; border-color: var(--purple) !important; }
     .pd-search-wrap { flex: 1 1 220px; min-width: 200px; }
@@ -716,7 +716,7 @@
     <div class="nav-group" data-group="inventory-ops">
       <div class="nav-group-title"><span class="nav-group-icon">📦</span> Inventory Ops</div>
       <button class="nav-btn" data-page="pending-dispatch">
-        <span class="nav-icon">📦</span>Open Outbounds
+        <span class="nav-icon">📦</span>Open Outbound
       </button>
       <button class="nav-btn" data-page="transit">
         <span class="nav-icon">🚚</span> Stock in Transit
@@ -811,9 +811,9 @@
       <div id="incomingFileStatus"></div>
 
       <div class="sidebar-divider"></div>
-      <div class="upload-label">📦Open Outbounds</div>
+      <div class="upload-label">📦Open Outbound</div>
       <label class="upload-btn pd-upload-btn upload-admin-only viewer-hidden" for="pendingDispatchFileInput">
-        <span id="pendingDispatchUploadBtnText">📦 UploadOpen Outbounds Excel</span>
+        <span id="pendingDispatchUploadBtnText">📦 UploadOpen Outbound Excel</span>
         <input type="file" id="pendingDispatchFileInput" accept=".xlsx,.xls" />
       </label>
       <div id="pendingDispatchFileStatus"></div>
@@ -1147,17 +1147,17 @@
     </div>
   </section>
 
-  <!-- ──Open Outbounds ── -->
+  <!-- ──Open Outbound ── -->
   <section id="page-pending-dispatch" class="page" style="display:none">
     <div class="page-header-row">
       <div>
-        <div class="page-title">📦Open Outbounds</div>
+        <div class="page-title">📦Open Outbound</div>
         <div class="page-subtitle">Delivery line items created but not yet issued from storage — awaiting goods issue to the branch</div>
       </div>
     </div>
 
     <div id="pd-no-data" class="alert-info">
-      Upload the <b>Pending Dispatch Excel</b> (📦 UploadOpen Outbounds in the sidebar) to populate this page.
+      Upload the <b>Pending Dispatch Excel</b> (📦 UploadOpen Outbound in the sidebar) to populate this page.
     </div>
 
     <div id="pd-content" style="display:none">
