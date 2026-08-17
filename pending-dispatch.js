@@ -456,6 +456,82 @@
     `;
   }
 
+  // ── Aging by Shipping Point (Storage Location) — one row per sloc,
+  //    at the delivery level. Rendered directly under the existing
+  //    "By Storage Location" table so it lives alongside its base data. ──
+  function renderAgingSlocTable(rows) {
+    let wrap = document.getElementById("pd-aging-sloc-wrap");
+    if (!wrap) {
+      const anchor = document.getElementById("pd-sloc-table-wrap");
+      if (!anchor || !anchor.parentNode) return;
+      wrap = document.createElement("div");
+      wrap.id = "pd-aging-sloc-wrap";
+      wrap.style.marginTop = "24px";
+      anchor.parentNode.insertBefore(wrap, anchor.nextSibling);
+    }
+
+    const groups = computeAgingGroups(rows, (r) => r.storageLocation || "—")
+      .sort((a, b) => b.total - a.total);
+
+    if (!groups.length) {
+      wrap.innerHTML = `<div class="pd-section-title" style="font-weight:700;font-size:14px;margin-bottom:8px;">⏱ Aging by Shipping Point</div><div class="pd-empty">No overdue deliveries in the current filter.</div>`;
+      return;
+    }
+
+    const maxCell = Math.max(1, ...groups.flatMap((g) => AGING_BUCKETS.map((b) => g.buckets[b.key])));
+    const maxAvg = Math.max(1, ...groups.map((g) => g.avg));
+    let grandTotal = 0, grandDaysSum = 0;
+    const grandBuckets = { "1-3": 0, "4-7": 0, "8-14": 0, "15+": 0 };
+    groups.forEach((g) => {
+      grandTotal += g.total;
+      grandDaysSum += g.daysSum;
+      AGING_BUCKETS.forEach((b) => { grandBuckets[b.key] += g.buckets[b.key]; });
+    });
+    const grandAvg = grandTotal ? grandDaysSum / grandTotal : 0;
+
+    const bucketHeaderCells = AGING_BUCKETS.map((b) => `<th>${b.label}</th>`).join("");
+    const bodyRows = groups.map((g, i) => {
+      const cells = AGING_BUCKETS.map((b) => {
+        const v = g.buckets[b.key];
+        return v ? `<td style="${heatBg(v, maxCell)}">${v.toLocaleString()}</td>` : `<td></td>`;
+      }).join("");
+      return `
+        <tr>
+          <td>${i + 1}</td>
+          <td style="text-align:left;font-family:'IBM Plex Mono',monospace">${escapeHtml(g.key)}</td>
+          ${cells}
+          <td style="font-weight:700">${g.total.toLocaleString()}</td>
+          <td style="${heatBg(g.avg, maxAvg)};font-weight:600">${g.avg.toFixed(2)}</td>
+        </tr>`;
+    }).join("");
+
+    const totalCells = AGING_BUCKETS.map((b) => `<td style="background:rgb(214,220,226);color:#1a1a1a;font-weight:700">${grandBuckets[b.key].toLocaleString()}</td>`).join("");
+
+    wrap.innerHTML = `
+      <div class="pd-section-title" style="font-weight:700;font-size:14px;margin-bottom:8px;">⏱ Aging by Shipping Point</div>
+      ${tableExportButtonsHtml("aging-sloc")}
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th><th style="text-align:left">Storage Location</th>
+              ${bucketHeaderCells}<th>Total</th><th>Avg Days Open</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${bodyRows}
+            <tr>
+              <td colspan="2" style="background:rgb(214,220,226);color:#1a1a1a;font-weight:700">Total</td>
+              ${totalCells}
+              <td style="background:rgb(214,220,226);color:#1a1a1a;font-weight:700">${grandTotal.toLocaleString()}</td>
+              <td style="color:#e04d3d;font-weight:700">${grandAvg.toFixed(2)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
   // ── Branch breakdown table ──────────────────────────────────
   function renderBranchTable(rows) {
     const wrap = document.getElementById("pd-branch-wrap");
@@ -489,6 +565,83 @@
                 <td>${b.items.toLocaleString()}</td>
               </tr>
             `).join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  // ── Aging by Branch / Plant — one row per plant, at the delivery
+  //    level. Rendered directly under the existing "By Branch or Plant"
+  //    table so it lives alongside its base data. ──
+  function renderAgingBranchTable(rows) {
+    let wrap = document.getElementById("pd-aging-branch-wrap");
+    if (!wrap) {
+      const anchor = document.getElementById("pd-branch-wrap");
+      if (!anchor || !anchor.parentNode) return;
+      wrap = document.createElement("div");
+      wrap.id = "pd-aging-branch-wrap";
+      wrap.style.marginTop = "24px";
+      anchor.parentNode.insertBefore(wrap, anchor.nextSibling);
+    }
+
+    const groups = computeAgingGroups(rows, (r) => plantCode(r.shipToParty))
+      .sort((a, b) => b.total - a.total);
+
+    if (!groups.length) {
+      wrap.innerHTML = `<div class="pd-section-title" style="font-weight:700;font-size:14px;margin-bottom:8px;">⏱ Aging by Branch / Plant</div><div class="pd-empty">No overdue deliveries in the current filter.</div>`;
+      return;
+    }
+
+    const maxCell = Math.max(1, ...groups.flatMap((g) => AGING_BUCKETS.map((b) => g.buckets[b.key])));
+    const maxAvg = Math.max(1, ...groups.map((g) => g.avg));
+    let grandTotal = 0, grandDaysSum = 0;
+    const grandBuckets = { "1-3": 0, "4-7": 0, "8-14": 0, "15+": 0 };
+    groups.forEach((g) => {
+      grandTotal += g.total;
+      grandDaysSum += g.daysSum;
+      AGING_BUCKETS.forEach((b) => { grandBuckets[b.key] += g.buckets[b.key]; });
+    });
+    const grandAvg = grandTotal ? grandDaysSum / grandTotal : 0;
+
+    const bucketHeaderCells = AGING_BUCKETS.map((b) => `<th>${b.label}</th>`).join("");
+    const bodyRows = groups.map((g, i) => {
+      const cells = AGING_BUCKETS.map((b) => {
+        const v = g.buckets[b.key];
+        return v ? `<td style="${heatBg(v, maxCell)}">${v.toLocaleString()}</td>` : `<td></td>`;
+      }).join("");
+      return `
+        <tr>
+          <td>${i + 1}</td>
+          <td style="text-align:left">${escapeHtml(branchName(g.key))}</td>
+          <td style="font-family:'IBM Plex Mono',monospace">${escapeHtml(g.key)}</td>
+          ${cells}
+          <td style="font-weight:700">${g.total.toLocaleString()}</td>
+          <td style="${heatBg(g.avg, maxAvg)};font-weight:600">${g.avg.toFixed(2)}</td>
+        </tr>`;
+    }).join("");
+
+    const totalCells = AGING_BUCKETS.map((b) => `<td style="background:rgb(214,220,226);color:#1a1a1a;font-weight:700">${grandBuckets[b.key].toLocaleString()}</td>`).join("");
+
+    wrap.innerHTML = `
+      <div class="pd-section-title" style="font-weight:700;font-size:14px;margin-bottom:8px;">⏱ Aging by Branch / Plant</div>
+      ${tableExportButtonsHtml("aging-branch")}
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th><th style="text-align:left">Branch</th><th>Plant Code</th>
+              ${bucketHeaderCells}<th>Total</th><th>Avg Days Open</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${bodyRows}
+            <tr>
+              <td colspan="3" style="background:rgb(214,220,226);color:#1a1a1a;font-weight:700">Total</td>
+              ${totalCells}
+              <td style="background:rgb(214,220,226);color:#1a1a1a;font-weight:700">${grandTotal.toLocaleString()}</td>
+              <td style="color:#e04d3d;font-weight:700">${grandAvg.toFixed(2)}</td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -713,6 +866,56 @@
       return `<span class="badge pd-badge-good" style="background:rgba(46,175,110,0.15);color:#2eaf6e;border:1px solid rgba(46,175,110,0.35);">Good</span>`;
     }
     return `<span class="badge pd-badge-late" style="background:rgba(224,77,61,0.15);color:#e04d3d;border:1px solid rgba(224,77,61,0.35);">${d} day${d === 1 ? "" : "s"} late</span>`;
+  }
+
+  // ── Aging buckets — reused by the "Aging by Shipping Point" and
+  //    "Aging by Branch/Plant" tables. Same day-thresholds as the
+  //    reference report: 1–3, 4–7, 8–14, 15+. Deliveries not yet due
+  //    (daysLate < 1, i.e. null/"Good") never land in a bucket. ────
+  const AGING_BUCKETS = [
+    { key: "1-3", label: "1–3 days", min: 1, max: 3 },
+    { key: "4-7", label: "4–7 days", min: 4, max: 7 },
+    { key: "8-14", label: "8–14 days", min: 8, max: 14 },
+    { key: "15+", label: "15+ days", min: 15, max: Infinity },
+  ];
+
+  function agingBucketKey(days) {
+    if (days === null || days === undefined || days < 1) return null;
+    const b = AGING_BUCKETS.find((bk) => days >= bk.min && days <= bk.max);
+    return b ? b.key : null;
+  }
+
+  // Groups rows by an arbitrary key (shipping point / storage location,
+  // or plant/branch) at the DELIVERY level — a multi-line delivery is
+  // counted once per group, using the earliest Goods Issue Date among
+  // its lines in that group (reusing daysLate() for the aging clock).
+  // Deliveries not yet due (days < 1) are excluded entirely, same as
+  // the reference report — they never contribute to a bucket, the row
+  // total, or the average.
+  function computeAgingGroups(rows, keyOf) {
+    const perGroup = {}; // groupKey -> Map(delivery -> earliest giDate)
+    rows.forEach((r) => {
+      const gk = keyOf(r);
+      if (!gk || !r.giDate) return;
+      if (!perGroup[gk]) perGroup[gk] = new Map();
+      const m = perGroup[gk];
+      const existing = m.get(r.delivery);
+      if (!existing || r.giDate < existing) m.set(r.delivery, r.giDate);
+    });
+
+    return Object.keys(perGroup).map((gk) => {
+      const buckets = { "1-3": 0, "4-7": 0, "8-14": 0, "15+": 0 };
+      let total = 0, daysSum = 0;
+      perGroup[gk].forEach((giDate) => {
+        const d = daysLate(giDate);
+        const bk = agingBucketKey(d);
+        if (!bk) return; // not yet due — excluded
+        buckets[bk] += 1;
+        total += 1;
+        daysSum += d;
+      });
+      return { key: gk, buckets, total, daysSum, avg: total ? daysSum / total : 0 };
+    }).filter((g) => g.total > 0);
   }
 
   // ── Detail-table-only filters (Material / Delivery / Created By) —
@@ -985,6 +1188,82 @@
       }));
   }
 
+  // ── "Aging by Shipping Point" data (mirrors renderAgingSlocTable) —
+  //    includes the grand total row, matching the on-screen table. ────
+  function buildAgingSlocExportData(rows) {
+    const groups = computeAgingGroups(rows, (r) => r.storageLocation || "—")
+      .sort((a, b) => b.total - a.total);
+    if (!groups.length) return [];
+
+    const out = groups.map((g) => ({
+      "Storage Location": g.key,
+      "1–3 days": g.buckets["1-3"],
+      "4–7 days": g.buckets["4-7"],
+      "8–14 days": g.buckets["8-14"],
+      "15+ days": g.buckets["15+"],
+      "Total": g.total,
+      "Avg Days Open": Number(g.avg.toFixed(2)),
+    }));
+
+    const grand = groups.reduce((acc, g) => {
+      acc.total += g.total;
+      acc.daysSum += g.daysSum;
+      AGING_BUCKETS.forEach((b) => { acc.buckets[b.key] += g.buckets[b.key]; });
+      return acc;
+    }, { total: 0, daysSum: 0, buckets: { "1-3": 0, "4-7": 0, "8-14": 0, "15+": 0 } });
+
+    out.push({
+      "Storage Location": "Total",
+      "1–3 days": grand.buckets["1-3"],
+      "4–7 days": grand.buckets["4-7"],
+      "8–14 days": grand.buckets["8-14"],
+      "15+ days": grand.buckets["15+"],
+      "Total": grand.total,
+      "Avg Days Open": grand.total ? Number((grand.daysSum / grand.total).toFixed(2)) : 0,
+    });
+
+    return out;
+  }
+
+  // ── "Aging by Branch / Plant" data (mirrors renderAgingBranchTable) —
+  //    includes the grand total row, matching the on-screen table. ────
+  function buildAgingBranchExportData(rows) {
+    const groups = computeAgingGroups(rows, (r) => plantCode(r.shipToParty))
+      .sort((a, b) => b.total - a.total);
+    if (!groups.length) return [];
+
+    const out = groups.map((g) => ({
+      "Branch": branchName(g.key),
+      "Plant Code": g.key,
+      "1–3 days": g.buckets["1-3"],
+      "4–7 days": g.buckets["4-7"],
+      "8–14 days": g.buckets["8-14"],
+      "15+ days": g.buckets["15+"],
+      "Total": g.total,
+      "Avg Days Open": Number(g.avg.toFixed(2)),
+    }));
+
+    const grand = groups.reduce((acc, g) => {
+      acc.total += g.total;
+      acc.daysSum += g.daysSum;
+      AGING_BUCKETS.forEach((b) => { acc.buckets[b.key] += g.buckets[b.key]; });
+      return acc;
+    }, { total: 0, daysSum: 0, buckets: { "1-3": 0, "4-7": 0, "8-14": 0, "15+": 0 } });
+
+    out.push({
+      "Branch": "Total",
+      "Plant Code": "",
+      "1–3 days": grand.buckets["1-3"],
+      "4–7 days": grand.buckets["4-7"],
+      "8–14 days": grand.buckets["8-14"],
+      "15+ days": grand.buckets["15+"],
+      "Total": grand.total,
+      "Avg Days Open": grand.total ? Number((grand.daysSum / grand.total).toFixed(2)) : 0,
+    });
+
+    return out;
+  }
+
   // ── "Top 10s" data — top 10 deliveries with multiple line items
   //    (mirrors the "multi" sub-tab in renderTop10) ────────────────
   function buildTop10sExportData(rows) {
@@ -1172,6 +1451,10 @@
       data = buildBranchExportData(rows); filename = "pending_dispatch_by_branch"; sheetName = "By Branch or Plant";
     } else if (tableKey === "matrix") {
       data = buildMatrixExportData(rows); filename = "pending_dispatch_branch_sloc_matrix"; sheetName = "Branch x SLoc Matrix";
+    } else if (tableKey === "aging-sloc") {
+      data = buildAgingSlocExportData(rows); filename = "pending_dispatch_aging_by_storage_location"; sheetName = "Aging by SLoc";
+    } else if (tableKey === "aging-branch") {
+      data = buildAgingBranchExportData(rows); filename = "pending_dispatch_aging_by_branch"; sheetName = "Aging by Branch";
     } else if (tableKey.startsWith("top10:")) {
       const subKey = tableKey.slice("top10:".length);
       data = buildTop10SubExportData(rows, subKey);
@@ -1245,8 +1528,9 @@
     }
 
     // XLSX export: one sheet per table, in the same order as the tabs —
-    // All Pending Items, By Storage Location, By Branch / Plant, Top 10s —
-    // plus a leading "Info" sheet noting when the data is as of.
+    // All Pending Items, By Storage Location, Aging by SLoc, By Branch /
+    // Plant, Aging by Branch, Top 10s — plus a leading "Info" sheet noting
+    // when the data is as of.
     const wb = XLSX.utils.book_new();
     const infoData = [
       { "Field": "Report", "Value": "Pending Dispatch" },
@@ -1256,7 +1540,9 @@
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(infoData), safeSheetName("Info"));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildDetailExportData(applyDetailFilters(rows))), safeSheetName("All Pending Items"));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildSlocExportData(rows)), safeSheetName("By Storage Location"));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildAgingSlocExportData(rows)), safeSheetName("Aging by SLoc"));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildBranchExportData(rows)), safeSheetName("By Branch or Plant"));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildAgingBranchExportData(rows)), safeSheetName("Aging by Branch"));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildTop10sExportData(rows)), safeSheetName("Top 10s"));
     XLSX.writeFile(wb, "pending_dispatch.xlsx");
   }
@@ -1270,7 +1556,7 @@
   }
 
   // ── Tab bar (mirrors the site's existing reqan-tab-bar pattern) ──
-  const TABS = ["detail", "sloc", "branch", "top10", "matrix"];
+  const TABS = ["detail", "sloc", "branch", "top10", "matrix", "aging-branch", "aging-sloc"];
   let activeTab = "detail";
 
   function setTabCounts(filtered) {
@@ -1291,6 +1577,7 @@
     activeTab = tab;
     TABS.forEach((t) => {
       const panel = document.getElementById(`pd-tab-${t}`);
+      if (!panel) return; // aging tabs are injected at runtime — skip if injection hasn't run yet
       panel.style.display = t === tab ? "block" : "none";
       // Visible highlight on the active panel itself (background + border),
       // not just the button underline — makes the tab switch obvious.
@@ -1320,6 +1607,60 @@
     // when its tab is actually visible, instead of on every filter change.
     if (tab === "detail") renderDetailTable(currentFilteredRows());
     if (tab === "matrix") renderMatrixTable(currentFilteredRows());
+    if (tab === "aging-sloc") renderAgingSlocTable(currentFilteredRows());
+    if (tab === "aging-branch") renderAgingBranchTable(currentFilteredRows());
+  }
+
+  // ── Injects the "Aging by Branch / Plant" and "Aging by Storage
+  //    Location" tabs at runtime — two new tab buttons appended after
+  //    the last existing one, and two matching (initially hidden) panels
+  //    appended alongside the existing tab panels. Done this way because
+  //    these tabs don't exist in the static HTML; this keeps the two new
+  //    aging tables fully self-contained within this file. Safe to call
+  //    more than once — it's a no-op after the first successful run. ──
+  function injectAgingTabs() {
+    if (document.getElementById("pd-tab-aging-sloc")) return;
+
+    const existingButtons = document.querySelectorAll(".pd-tab-btn");
+    if (!existingButtons.length) return;
+    const lastButton = existingButtons[existingButtons.length - 1];
+    const btnParent = lastButton.parentNode;
+    if (!btnParent) return;
+
+    const makeTabButton = (tabKey, label) => {
+      const btn = lastButton.cloneNode(true);
+      btn.dataset.tab = tabKey;
+      btn.classList.remove("active");
+      btn.removeAttribute("id");
+      btn.textContent = `⏱ ${label}`;
+      return btn;
+    };
+
+    const branchAgingBtn = makeTabButton("aging-branch", "Aging by Branch / Plant");
+    const slocAgingBtn = makeTabButton("aging-sloc", "Aging by Storage Location");
+    btnParent.appendChild(branchAgingBtn);
+    btnParent.appendChild(slocAgingBtn);
+
+    // Find an existing panel to use as the sibling anchor for the new panels.
+    let panelParent = null;
+    for (const t of TABS) {
+      const p = document.getElementById(`pd-tab-${t}`);
+      if (p && p.parentNode) { panelParent = p.parentNode; break; }
+    }
+    if (!panelParent) return;
+
+    const makePanel = (tabKey, wrapId) => {
+      const panel = document.createElement("div");
+      panel.id = `pd-tab-${tabKey}`;
+      panel.style.display = "none";
+      const wrap = document.createElement("div");
+      wrap.id = wrapId;
+      panel.appendChild(wrap);
+      panelParent.appendChild(panel);
+    };
+
+    makePanel("aging-branch", "pd-aging-branch-wrap");
+    makePanel("aging-sloc", "pd-aging-sloc-wrap");
   }
 
   function wireTabs() {
@@ -1338,6 +1679,8 @@
     if (activeTab === "sloc") renderSlocChart(filtered);   // only draw while visible
     if (activeTab === "detail") renderDetailTable(filtered); // heavy — only build while visible
     if (activeTab === "matrix") renderMatrixTable(filtered); // heavy — only build while visible
+    if (activeTab === "aging-sloc") renderAgingSlocTable(filtered);     // only build while visible
+    if (activeTab === "aging-branch") renderAgingBranchTable(filtered); // only build while visible
   }
 
   function showHasData() {
