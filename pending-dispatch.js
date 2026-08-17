@@ -18,14 +18,15 @@
 // Special Stock (Q) is ALWAYS included in totals by default — the Stock
 // Type filter only narrows the view, it never silently excludes Q.
 //
-// Optional: mos.js (mosMerged) — if loaded, each row's Material is mapped
-// to its assigned "Person Responsible" the same way who-responsible.js
-// does (mosMerged[].code -> mosMerged[].person). When present this powers
-// a "Person Responsible" column/filter on the detail table and makes this
-// page honor the sidebar's global Person filter (script.js's
-// personFilter), same as every other mosMerged-aware page. Degrades
-// gracefully (column shows "—", global Person filter has no effect) if
-// mos.js isn't loaded.
+// Optional: mos.js (mosMerged) — if loaded, each RDF row's Material is
+// mapped to its assigned owner the same way who-responsible.js does
+// (mosMerged[].code -> mosMerged[].person). This makes the page honor
+// the sidebar's existing global "Person Assigned" filter (script.js's
+// personFilter) — no new column or on-page filter is added. Special
+// Stock (Q) rows are NEVER attributed to that person, even when the
+// Material code matches one of their items, since Q sits outside their
+// normal RDF ownership. Degrades gracefully (global Person filter has
+// no effect on this page) if mos.js isn't loaded.
 // ════════════════════════════════════════════════════════════════
 
 (function () {
@@ -33,7 +34,7 @@
     rows: [],           // raw parsed rows
     branchMaster: {},   // plantCode(4 chars) -> branch name
     filters: { search: "", slocs: [], branches: [], stockTypes: [] },
-    detailFilters: { material: "", delivery: "", createdBy: "", person: "" }, // scoped only to the "All Pending Items" table
+    detailFilters: { material: "", delivery: "", createdBy: "" }, // scoped only to the "All Pending Items" table
     localUploadedAt: null,   // when THIS browser last parsed a file (fallback)
     sourceUploadedAt: null,  // authoritative "uploaded to Supabase" time, if known
   };
@@ -156,14 +157,14 @@
     return STATE.branchMaster[code] || code || "Unknown";
   }
 
-  // ── Person Responsible (assigned owner) — mapped from the AMC-derived
+  // ── Person mapping (assigned owner) — mapped from the AMC-derived
   // master list (mosMerged, built in mos.js from the same per-material
   // "person" assignment used everywhere else in the app, e.g.
   // who-responsible.js's card). Keyed by material code, so any Pending
   // Dispatch row can look up who owns that material and the page can
-  // honor whatever person is selected in the sidebar's global Person
-  // filter. Cache is invalidated automatically if mosMerged is reloaded
-  // (new array reference), same convention as buildMosSohMap() etc.
+  // honor whatever person is selected in the sidebar's global "Person
+  // Assigned" filter. Cache is invalidated automatically if mosMerged is
+  // reloaded (new array reference), same convention as buildMosSohMap().
   let _personMapCache = null;
   let _personMapSource = null;
 
@@ -182,6 +183,17 @@
 
   function personForMaterial(material) {
     return personMap().get(String(material || "").trim()) || "";
+  }
+
+  // Row-aware wrapper: Special Stock (Q) is never attributed to the
+  // material's assigned person, even though the Material code itself is
+  // present in mosMerged. Q stock sits outside a person's normal RDF
+  // ownership/dispatch responsibility, so every "who owns this row"
+  // usage below must go through this — not personForMaterial() directly —
+  // or Q rows would incorrectly count toward that person's pending work.
+  function personForRow(r) {
+    if (stockTypeOf(r) === "Q") return "";
+    return personForMaterial(r.material);
   }
 
   // ── Excel parsing ────────────────────────────────────────────
@@ -231,7 +243,7 @@
       if (branches.length && !branches.includes(plantCode(r.shipToParty))) return false;
       if (stockTypes.length && !stockTypes.includes(stockTypeOf(r))) return false;
       if (globalPersonActive) {
-        const p = personForMaterial(r.material);
+        const p = personForRow(r);
         if (!p || !personFilter.has(p)) return false;
       }
       if (s) {
@@ -703,7 +715,6 @@
         <td>${(r.qty || 0).toLocaleString()}</td>
         <td>${stockBadge(stockTypeOf(r))}</td>
         <td>${escapeHtml(r.createdBy)}</td>
-        <td>${escapeHtml(personForMaterial(r.material) || "—")}</td>
       </tr>
     `).join("");
 
@@ -725,7 +736,6 @@
                 <tr>
                   <th>Delivery</th><th>GI Planned Date</th><th>Days Late</th><th>Material</th>
                   <th>Description</th><th>Purchasing Document</th><th>Qty</th><th>Stock Type</th><th>Created By</th>
-                  <th>Person Responsible</th>
                 </tr>
               </thead>
               <tbody>${rowsHtml}</tbody>
@@ -771,18 +781,17 @@
   //    popup) so it always opens BELOW the field, never upward over
   //    the page content. ──
   function applyDetailFilters(rows) {
-    const { material, delivery, createdBy, person } = STATE.detailFilters;
+    const { material, delivery, createdBy } = STATE.detailFilters;
     return rows.filter((r) => {
       if (material && r.material !== material) return false;
       if (delivery && r.delivery !== delivery) return false;
       if (createdBy && r.createdBy !== createdBy) return false;
-      if (person && personForMaterial(r.material) !== person) return false;
       return true;
     });
   }
 
   function detailFilterBarHtml(optionRows) {
-    const { material, delivery, createdBy, person } = STATE.detailFilters;
+    const { material, delivery, createdBy } = STATE.detailFilters;
     const inputStyle = "font-size:12px; padding:6px 8px; border-radius:6px; border:1px solid rgba(120,140,160,0.35); background:transparent; min-width:170px; width:100%; box-sizing:border-box;";
 
     const field = (id, label, value) => `
@@ -798,17 +807,12 @@
       </div>
     `;
 
-    // Person Responsible field only shows suggestions/works once mosMerged
-    // (mos.js) is loaded — same graceful-degradation convention as
-    // who-responsible.js. It's still rendered either way so the filter
-    // bar layout doesn't shift once mos.js loads.
     return `
       <div class="pd-detail-filter-bar" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; align-items:flex-start;">
         ${field("material", "Material", material)}
         ${field("delivery", "Delivery", delivery)}
         ${field("createdby", "Created By", createdBy)}
-        ${field("person", "Person Responsible", person)}
-        ${(material || delivery || createdBy || person) ? `<button type="button" id="pd-detail-filter-clear" style="${inputStyle} width:auto; cursor:pointer;">✕ Clear</button>` : ""}
+        ${(material || delivery || createdBy) ? `<button type="button" id="pd-detail-filter-clear" style="${inputStyle} width:auto; cursor:pointer;">✕ Clear</button>` : ""}
       </div>
     `;
   }
@@ -818,21 +822,14 @@
       { id: "material",  prop: "material" },
       { id: "delivery",  prop: "delivery" },
       { id: "createdby", prop: "createdBy" },
-      // Person Responsible isn't a raw column in the Pending Dispatch file
-      // — it's looked up per row via the Material -> person mapping
-      // (personForMaterial(), sourced from mosMerged/mos.js), same
-      // mapping who-responsible.js uses. `get` lets this field derive its
-      // value instead of reading r[prop] directly.
-      { id: "person",    prop: "person", get: (r) => personForMaterial(r.material) },
     ];
 
-    fieldDefs.forEach(({ id, prop, get }) => {
+    fieldDefs.forEach(({ id, prop }) => {
       const input = wrap.querySelector(`#pd-detail-filter-${id}`);
       const suggestBox = wrap.querySelector(`#pd-detail-suggest-${id}`);
       if (!input || !suggestBox) return;
 
-      const getVal = get || ((r) => r[prop]);
-      const values = [...new Set(optionRows.map(getVal).filter(Boolean))].sort();
+      const values = [...new Set(optionRows.map((r) => r[prop]).filter(Boolean))].sort();
 
       const commit = (val) => {
         STATE.detailFilters[prop] = val;
@@ -885,7 +882,7 @@
 
     const clearBtn = wrap.querySelector("#pd-detail-filter-clear");
     if (clearBtn) clearBtn.addEventListener("click", () => {
-      STATE.detailFilters = { material: "", delivery: "", createdBy: "", person: "" };
+      STATE.detailFilters = { material: "", delivery: "", createdBy: "" };
       renderDetailTable(currentFilteredRows());
     });
   }
@@ -917,7 +914,7 @@
           <thead><tr>
             <th>Delivery</th><th>GI Planned Date</th><th>Days Late</th><th>Material</th>
             <th>Description</th><th>Purchasing Document</th><th>Branch</th><th>Storage Loc.</th>
-            <th>Qty</th><th>Stock Type</th><th>Created By</th><th>Person Responsible</th>
+            <th>Qty</th><th>Stock Type</th><th>Created By</th>
           </tr></thead>
           <tbody>
             ${shown.map((r) => {
@@ -936,7 +933,6 @@
                   <td class="col-qty">${(r.qty || 0).toLocaleString()}</td>
                   <td>${stockBadge(type)}</td>
                   <td>${escapeHtml(r.createdBy)}</td>
-                  <td>${escapeHtml(personForMaterial(r.material) || "—")}</td>
                 </tr>
               `;
             }).join("")}
@@ -996,7 +992,6 @@
       "Storage Location": r.storageLocation,
       "Delivery Quantity": r.qty,
       "Stock Type": stockTypeOf(r) === "Q" ? "Special Stock (Q)" : "RDF",
-      "Person Responsible": personForMaterial(r.material) || "",
     }));
   }
 
@@ -1423,7 +1418,7 @@
 
     clearBtn.addEventListener("click", () => {
       STATE.filters = { search: "", slocs: [], branches: [], stockTypes: [] };
-      STATE.detailFilters = { material: "", delivery: "", createdBy: "", person: "" };
+      STATE.detailFilters = { material: "", delivery: "", createdBy: "" };
       search.value = "";
       ["ms-pd-sloc", "ms-pd-branch", "ms-pd-stocktype"].forEach((id) => {
         const wrap = document.getElementById(id);
