@@ -4,8 +4,8 @@
 // Sections:
 //   • Appearance  — 6 named themes (Belize, Belize Deep, High Contrast
 //                   Black, High Contrast White, Horizon, Quartz Dark) as
-//                   swatches, plus a quick Dark/Light switch for the
-//                   common case.
+//                   a single dropdown, plus a quick Dark/Light switch for
+//                   the common case.
 //   • Font style & size — applies to the whole app (root font-family /
 //                   font-size; nearly everything else uses `inherit`
 //                   or rem units, so this cascades everywhere).
@@ -58,9 +58,8 @@
   }
 
   function syncThemeUI(value) {
-    document.querySelectorAll(".settings-theme-swatch").forEach(btn => {
-      btn.classList.toggle("active", btn.dataset.themeValue === value);
-    });
+    const select = document.getElementById("settings-theme-select");
+    if (select) select.value = value;
     const toggle = document.getElementById("settings-dark-light-switch");
     if (toggle) toggle.checked = LIGHT_FAMILY_THEMES.has(value);
   }
@@ -148,10 +147,11 @@
     const gearBtn = document.getElementById("settings-menu-btn");
     if (gearBtn) gearBtn.addEventListener("click", (e) => { e.stopPropagation(); togglePanel(); });
 
-    // Named theme swatches
-    document.querySelectorAll(".settings-theme-swatch").forEach(btn => {
-      btn.addEventListener("click", () => applyTheme(btn.dataset.themeValue, true));
-    });
+    // Theme select
+    const themeSelect = document.getElementById("settings-theme-select");
+    if (themeSelect) {
+      themeSelect.addEventListener("change", () => applyTheme(themeSelect.value, true));
+    }
 
     // Quick Dark/Light switch — jumps straight to the Belize / Belize Deep pair
     const quickToggle = document.getElementById("settings-dark-light-switch");
