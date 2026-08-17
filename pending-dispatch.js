@@ -23,7 +23,7 @@
   const STATE = {
     rows: [],           // raw parsed rows
     branchMaster: {},   // plantCode(4 chars) -> branch name
-    filters: { search: "", sloc: "", branch: "", stockType: "" },
+    filters: { search: "", slocs: [], branches: [], stockTypes: [] },
     detailFilters: { material: "", delivery: "", createdBy: "" }, // scoped only to the "All Pending Items" table
     localUploadedAt: null,   // when THIS browser last parsed a file (fallback)
     sourceUploadedAt: null,  // authoritative "uploaded to Supabase" time, if known
@@ -52,6 +52,24 @@
 
   function plantCode(shipToParty) {
     return (shipToParty || "").toString().trim().slice(0, 4).toUpperCase();
+  }
+
+  // ── Storage location display order (Branch × Storage Location matrix) ──
+  // Fixed catalog order requested for the cross-tab, rather than
+  // first-seen/alphabetical. Any storage location not in this list still
+  // shows up — it's just appended after the known ones, alphabetically.
+  const SLOC_ORDER = ["HMO1", "HOA2", "HOA3", "HOA5", "HOA7", "HOM1", "HOM3", "HOM4", "HOM6", "HOM7", "HOM8", "HOM9", "HOS2", "HOS3"];
+
+  function orderSlocs(list) {
+    const known = [];
+    const unknown = [];
+    list.forEach((s) => {
+      const idx = SLOC_ORDER.indexOf((s || "").toString().trim().toUpperCase());
+      if (idx === -1) unknown.push(s); else known.push({ s, idx });
+    });
+    known.sort((a, b) => a.idx - b.idx);
+    unknown.sort((a, b) => a.localeCompare(b));
+    return [...known.map((k) => k.s), ...unknown];
   }
 
   function stockTypeOf(row) {
@@ -163,18 +181,18 @@
 
   // ── Filtering ────────────────────────────────────────────────
   function applyFilters(rows) {
-    const { search, sloc, branch, stockType } = STATE.filters;
+    const { search, slocs, branches, stockTypes } = STATE.filters;
     const s = search.trim().toLowerCase();
     return rows.filter((r) => {
-      if (sloc && r.storageLocation !== sloc) return false;
-      if (branch && plantCode(r.shipToParty) !== branch) return false;
-      if (stockType && stockTypeOf(r) !== stockType) return false;
+      if (slocs.length && !slocs.includes(r.storageLocation)) return false;
+      if (branches.length && !branches.includes(plantCode(r.shipToParty))) return false;
+      if (stockTypes.length && !stockTypes.includes(stockTypeOf(r))) return false;
       if (s) {
         const hay = `${r.delivery} ${r.material} ${r.itemDescription} ${r.shipToParty} ${r.shipToPartyName} ${branchName(plantCode(r.shipToParty))}`.toLowerCase();
         if (!hay.includes(s)) return false;
       }
       return true; // NOTE: Special Stock (Q) is never excluded unless the
-                   // Stock Type dropdown is explicitly set to a value.
+                   // Stock Type filter is explicitly narrowed to a value.
     });
   }
 
@@ -538,17 +556,9 @@
       return;
     }
 
-    // Column order: named locations first (as first seen), then any
-    // "Main-N" locations sorted numerically — mirrors the source layout.
-    const mainCols = slocSeen
-      .filter((s) => /^Main-/i.test(s))
-      .sort((a, b) => {
-        const na = parseFloat(a.replace(/^Main-/i, "").replace("/", "."));
-        const nb = parseFloat(b.replace(/^Main-/i, "").replace("/", "."));
-        return na - nb;
-      });
-    const namedCols = slocSeen.filter((s) => !/^Main-/i.test(s));
-    const cols = [...namedCols, ...mainCols];
+    // Column order: fixed storage-location catalog order (SLOC_ORDER above);
+    // anything outside that list is appended afterward, alphabetically.
+    const cols = orderSlocs(slocSeen);
 
     const branches = Object.keys(branchTotals).sort((a, b) => a.localeCompare(b));
 
@@ -875,22 +885,32 @@
   }
 
   // ── Filter dropdown population ──────────────────────────────
+  // Matches the searchable checkbox multi-select pattern used everywhere
+  // else in the app (buildMultiSelect() / .ms-wrap, defined in script.js).
+  // Branch/Stock Type items are encoded as "value — label" (same convention
+  // buildMultiSelect's Material lists use) so the underlying code can be
+  // recovered from the checked display string; Storage Location items are
+  // plain values since the code and the label are the same thing.
+  function msValue(item) {
+    return item.split(" — ")[0].trim();
+  }
+
   function populateFilterOptions() {
-    const slocSel = document.getElementById("pd-filter-sloc");
-    const branchSel = document.getElementById("pd-filter-branch");
+    if (typeof buildMultiSelect !== "function") return; // script.js not loaded yet
 
     const slocs = [...new Set(STATE.rows.map((r) => r.storageLocation).filter(Boolean))].sort();
-    const prevSloc = slocSel.value;
-    slocSel.innerHTML = `<option value="">🏬 All Storage Locations</option>` +
-      slocs.map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join("");
-    slocSel.value = slocs.includes(prevSloc) ? prevSloc : "";
+    const slocWrap = document.getElementById("ms-pd-sloc");
+    if (slocWrap) { slocWrap._refreshOptions ? slocWrap._refreshOptions(slocs) : buildMultiSelect("ms-pd-sloc", "ms-pd-sloc-dd", slocs, "All Storage Locations"); }
 
     const branchCodes = [...new Set(STATE.rows.map((r) => plantCode(r.shipToParty)).filter(Boolean))]
       .sort((a, b) => branchName(a).localeCompare(branchName(b)));
-    const prevBranch = branchSel.value;
-    branchSel.innerHTML = `<option value="">🏢 All Branches</option>` +
-      branchCodes.map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(branchName(c))} (${escapeHtml(c)})</option>`).join("");
-    branchSel.value = branchCodes.includes(prevBranch) ? prevBranch : "";
+    const branchItems = branchCodes.map((c) => `${c} — ${branchName(c)}`);
+    const branchWrap = document.getElementById("ms-pd-branch");
+    if (branchWrap) { branchWrap._refreshOptions ? branchWrap._refreshOptions(branchItems) : buildMultiSelect("ms-pd-branch", "ms-pd-branch-dd", branchItems, "All Branches"); }
+
+    const stockTypeItems = ["Q — 🟣 Special Stock (Q)", "RDF — 🔵 RDF"];
+    const stockTypeWrap = document.getElementById("ms-pd-stocktype");
+    if (stockTypeWrap && !stockTypeWrap._refreshOptions) buildMultiSelect("ms-pd-stocktype", "ms-pd-stocktype-dd", stockTypeItems, "All Stock Types");
   }
 
   // ── Export ───────────────────────────────────────────────────
@@ -1048,15 +1068,7 @@
     const grandTotal = grandDeliveries.size;
     if (!grandTotal) return [];
 
-    const mainCols = slocSeen
-      .filter((s) => /^Main-/i.test(s))
-      .sort((a, b) => {
-        const na = parseFloat(a.replace(/^Main-/i, "").replace("/", "."));
-        const nb = parseFloat(b.replace(/^Main-/i, "").replace("/", "."));
-        return na - nb;
-      });
-    const namedCols = slocSeen.filter((s) => !/^Main-/i.test(s));
-    const cols = [...namedCols, ...mainCols];
+    const cols = orderSlocs(slocSeen);
     const branches = Object.keys(branchTotals).sort((a, b) => a.localeCompare(b));
 
     const rowsOut = branches.map((b) => {
@@ -1317,11 +1329,13 @@
   }
 
   // ── Wire filter controls ────────────────────────────────────
+  // Sloc/Branch/Stock Type are now searchable checkbox multi-selects
+  // (buildMultiSelect() / .ms-wrap, same control used everywhere else in
+  // the app). Same as those other pages, selections only take effect on
+  // "Apply" — Clear resets both the selections and the search box.
   function wireFilters() {
     const search = document.getElementById("pd-search");
-    const sloc = document.getElementById("pd-filter-sloc");
-    const branch = document.getElementById("pd-filter-branch");
-    const stockType = document.getElementById("pd-filter-stocktype");
+    const applyBtn = document.getElementById("pd-filter-apply");
     const clearBtn = document.getElementById("pd-filter-clear");
 
     let debounce;
@@ -1332,13 +1346,25 @@
         renderAll();
       }, 150);
     });
-    sloc.addEventListener("change", () => { STATE.filters.sloc = sloc.value; renderAll(); });
-    branch.addEventListener("change", () => { STATE.filters.branch = branch.value; renderAll(); });
-    stockType.addEventListener("change", () => { STATE.filters.stockType = stockType.value; renderAll(); });
+
+    applyBtn.addEventListener("click", () => {
+      const slocWrap = document.getElementById("ms-pd-sloc");
+      const branchWrap = document.getElementById("ms-pd-branch");
+      const stockTypeWrap = document.getElementById("ms-pd-stocktype");
+      STATE.filters.slocs = (slocWrap && slocWrap._getSelected) ? slocWrap._getSelected() : [];
+      STATE.filters.branches = (branchWrap && branchWrap._getSelected) ? branchWrap._getSelected().map(msValue) : [];
+      STATE.filters.stockTypes = (stockTypeWrap && stockTypeWrap._getSelected) ? stockTypeWrap._getSelected().map(msValue) : [];
+      renderAll();
+    });
+
     clearBtn.addEventListener("click", () => {
-      STATE.filters = { search: "", sloc: "", branch: "", stockType: "" };
+      STATE.filters = { search: "", slocs: [], branches: [], stockTypes: [] };
       STATE.detailFilters = { material: "", delivery: "", createdBy: "" };
-      search.value = ""; sloc.value = ""; branch.value = ""; stockType.value = "";
+      search.value = "";
+      ["ms-pd-sloc", "ms-pd-branch", "ms-pd-stocktype"].forEach((id) => {
+        const wrap = document.getElementById(id);
+        if (wrap && wrap._clearSelected) wrap._clearSelected();
+      });
       renderAll();
     });
 
