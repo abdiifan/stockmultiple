@@ -449,44 +449,7 @@ body { display: flex; }
 }
 .settings-switch input:checked ~ .settings-switch-track .settings-switch-thumb { transform: translateX(17px); background: #fff; }
 
-/* Named theme swatch grid */
-.settings-theme-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.5rem;
-}
-.settings-theme-swatch {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.4rem 0.5rem;
-  background: var(--surface2);
-  border: 1.5px solid var(--border);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 0.68rem;
-  font-weight: 600;
-  color: var(--muted);
-  transition: border-color 0.15s, color 0.15s;
-  text-align: left;
-}
-.settings-theme-swatch:hover { border-color: var(--blue); color: var(--text); }
-.settings-theme-swatch.active { border-color: var(--blue); color: var(--blue); background: var(--accent-glow); }
-.settings-swatch-preview {
-  width: 18px; height: 18px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  border: 1px solid rgba(0,0,0,0.15);
-}
-.settings-swatch-belize-deep { background: linear-gradient(135deg, #07090d 50%, #3d94e0 50%); }
-.settings-swatch-belize      { background: linear-gradient(135deg, #f0f3f8 50%, #0a6ed1 50%); }
-.settings-swatch-hc-black    { background: linear-gradient(135deg, #000000 50%, #66c3ff 50%); }
-.settings-swatch-hc-white    { background: linear-gradient(135deg, #ffffff 50%, #0043ce 50%); border-color: rgba(0,0,0,0.3); }
-.settings-swatch-horizon     { background: linear-gradient(135deg, #eef1f4 50%, #0854a0 50%); }
-.settings-swatch-quartz-dark { background: linear-gradient(135deg, #1c2228 50%, #0092d1 50%); }
-
-/* Font style / size selects — mirror .person-filter-select look */
+/* Theme select / Font style / size selects — mirror .person-filter-select look */
 .settings-select {
   width: 100%;
   padding: 5px 28px 5px 10px;
