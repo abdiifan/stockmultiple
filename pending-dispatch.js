@@ -470,7 +470,8 @@
       anchor.parentNode.insertBefore(wrap, anchor.nextSibling);
     }
 
-    const groups = computeAgingGroups(rows, (r) => r.storageLocation || "—")
+    const keyOf = (r) => r.storageLocation || "—";
+    const groups = computeAgingGroups(rows, keyOf)
       .sort((a, b) => b.total - a.total);
 
     if (!groups.length) {
@@ -479,37 +480,57 @@
     }
 
     const maxAvg = Math.max(1, ...groups.map((g) => g.avg));
-    let grandTotal = 0, grandDaysSum = 0;
-    const grandBuckets = { "1-3": 0, "4-7": 0, "8-14": 0, "15-20": 0, "21+": 0 };
+    let grandTotal = 0, grandOverdueTotal = 0, grandDaysSum = 0;
+    const grandBuckets = { current: 0, "1-3": 0, "4-7": 0, "8-14": 0, "15-20": 0, "21+": 0 };
     groups.forEach((g) => {
       grandTotal += g.total;
+      grandOverdueTotal += g.overdueTotal;
       grandDaysSum += g.daysSum;
       AGING_BUCKETS.forEach((b) => { grandBuckets[b.key] += g.buckets[b.key]; });
     });
-    const grandAvg = grandTotal ? grandDaysSum / grandTotal : 0;
+    const grandAvg = grandOverdueTotal ? grandDaysSum / grandOverdueTotal : 0;
 
-    const bucketHeaderCells = AGING_BUCKETS.map((b) => `<th>${b.label}</th>`).join("");
+    // Clickable-cell style: cursor + a subtle underline hint on the number.
+    const clickable = "cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px;";
+
+    const bucketHeaderCells = AGING_BUCKETS.map((b) => `<th${b.key === "current" ? ' style="background:rgba(120,140,160,0.12)"' : ""}>${b.label}</th>`).join("");
     const bodyRows = groups.map((g, i) => {
       // Bucket cells are left plain (no heatmap fill) — only the Avg Days
-      // Open column is colored, per the site's request.
+      // Open column is colored, per the site's request. The "Not Yet Due"
+      // column gets a light neutral tint so it visually reads as
+      // "on track", distinct from the red-leaning overdue buckets.
+      // Any cell with a non-zero count is clickable — opens a popup
+      // listing the actual deliveries behind that number.
       const cells = AGING_BUCKETS.map((b) => {
         const v = g.buckets[b.key];
-        return `<td>${v ? v.toLocaleString() : ""}</td>`;
+        const bg = b.key === "current" ? "background:rgba(120,140,160,0.08);" : "";
+        if (!v) return `<td style="${bg}"></td>`;
+        return `<td style="${bg}${clickable}" data-agg-click data-group="${escapeHtml(g.key)}" data-bucket="${b.key}" title="Click to see the ${v} deliver${v === 1 ? "y" : "ies"}">${v.toLocaleString()}</td>`;
       }).join("");
       return `
         <tr>
           <td>${i + 1}</td>
           <td style="text-align:left;font-family:'IBM Plex Mono',monospace">${escapeHtml(g.key)}</td>
           ${cells}
-          <td style="font-weight:700">${g.total.toLocaleString()}</td>
+          <td style="font-weight:700;${clickable}" data-agg-click data-group="${escapeHtml(g.key)}" data-bucket="" title="Click to see all ${g.total} deliveries at ${escapeHtml(g.key)}">${g.total.toLocaleString()}</td>
           <td style="${heatBg(g.avg, maxAvg)};font-weight:600">${g.avg.toFixed(2)}</td>
         </tr>`;
     }).join("");
 
-    const totalCells = AGING_BUCKETS.map((b) => `<td style="background:rgb(214,220,226);color:#1a1a1a;font-weight:700">${grandBuckets[b.key].toLocaleString()}</td>`).join("");
+    const totalCells = AGING_BUCKETS.map((b) => {
+      const v = grandBuckets[b.key];
+      if (!v) return `<td style="background:rgb(214,220,226);color:#1a1a1a;font-weight:700"></td>`;
+      return `<td style="background:rgb(214,220,226);color:#1a1a1a;font-weight:700;${clickable}" data-agg-click data-group="" data-bucket="${b.key}" title="Click to see all ${v} deliveries in this column">${v.toLocaleString()}</td>`;
+    }).join("");
 
     wrap.innerHTML = `
       <div class="pd-section-title" style="font-weight:700;font-size:14px;margin-bottom:8px;">⏱ Aging by Shipping Point</div>
+      <div class="pd-callout" style="margin:0 0 12px; padding:8px 12px; border-radius:8px; background:rgba(120,140,160,0.1); border:1px solid rgba(120,140,160,0.3); font-size:12.5px; line-height:1.5;">
+        <strong>How to read this:</strong> "Total" = every pending delivery here, so it always matches the delivery counts shown above.
+        "Not Yet Due" = deliveries whose planned Goods Issue date hasn't passed yet (still on track).
+        The other columns are overdue days past that date. <strong>Avg Days Open</strong> is calculated only from the overdue deliveries — it doesn't count "Not Yet Due".
+        <strong>Click any number</strong> to see the actual deliveries behind it.
+      </div>
       ${tableExportButtonsHtml("aging-sloc")}
       <div class="tbl-wrap">
         <table>
@@ -524,13 +545,15 @@
             <tr>
               <td colspan="2" style="background:rgb(214,220,226);color:#1a1a1a;font-weight:700">Total</td>
               ${totalCells}
-              <td style="background:rgb(214,220,226);color:#1a1a1a;font-weight:700">${grandTotal.toLocaleString()}</td>
+              <td style="background:rgb(214,220,226);color:#1a1a1a;font-weight:700;${clickable}" data-agg-click data-group="" data-bucket="" title="Click to see all ${grandTotal} pending deliveries">${grandTotal.toLocaleString()}</td>
               <td style="color:#e04d3d;font-weight:700">${grandAvg.toFixed(2)}</td>
             </tr>
           </tbody>
         </table>
       </div>
     `;
+
+    wireAgingDrilldown(wrap, rows, keyOf, "sloc");
   }
 
   // ── Branch breakdown table ──────────────────────────────────
@@ -586,7 +609,8 @@
       anchor.parentNode.insertBefore(wrap, anchor.nextSibling);
     }
 
-    const groups = computeAgingGroups(rows, (r) => plantCode(r.shipToParty))
+    const keyOf = (r) => plantCode(r.shipToParty);
+    const groups = computeAgingGroups(rows, keyOf)
       .sort((a, b) => b.total - a.total);
 
     if (!groups.length) {
@@ -595,22 +619,31 @@
     }
 
     const maxAvg = Math.max(1, ...groups.map((g) => g.avg));
-    let grandTotal = 0, grandDaysSum = 0;
-    const grandBuckets = { "1-3": 0, "4-7": 0, "8-14": 0, "15-20": 0, "21+": 0 };
+    let grandTotal = 0, grandOverdueTotal = 0, grandDaysSum = 0;
+    const grandBuckets = { current: 0, "1-3": 0, "4-7": 0, "8-14": 0, "15-20": 0, "21+": 0 };
     groups.forEach((g) => {
       grandTotal += g.total;
+      grandOverdueTotal += g.overdueTotal;
       grandDaysSum += g.daysSum;
       AGING_BUCKETS.forEach((b) => { grandBuckets[b.key] += g.buckets[b.key]; });
     });
-    const grandAvg = grandTotal ? grandDaysSum / grandTotal : 0;
+    const grandAvg = grandOverdueTotal ? grandDaysSum / grandOverdueTotal : 0;
 
-    const bucketHeaderCells = AGING_BUCKETS.map((b) => `<th>${b.label}</th>`).join("");
+    const clickable = "cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px;";
+
+    const bucketHeaderCells = AGING_BUCKETS.map((b) => `<th${b.key === "current" ? ' style="background:rgba(120,140,160,0.12)"' : ""}>${b.label}</th>`).join("");
     const bodyRows = groups.map((g, i) => {
       // Bucket cells are left plain (no heatmap fill) — only the Avg Days
-      // Open column is colored, per the site's request.
+      // Open column is colored, per the site's request. The "Not Yet Due"
+      // column gets a light neutral tint so it visually reads as
+      // "on track", distinct from the red-leaning overdue buckets.
+      // Any cell with a non-zero count is clickable — opens a popup
+      // listing the actual deliveries behind that number.
       const cells = AGING_BUCKETS.map((b) => {
         const v = g.buckets[b.key];
-        return `<td>${v ? v.toLocaleString() : ""}</td>`;
+        const bg = b.key === "current" ? "background:rgba(120,140,160,0.08);" : "";
+        if (!v) return `<td style="${bg}"></td>`;
+        return `<td style="${bg}${clickable}" data-agg-click data-group="${escapeHtml(g.key)}" data-bucket="${b.key}" title="Click to see the ${v} deliver${v === 1 ? "y" : "ies"}">${v.toLocaleString()}</td>`;
       }).join("");
       return `
         <tr>
@@ -618,15 +651,25 @@
           <td style="text-align:left">${escapeHtml(branchName(g.key))}</td>
           <td style="font-family:'IBM Plex Mono',monospace">${escapeHtml(g.key)}</td>
           ${cells}
-          <td style="font-weight:700">${g.total.toLocaleString()}</td>
+          <td style="font-weight:700;${clickable}" data-agg-click data-group="${escapeHtml(g.key)}" data-bucket="" title="Click to see all ${g.total} deliveries at ${escapeHtml(branchName(g.key))}">${g.total.toLocaleString()}</td>
           <td style="${heatBg(g.avg, maxAvg)};font-weight:600">${g.avg.toFixed(2)}</td>
         </tr>`;
     }).join("");
 
-    const totalCells = AGING_BUCKETS.map((b) => `<td style="background:rgb(214,220,226);color:#1a1a1a;font-weight:700">${grandBuckets[b.key].toLocaleString()}</td>`).join("");
+    const totalCells = AGING_BUCKETS.map((b) => {
+      const v = grandBuckets[b.key];
+      if (!v) return `<td style="background:rgb(214,220,226);color:#1a1a1a;font-weight:700"></td>`;
+      return `<td style="background:rgb(214,220,226);color:#1a1a1a;font-weight:700;${clickable}" data-agg-click data-group="" data-bucket="${b.key}" title="Click to see all ${v} deliveries in this column">${v.toLocaleString()}</td>`;
+    }).join("");
 
     wrap.innerHTML = `
       <div class="pd-section-title" style="font-weight:700;font-size:14px;margin-bottom:8px;">⏱ Aging by Branch / Plant</div>
+      <div class="pd-callout" style="margin:0 0 12px; padding:8px 12px; border-radius:8px; background:rgba(120,140,160,0.1); border:1px solid rgba(120,140,160,0.3); font-size:12.5px; line-height:1.5;">
+        <strong>How to read this:</strong> "Total" = every pending delivery here, so it always matches the delivery counts shown above.
+        "Not Yet Due" = deliveries whose planned Goods Issue date hasn't passed yet (still on track).
+        The other columns are overdue days past that date. <strong>Avg Days Open</strong> is calculated only from the overdue deliveries — it doesn't count "Not Yet Due".
+        <strong>Click any number</strong> to see the actual deliveries behind it.
+      </div>
       ${tableExportButtonsHtml("aging-branch")}
       <div class="tbl-wrap">
         <table>
@@ -641,13 +684,15 @@
             <tr>
               <td colspan="3" style="background:rgb(214,220,226);color:#1a1a1a;font-weight:700">Total</td>
               ${totalCells}
-              <td style="background:rgb(214,220,226);color:#1a1a1a;font-weight:700">${grandTotal.toLocaleString()}</td>
+              <td style="background:rgb(214,220,226);color:#1a1a1a;font-weight:700;${clickable}" data-agg-click data-group="" data-bucket="" title="Click to see all ${grandTotal} pending deliveries">${grandTotal.toLocaleString()}</td>
               <td style="color:#e04d3d;font-weight:700">${grandAvg.toFixed(2)}</td>
             </tr>
           </tbody>
         </table>
       </div>
     `;
+
+    wireAgingDrilldown(wrap, rows, keyOf, "branch");
   }
 
   // ── Heat-scale background for matrix cells (green → yellow → red,
@@ -871,10 +916,16 @@
   }
 
   // ── Aging buckets — reused by the "Aging by Shipping Point" and
-  //    "Aging by Branch/Plant" tables. Day-thresholds: 1–3, 4–7, 8–14,
-  //    15–20, 21+. Deliveries not yet due (daysLate < 1, i.e.
-  //    null/"Good") never land in a bucket. ────
+  //    "Aging by Branch/Plant" tables. First bucket, "Not Yet Due", holds
+  //    deliveries whose planned Goods Issue date hasn't passed yet
+  //    (daysLate < 1, i.e. the "Good" badge). Including this bucket means
+  //    every pending delivery lands in exactly one column, so the row
+  //    "Total" here always equals the delivery counts shown in the KPI
+  //    row and the By Branch / By Storage Location tables — nothing is
+  //    silently dropped. Day-thresholds after that: 1–3, 4–7, 8–14,
+  //    15–20, 21+. ────
   const AGING_BUCKETS = [
+    { key: "current", label: "Not Yet Due", min: -Infinity, max: 0 },
     { key: "1-3", label: "1–3 days", min: 1, max: 3 },
     { key: "4-7", label: "4–7 days", min: 4, max: 7 },
     { key: "8-14", label: "8–14 days", min: 8, max: 14 },
@@ -883,7 +934,7 @@
   ];
 
   function agingBucketKey(days) {
-    if (days === null || days === undefined || days < 1) return null;
+    if (days === null || days === undefined) return null;
     const b = AGING_BUCKETS.find((bk) => days >= bk.min && days <= bk.max);
     return b ? b.key : null;
   }
@@ -892,9 +943,15 @@
   // or plant/branch) at the DELIVERY level — a multi-line delivery is
   // counted once per group, using the earliest Goods Issue Date among
   // its lines in that group (reusing daysLate() for the aging clock).
-  // Deliveries not yet due (days < 1) are excluded entirely, same as
-  // the reference report — they never contribute to a bucket, the row
-  // total, or the average.
+  //
+  // `total` = every pending delivery in the group (Not Yet Due + all
+  // overdue buckets) — this is the number that now matches the KPI /
+  // Branch / Storage Location tables.
+  // `overdueTotal` / `avg` = calculated from OVERDUE deliveries only
+  // (days >= 1). Not-yet-due deliveries contribute 0 or negative "days
+  // late", so folding them into the average would understate how late
+  // the actual backlog is — Avg Days Open stays a clean "how late is the
+  // overdue stuff" number.
   function computeAgingGroups(rows, keyOf) {
     const perGroup = {}; // groupKey -> Map(delivery -> earliest giDate)
     rows.forEach((r) => {
@@ -907,18 +964,146 @@
     });
 
     return Object.keys(perGroup).map((gk) => {
-      const buckets = { "1-3": 0, "4-7": 0, "8-14": 0, "15-20": 0, "21+": 0 };
-      let total = 0, daysSum = 0;
+      const buckets = { current: 0, "1-3": 0, "4-7": 0, "8-14": 0, "15-20": 0, "21+": 0 };
+      let total = 0, overdueTotal = 0, daysSum = 0;
       perGroup[gk].forEach((giDate) => {
         const d = daysLate(giDate);
         const bk = agingBucketKey(d);
-        if (!bk) return; // not yet due — excluded
+        if (!bk) return; // no usable date — excluded
         buckets[bk] += 1;
         total += 1;
-        daysSum += d;
+        if (bk !== "current") {
+          overdueTotal += 1;
+          daysSum += d;
+        }
       });
-      return { key: gk, buckets, total, daysSum, avg: total ? daysSum / total : 0 };
+      return { key: gk, buckets, total, overdueTotal, daysSum, avg: overdueTotal ? daysSum / overdueTotal : 0 };
     }).filter((g) => g.total > 0);
+  }
+
+  // ── Aging drill-down — click any number in the aging tables to see the
+  //    actual deliveries behind it. `scopedRows` should already be
+  //    narrowed to one group (one storage location or one branch); pass
+  //    the full row set for the "grand total" clicks. `bucketKey` narrows
+  //    to a single aging column, or pass null/"" for "every column".
+  //    Reuses the same earliest-GI-date-per-delivery logic as
+  //    computeAgingGroups so the drilldown always matches the number that
+  //    was clicked. ──
+  function buildDrilldownDeliveries(scopedRows, bucketKey) {
+    const byDeliv = new Map(); // delivery -> array of line-item rows
+    scopedRows.forEach((r) => {
+      if (!r.giDate) return; // same exclusion as the aging tables
+      if (!byDeliv.has(r.delivery)) byDeliv.set(r.delivery, []);
+      byDeliv.get(r.delivery).push(r);
+    });
+
+    const out = [];
+    byDeliv.forEach((lines, delivery) => {
+      const earliestGi = lines.reduce((min, l) => (!min || l.giDate < min) ? l.giDate : min, null);
+      const d = daysLate(earliestGi);
+      const bk = agingBucketKey(d);
+      if (!bk) return;
+      if (bucketKey && bk !== bucketKey) return;
+      out.push({
+        delivery,
+        giDate: earliestGi,
+        daysLate: d,
+        bucket: bk,
+        items: lines.length,
+        materials: [...new Set(lines.map((l) => l.material).filter(Boolean))],
+        slocs: [...new Set(lines.map((l) => l.storageLocation).filter(Boolean))],
+        createdBys: [...new Set(lines.map((l) => l.createdBy).filter(Boolean))],
+        qtyTotal: lines.reduce((s, l) => s + (l.qty || 0), 0),
+        branchCode: plantCode(lines[0].shipToParty),
+        stockTypes: [...new Set(lines.map(stockTypeOf))],
+      });
+    });
+
+    return out.sort((a, b) => (b.daysLate ?? -999) - (a.daysLate ?? -999));
+  }
+
+  // Renders a lightweight modal/popup listing the deliveries behind a
+  // clicked aging number. `dimension` is "sloc" or "branch" — controls
+  // whether the "Where" column shows Branch (for the SLoc table) or
+  // Storage Location(s) (for the Branch table), since that's whichever
+  // dimension ISN'T already fixed by the click.
+  function showAgingDrilldownModal(title, deliveries, dimension) {
+    const existing = document.getElementById("pd-drilldown-overlay");
+    if (existing) existing.remove();
+
+    const overlay = document.createElement("div");
+    overlay.id = "pd-drilldown-overlay";
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(10,14,20,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;";
+
+    const rowsHtml = deliveries.map((d, i) => {
+      const lateLabel = d.daysLate === null ? "—"
+        : d.daysLate <= 0 ? `<span class="badge pd-badge-good" style="background:rgba(46,175,110,0.15);color:#2eaf6e;border:1px solid rgba(46,175,110,0.35);">Not yet due</span>`
+        : `<span class="badge pd-badge-late" style="background:rgba(224,77,61,0.15);color:#e04d3d;border:1px solid rgba(224,77,61,0.35);">${d.daysLate} day${d.daysLate === 1 ? "" : "s"} late</span>`;
+      const whereLabel = dimension === "sloc"
+        ? `${escapeHtml(branchName(d.branchCode))} (${escapeHtml(d.branchCode)})`
+        : escapeHtml(d.slocs.join(", ") || "—");
+      const materialsLabel = d.materials.length
+        ? escapeHtml(d.materials.slice(0, 3).join(", ")) + (d.materials.length > 3 ? ` +${d.materials.length - 3} more` : "")
+        : "—";
+      return `
+        <tr>
+          <td>${i + 1}</td>
+          <td style="font-family:'IBM Plex Mono',monospace">${escapeHtml(d.delivery)}</td>
+          <td>${fmtDate(d.giDate)}</td>
+          <td>${lateLabel}</td>
+          <td>${whereLabel}</td>
+          <td>${d.items}</td>
+          <td>${materialsLabel}</td>
+          <td>${d.qtyTotal.toLocaleString()}</td>
+          <td>${escapeHtml(d.createdBys.join(", ") || "—")}</td>
+        </tr>`;
+    }).join("");
+
+    overlay.innerHTML = `
+      <div style="background:var(--bg-card,#1c2530);color:inherit;max-width:1000px;width:100%;max-height:85vh;overflow:auto;border-radius:12px;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,0.45);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:12px;">
+          <div style="font-weight:700;font-size:14.5px;">⏱ ${escapeHtml(title)} <span style="font-weight:400;opacity:0.65;">— ${deliveries.length.toLocaleString()} deliver${deliveries.length === 1 ? "y" : "ies"}</span></div>
+          <button id="pd-drilldown-close" style="background:none;border:none;font-size:22px;cursor:pointer;line-height:1;opacity:0.7;">×</button>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>#</th><th style="text-align:left">Delivery</th><th>GI Date</th><th>Status</th>
+              <th style="text-align:left">${dimension === "sloc" ? "Branch" : "Storage Location(s)"}</th>
+              <th>Items</th><th style="text-align:left">Material(s)</th><th>Qty</th><th style="text-align:left">Created By</th>
+            </tr></thead>
+            <tbody>${rowsHtml || `<tr><td colspan="9" class="pd-empty">No deliveries found.</td></tr>`}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+    document.getElementById("pd-drilldown-close").addEventListener("click", () => overlay.remove());
+  }
+
+  // Wires click handlers onto every "[data-agg-click]" cell inside an
+  // aging table wrap — shared by both the SLoc and Branch aging tables.
+  // `rows` is the full filtered row set the table was built from;
+  // `keyOf` is the same grouping function used in computeAgingGroups
+  // (so clicking always matches what's on screen); `dimension` is
+  // "sloc" or "branch", used only to label the drilldown's "Where" column.
+  function wireAgingDrilldown(wrap, rows, keyOf, dimension) {
+    wrap.querySelectorAll("[data-agg-click]").forEach((cell) => {
+      cell.addEventListener("click", () => {
+        const group = cell.dataset.group || "";
+        const bucket = cell.dataset.bucket || "";
+        const scoped = group ? rows.filter((r) => keyOf(r) === group) : rows;
+        const list = buildDrilldownDeliveries(scoped, bucket || null);
+        const bucketDef = AGING_BUCKETS.find((b) => b.key === bucket);
+        const bucketLabel = bucketDef ? bucketDef.label : "All (Not Yet Due + Overdue)";
+        const groupLabel = group
+          ? (dimension === "sloc" ? group : `${branchName(group)} (${group})`)
+          : (dimension === "sloc" ? "All Storage Locations" : "All Branches / Plants");
+        showAgingDrilldownModal(`${groupLabel} · ${bucketLabel}`, list, dimension);
+      });
+    });
   }
 
   // ── Detail-table-only filters (Material / Delivery / Created By) —
@@ -1200,31 +1385,34 @@
 
     const out = groups.map((g) => ({
       "Storage Location": g.key,
+      "Not Yet Due": g.buckets["current"],
       "1–3 days": g.buckets["1-3"],
       "4–7 days": g.buckets["4-7"],
       "8–14 days": g.buckets["8-14"],
       "15–20 days": g.buckets["15-20"],
       "21+ days": g.buckets["21+"],
       "Total": g.total,
-      "Avg Days Open": Number(g.avg.toFixed(2)),
+      "Avg Days Open (overdue only)": Number(g.avg.toFixed(2)),
     }));
 
     const grand = groups.reduce((acc, g) => {
       acc.total += g.total;
+      acc.overdueTotal += g.overdueTotal;
       acc.daysSum += g.daysSum;
       AGING_BUCKETS.forEach((b) => { acc.buckets[b.key] += g.buckets[b.key]; });
       return acc;
-    }, { total: 0, daysSum: 0, buckets: { "1-3": 0, "4-7": 0, "8-14": 0, "15-20": 0, "21+": 0 } });
+    }, { total: 0, overdueTotal: 0, daysSum: 0, buckets: { current: 0, "1-3": 0, "4-7": 0, "8-14": 0, "15-20": 0, "21+": 0 } });
 
     out.push({
       "Storage Location": "Total",
+      "Not Yet Due": grand.buckets["current"],
       "1–3 days": grand.buckets["1-3"],
       "4–7 days": grand.buckets["4-7"],
       "8–14 days": grand.buckets["8-14"],
       "15–20 days": grand.buckets["15-20"],
       "21+ days": grand.buckets["21+"],
       "Total": grand.total,
-      "Avg Days Open": grand.total ? Number((grand.daysSum / grand.total).toFixed(2)) : 0,
+      "Avg Days Open (overdue only)": grand.overdueTotal ? Number((grand.daysSum / grand.overdueTotal).toFixed(2)) : 0,
     });
 
     return out;
@@ -1240,32 +1428,35 @@
     const out = groups.map((g) => ({
       "Branch": branchName(g.key),
       "Plant Code": g.key,
+      "Not Yet Due": g.buckets["current"],
       "1–3 days": g.buckets["1-3"],
       "4–7 days": g.buckets["4-7"],
       "8–14 days": g.buckets["8-14"],
       "15–20 days": g.buckets["15-20"],
       "21+ days": g.buckets["21+"],
       "Total": g.total,
-      "Avg Days Open": Number(g.avg.toFixed(2)),
+      "Avg Days Open (overdue only)": Number(g.avg.toFixed(2)),
     }));
 
     const grand = groups.reduce((acc, g) => {
       acc.total += g.total;
+      acc.overdueTotal += g.overdueTotal;
       acc.daysSum += g.daysSum;
       AGING_BUCKETS.forEach((b) => { acc.buckets[b.key] += g.buckets[b.key]; });
       return acc;
-    }, { total: 0, daysSum: 0, buckets: { "1-3": 0, "4-7": 0, "8-14": 0, "15-20": 0, "21+": 0 } });
+    }, { total: 0, overdueTotal: 0, daysSum: 0, buckets: { current: 0, "1-3": 0, "4-7": 0, "8-14": 0, "15-20": 0, "21+": 0 } });
 
     out.push({
       "Branch": "Total",
       "Plant Code": "",
+      "Not Yet Due": grand.buckets["current"],
       "1–3 days": grand.buckets["1-3"],
       "4–7 days": grand.buckets["4-7"],
       "8–14 days": grand.buckets["8-14"],
       "15–20 days": grand.buckets["15-20"],
       "21+ days": grand.buckets["21+"],
       "Total": grand.total,
-      "Avg Days Open": grand.total ? Number((grand.daysSum / grand.total).toFixed(2)) : 0,
+      "Avg Days Open (overdue only)": grand.overdueTotal ? Number((grand.daysSum / grand.overdueTotal).toFixed(2)) : 0,
     });
 
     return out;
