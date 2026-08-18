@@ -1054,7 +1054,6 @@
           <td>${whereLabel}</td>
           <td>${d.items}</td>
           <td>${materialsLabel}</td>
-          <td>${d.qtyTotal.toLocaleString()}</td>
           <td>${escapeHtml(d.createdBys.join(", ") || "—")}</td>
         </tr>`;
     }).join("");
@@ -1070,9 +1069,9 @@
             <thead><tr>
               <th>#</th><th style="text-align:left">Delivery</th><th>GI Date</th><th>Status</th>
               <th style="text-align:left">${dimension === "sloc" ? "Branch" : "Storage Location(s)"}</th>
-              <th>Items</th><th style="text-align:left">Material(s)</th><th>Qty</th><th style="text-align:left">Created By</th>
+              <th>Items</th><th style="text-align:left">Material(s)</th><th style="text-align:left">Created By</th>
             </tr></thead>
-            <tbody>${rowsHtml || `<tr><td colspan="9" class="pd-empty">No deliveries found.</td></tr>`}</tbody>
+            <tbody>${rowsHtml || `<tr><td colspan="8" class="pd-empty">No deliveries found.</td></tr>`}</tbody>
           </table>
         </div>
       </div>
