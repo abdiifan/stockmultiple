@@ -1059,7 +1059,7 @@
     }).join("");
 
     overlay.innerHTML = `
-      <div style="background:var(--bg-card,#1c2530);color:inherit;max-width:1000px;width:100%;max-height:85vh;overflow:auto;border-radius:12px;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,0.45);">
+      <div style="background:var(--surface);color:var(--text);border:1px solid var(--border);max-width:1000px;width:100%;max-height:85vh;overflow:auto;border-radius:12px;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,0.45);">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:12px;">
           <div style="font-weight:700;font-size:14.5px;">⏱ ${escapeHtml(title)} <span style="font-weight:400;opacity:0.65;">— ${deliveries.length.toLocaleString()} deliver${deliveries.length === 1 ? "y" : "ies"}</span></div>
           <button id="pd-drilldown-close" style="background:none;border:none;font-size:22px;cursor:pointer;line-height:1;opacity:0.7;">×</button>
